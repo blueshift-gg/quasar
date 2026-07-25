@@ -5,7 +5,6 @@ impl ::quasar_lang::traits::AccountBumps for IxArgsFixed {
 }
 impl<'input> ::quasar_lang::traits::ParseAccounts<'input> for IxArgsFixed {
     type Bumps = IxArgsFixedBumps;
-    const HAS_EPILOGUE: bool = false;
 }
 unsafe impl<'input> ::quasar_lang::traits::ParseAccountsUnchecked<'input>
 for IxArgsFixed {

@@ -235,9 +235,17 @@ pub(crate) fn generate_seeds_impl(
         quote! { _lt: core::marker::PhantomData, }
     };
 
+    // `HasSeeds::HAS_SEED_PREFIX` already defaults to true, so only a prefixless
+    // PDA has anything to say here.
+    let has_prefix_const = if has_prefix {
+        quote! {}
+    } else {
+        quote! { const HAS_SEED_PREFIX: bool = false; }
+    };
+
     quote! {
         impl #impl_generics #krate::traits::HasSeeds for #name #ty_generics #where_clause {
-            const HAS_SEED_PREFIX: bool = #has_prefix;
+            #has_prefix_const
             const SEED_PREFIX: &'static [u8] = &[#(#prefix_bytes),*];
             const SEED_DYNAMIC_COUNT: usize = #dynamic_count;
             type WithBump<'__quasar_seed> = #seed_set_bump<'__quasar_seed>;

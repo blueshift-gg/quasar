@@ -241,9 +241,7 @@ pub(super) fn emit_dyn_writer(
             pub fn commit(&mut self) -> Result<(), #krate::__solana_program_error::ProgramError> {
                 #(#binding_stmts)*
 
-                let __new_total = #disc_len
-                    + <#zc_mod::__Schema as #krate::ZeroPodCompact>::HEADER_SIZE
-                    #(#size_terms)*;
+                let __new_total = #name::MIN_SPACE #(#size_terms)*;
                 let __old_total = self.__view.data_len();
                 if __new_total != __old_total {
                     #krate::accounts::account::realloc_account_raw(
@@ -395,9 +393,7 @@ pub(super) fn emit_compact_mut(
         impl<'a> #guard_name<'a> {
             pub fn save(&mut self) -> Result<(), #krate::__solana_program_error::ProgramError> {
                 let __tail_size: usize = 0 #(#save_size_terms)*;
-                let __new_total = #disc_len
-                    + <#zc_mod::__Schema as #krate::ZeroPodCompact>::HEADER_SIZE
-                    + __tail_size;
+                let __new_total = #name::MIN_SPACE + __tail_size;
 
                 let __old_total = self.__view.data_len();
                 if __new_total != __old_total {

@@ -5,7 +5,6 @@ impl ::quasar_lang::traits::AccountBumps for UseCustomBehavior {
 }
 impl<'input> ::quasar_lang::traits::ParseAccounts<'input> for UseCustomBehavior {
     type Bumps = UseCustomBehaviorBumps;
-    const HAS_EPILOGUE: bool = false;
 }
 unsafe impl<'input> ::quasar_lang::traits::ParseAccountsUnchecked<'input>
 for UseCustomBehavior {

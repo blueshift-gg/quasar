@@ -39,11 +39,11 @@ pub(super) fn emit_space_impl(
 ) -> proc_macro2::TokenStream {
     let krate = crate::krate::lang_path();
     if has_dynamic {
-        // Space = discriminator + compact header size (includes length prefixes).
+        // Space = discriminator + compact header size (includes length prefixes),
+        // which is exactly the `MIN_SPACE` the dynamic impl block defines.
         quote! {
             impl #krate::traits::Space for #name {
-                const SPACE: usize = #disc_len
-                    + <#zc_mod::__Schema as #krate::ZeroPodCompact>::HEADER_SIZE;
+                const SPACE: usize = Self::MIN_SPACE;
             }
         }
     } else {
@@ -104,20 +104,18 @@ fn emit_account_load_validate(
 ) -> proc_macro2::TokenStream {
     let krate = crate::krate::lang_path();
     quote! {
-        let __min = #disc_len
-            + <#zc_mod::__Schema as #krate::ZeroPodCompact>::HEADER_SIZE;
-        if __data.len() < __min {
+        if __data.len() < Self::MIN_SPACE {
             return Err(#krate::__solana_program_error::ProgramError::AccountDataTooSmall);
         }
         #(
-            // SAFETY: `__data.len() >= __min` and every discriminator index is
-            // strictly less than `disc_len`.
+            // SAFETY: `__data.len() >= MIN_SPACE` and every discriminator index
+            // is strictly less than `disc_len`.
             if unsafe { *__data.get_unchecked(#disc_indices) } != #disc_bytes {
                 return Err(#krate::__solana_program_error::ProgramError::InvalidAccountData);
             }
         )*
         <#zc_mod::__Schema as #krate::ZeroPodCompact>::validate(
-            // SAFETY: `__data.len() >= __min`, so the compact payload range
+            // SAFETY: `__data.len() >= MIN_SPACE`, so the compact payload range
             // starting at `disc_len` is in bounds.
             unsafe { __data.get_unchecked(#disc_len..) }
         ).map_err(|_| #krate::__solana_program_error::ProgramError::InvalidAccountData)?;

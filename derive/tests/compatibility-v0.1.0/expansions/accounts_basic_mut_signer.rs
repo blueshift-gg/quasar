@@ -5,7 +5,6 @@ impl ::quasar_lang::traits::AccountBumps for BasicAccounts {
 }
 impl<'input> ::quasar_lang::traits::ParseAccounts<'input> for BasicAccounts {
     type Bumps = BasicAccountsBumps;
-    const HAS_EPILOGUE: bool = false;
 }
 unsafe impl<'input> ::quasar_lang::traits::ParseAccountsUnchecked<'input>
 for BasicAccounts {

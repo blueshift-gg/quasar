@@ -17,7 +17,6 @@ impl ::quasar_lang::traits::AccountBumps for InitEscrow {
 }
 impl<'input> ::quasar_lang::traits::ParseAccounts<'input> for InitEscrow {
     type Bumps = InitEscrowBumps;
-    const HAS_EPILOGUE: bool = false;
 }
 unsafe impl<'input> ::quasar_lang::traits::ParseAccountsUnchecked<'input>
 for InitEscrow {

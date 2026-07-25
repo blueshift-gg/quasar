@@ -63,17 +63,14 @@ impl ::quasar_lang::traits::Owner for DynamicAccount {
     const OWNER: ::quasar_lang::prelude::Address = crate::ID;
 }
 impl ::quasar_lang::traits::Space for DynamicAccount {
-    const SPACE: usize = 1usize
-        + <__dynamic_account_zc::__Schema as ::quasar_lang::ZeroPodCompact>::HEADER_SIZE;
+    const SPACE: usize = Self::MIN_SPACE;
 }
 impl DynamicAccount {
     #[inline(always)]
     fn __quasar_check_data(
         __data: &[u8],
     ) -> Result<(), ::quasar_lang::__solana_program_error::ProgramError> {
-        let __min = 1usize
-            + <__dynamic_account_zc::__Schema as ::quasar_lang::ZeroPodCompact>::HEADER_SIZE;
-        if __data.len() < __min {
+        if __data.len() < Self::MIN_SPACE {
             return Err(
                 ::quasar_lang::__solana_program_error::ProgramError::AccountDataTooSmall,
             );
@@ -186,9 +183,7 @@ impl<'a> DynamicAccountCompactMut<'a> {
                 * core::mem::size_of::<
                     <Address as ::quasar_lang::instruction_arg::InstructionArg>::Zc,
                 >();
-        let __new_total = 1usize
-            + <__dynamic_account_zc::__Schema as ::quasar_lang::ZeroPodCompact>::HEADER_SIZE
-            + __tail_size;
+        let __new_total = DynamicAccount::MIN_SPACE + __tail_size;
         let __old_total = self.__view.data_len();
         if __new_total != __old_total {
             ::quasar_lang::accounts::account::realloc_account(
@@ -350,9 +345,7 @@ impl<'a> DynamicAccountCompactWriter<'a> {
         let tags = self
             .__tags
             .ok_or(::quasar_lang::error::QuasarError::CompactWriterFieldNotSet)?;
-        let __new_total = 1usize
-            + <__dynamic_account_zc::__Schema as ::quasar_lang::ZeroPodCompact>::HEADER_SIZE
-            + name.len()
+        let __new_total = DynamicAccount::MIN_SPACE + name.len()
             + tags.len()
                 * core::mem::size_of::<
                     <Address as ::quasar_lang::instruction_arg::InstructionArg>::Zc,

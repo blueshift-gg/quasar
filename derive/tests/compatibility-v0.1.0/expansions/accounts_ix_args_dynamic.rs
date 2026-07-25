@@ -5,7 +5,6 @@ impl ::quasar_lang::traits::AccountBumps for TwoDyn {
 }
 impl<'input> ::quasar_lang::traits::ParseAccounts<'input> for TwoDyn {
     type Bumps = TwoDynBumps;
-    const HAS_EPILOGUE: bool = false;
 }
 unsafe impl<'input> ::quasar_lang::traits::ParseAccountsUnchecked<'input> for TwoDyn {
     #[inline(always)]

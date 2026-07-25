@@ -5,7 +5,6 @@ impl ::quasar_lang::traits::AccountBumps for ReallocAccounts {
 }
 impl<'input> ::quasar_lang::traits::ParseAccounts<'input> for ReallocAccounts {
     type Bumps = ReallocAccountsBumps;
-    const HAS_EPILOGUE: bool = false;
 }
 unsafe impl<'input> ::quasar_lang::traits::ParseAccountsUnchecked<'input>
 for ReallocAccounts {

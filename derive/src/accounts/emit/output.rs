@@ -53,8 +53,14 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
         extract_ix_args_fn,
     } = output;
 
-    let has_epilogue_const = quote! {
-        const HAS_EPILOGUE: bool = #has_epilogue_expr;
+    // `ParseAccounts::HAS_EPILOGUE` already defaults to false, which is exactly
+    // what the expression folds to for a struct with no lifecycle steps.
+    let has_epilogue_const = if has_epilogue_expr.to_string() == "false" {
+        quote! {}
+    } else {
+        quote! {
+            const HAS_EPILOGUE: bool = #has_epilogue_expr;
+        }
     };
 
     let inherent_impl = if extract_ix_args_fn.is_empty() {
