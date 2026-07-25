@@ -346,6 +346,11 @@ pub(super) fn emit_compact_mut(
                 .unwrap_or_else(|| ice!("field must be named"))
         })
         .collect();
+    let field_tys: Vec<proc_macro2::TokenStream> = pieces
+        .dyn_fields
+        .iter()
+        .map(|(_, pd)| compact_mut_ty(pd))
+        .collect();
     let save_size_terms: Vec<proc_macro2::TokenStream> = pieces
         .dyn_fields
         .iter()
@@ -418,18 +423,7 @@ pub(super) fn emit_compact_mut(
             }
 
             pub fn reload(&mut self) {
-                let (#(#field_names,)*) = {
-                    // SAFETY: the guard has exclusive access to the account
-                    // wrapper, so no checked borrow can be active here.
-                    let __data = unsafe { self.__view.borrow_unchecked() };
-                    // SAFETY: this guard is only built after AccountLoad
-                    // compact validation, and reload preserves that layout.
-                    let __r = unsafe {
-                        #zc_mod::__SchemaRef::new_unchecked(__data.get_unchecked(#disc_len..))
-                    };
-                    #(#load_stmts)*
-                    (#(#field_names,)*)
-                };
+                let (#(#field_names,)*) = #name::__snapshot_dynamic(self.__view);
                 #(self.#field_names = #field_names;)*
             }
         }
@@ -443,23 +437,31 @@ pub(super) fn emit_compact_mut(
         }
 
         impl #name {
+            /// Read every dynamic field out of the compact tail into owned
+            /// caches. Shared by `as_mut` and the guard's `reload`, which each
+            /// need the identical read.
+            #[inline(always)]
+            fn __snapshot_dynamic(
+                __view: &#krate::__internal::AccountView,
+            ) -> (#(#field_tys,)*) {
+                // SAFETY: every caller holds exclusive access to the account
+                // wrapper, so no checked borrow can be active here.
+                let __data = unsafe { __view.borrow_unchecked() };
+                // SAFETY: the compact layout was validated before this wrapper
+                // became available, and every write path preserves it.
+                let __r = unsafe {
+                    #zc_mod::__SchemaRef::new_unchecked(__data.get_unchecked(#disc_len..))
+                };
+                #(#load_stmts)*
+                (#(#field_names,)*)
+            }
+
             #[inline(always)]
             pub fn as_mut<'a>(
                 &'a mut self,
                 payer: &'a #krate::__internal::AccountView,
             ) -> #guard_name<'a> {
-                let (#(#field_names,)*) = {
-                    // SAFETY: `&'a mut self` gives the guard exclusive access to
-                    // the account wrapper while it loads cached fields.
-                    let __data = unsafe { self.__view.borrow_unchecked() };
-                    // SAFETY: dynamic account construction validated the compact
-                    // layout before this wrapper became available.
-                    let __r = unsafe {
-                        #zc_mod::__SchemaRef::new_unchecked(__data.get_unchecked(#disc_len..))
-                    };
-                    #(#load_stmts)*
-                    (#(#field_names,)*)
-                };
+                let (#(#field_names,)*) = Self::__snapshot_dynamic(&self.__view);
                 // SAFETY: `self.__view` is the transparent account backing store for this
                 // wrapper. Reborrowing it as `&mut AccountView` is sound here because the
                 // guard exclusively owns `&'a mut self` for its full lifetime and does not
@@ -579,10 +581,17 @@ fn writer_compact_set_stmt(name: &syn::Ident) -> proc_macro2::TokenStream {
 }
 
 fn compact_mut_field(name: &syn::Ident, dyn_field: &PodDynField) -> proc_macro2::TokenStream {
+    let ty = compact_mut_ty(dyn_field);
+    quote! { pub #name: #ty }
+}
+
+/// The owned `PodString`/`PodVec` type a dynamic field is cached as, named on
+/// its own so the guard's fields and the snapshot's return tuple stay in step.
+fn compact_mut_ty(dyn_field: &PodDynField) -> proc_macro2::TokenStream {
     let krate = crate::krate::lang_path();
     match dyn_field {
         PodDynField::Str { max, prefix_bytes } => quote! {
-            pub #name: #krate::pod::PodString<#max, #prefix_bytes>
+            #krate::pod::PodString<#max, #prefix_bytes>
         },
         PodDynField::Vec {
             elem,
@@ -591,7 +600,7 @@ fn compact_mut_field(name: &syn::Ident, dyn_field: &PodDynField) -> proc_macro2:
         } => {
             let mapped = map_to_pod_type(elem);
             quote! {
-                pub #name: #krate::pod::PodVec<#mapped, #max, #prefix_bytes>
+                #krate::pod::PodVec<#mapped, #max, #prefix_bytes>
             }
         }
     }

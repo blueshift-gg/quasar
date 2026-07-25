@@ -225,27 +225,7 @@ impl<'a> DynamicAccountCompactMut<'a> {
         Ok(())
     }
     pub fn reload(&mut self) {
-        let (name, tags) = {
-            let __data = unsafe { self.__view.borrow_unchecked() };
-            let __r = unsafe {
-                __dynamic_account_zc::__SchemaRef::new_unchecked(
-                    __data.get_unchecked(1usize..),
-                )
-            };
-            let mut name = ::quasar_lang::pod::PodString::<8, 1usize>::default();
-            if !name.set(__r.name()) {
-                ::quasar_lang::abort_program();
-            }
-            let mut tags = ::quasar_lang::pod::PodVec::<
-                <Address as ::quasar_lang::instruction_arg::InstructionArg>::Zc,
-                2,
-                2usize,
-            >::default();
-            if !tags.set_from_slice(__r.tags()) {
-                ::quasar_lang::abort_program();
-            }
-            (name, tags)
-        };
+        let (name, tags) = DynamicAccount::__snapshot_dynamic(self.__view);
         self.name = name;
         self.tags = tags;
     }
@@ -258,32 +238,46 @@ impl<'a> Drop for DynamicAccountCompactMut<'a> {
     }
 }
 impl DynamicAccount {
+    /// Read every dynamic field out of the compact tail into owned
+    /// caches. Shared by `as_mut` and the guard's `reload`, which each
+    /// need the identical read.
+    #[inline(always)]
+    fn __snapshot_dynamic(
+        __view: &::quasar_lang::__internal::AccountView,
+    ) -> (
+        ::quasar_lang::pod::PodString<8, 1usize>,
+        ::quasar_lang::pod::PodVec<
+            <Address as ::quasar_lang::instruction_arg::InstructionArg>::Zc,
+            2,
+            2usize,
+        >,
+    ) {
+        let __data = unsafe { __view.borrow_unchecked() };
+        let __r = unsafe {
+            __dynamic_account_zc::__SchemaRef::new_unchecked(
+                __data.get_unchecked(1usize..),
+            )
+        };
+        let mut name = ::quasar_lang::pod::PodString::<8, 1usize>::default();
+        if !name.set(__r.name()) {
+            ::quasar_lang::abort_program();
+        }
+        let mut tags = ::quasar_lang::pod::PodVec::<
+            <Address as ::quasar_lang::instruction_arg::InstructionArg>::Zc,
+            2,
+            2usize,
+        >::default();
+        if !tags.set_from_slice(__r.tags()) {
+            ::quasar_lang::abort_program();
+        }
+        (name, tags)
+    }
     #[inline(always)]
     pub fn as_mut<'a>(
         &'a mut self,
         payer: &'a ::quasar_lang::__internal::AccountView,
     ) -> DynamicAccountCompactMut<'a> {
-        let (name, tags) = {
-            let __data = unsafe { self.__view.borrow_unchecked() };
-            let __r = unsafe {
-                __dynamic_account_zc::__SchemaRef::new_unchecked(
-                    __data.get_unchecked(1usize..),
-                )
-            };
-            let mut name = ::quasar_lang::pod::PodString::<8, 1usize>::default();
-            if !name.set(__r.name()) {
-                ::quasar_lang::abort_program();
-            }
-            let mut tags = ::quasar_lang::pod::PodVec::<
-                <Address as ::quasar_lang::instruction_arg::InstructionArg>::Zc,
-                2,
-                2usize,
-            >::default();
-            if !tags.set_from_slice(__r.tags()) {
-                ::quasar_lang::abort_program();
-            }
-            (name, tags)
-        };
+        let (name, tags) = Self::__snapshot_dynamic(&self.__view);
         let __view = unsafe {
             &mut *(&mut self.__view as *mut ::quasar_lang::__internal::AccountView)
         };
