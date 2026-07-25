@@ -153,12 +153,34 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
             #[inline(always)]
             #[doc(hidden)]
             pub unsafe fn parse_accounts(
-                mut input: *mut u8,
+                input: *mut u8,
                 buf: &mut core::mem::MaybeUninit<[#krate::__internal::AccountView; #count_expr]>,
                 __program_id: &#krate::prelude::Address,
             ) -> Result<*mut u8, #krate::__solana_program_error::ProgramError> {
-                let base = buf.as_mut_ptr() as *mut #krate::__internal::AccountView;
+                Self::parse_accounts_into(
+                    input,
+                    buf.as_mut_ptr() as *mut #krate::__internal::AccountView,
+                    0usize,
+                    __program_id,
+                )
+            }
 
+            /// Parse this struct's accounts directly into `base[__offset..]`.
+            ///
+            /// # Safety
+            ///
+            /// `base[__offset .. __offset + COUNT]` must be writable
+            /// `AccountView` slots, `base[..__offset]` must already be
+            /// initialized, and `input` must point at this struct's first
+            /// account entry.
+            #[inline(always)]
+            #[doc(hidden)]
+            pub unsafe fn parse_accounts_into(
+                mut input: *mut u8,
+                base: *mut #krate::__internal::AccountView,
+                __offset: usize,
+                __program_id: &#krate::prelude::Address,
+            ) -> Result<*mut u8, #krate::__solana_program_error::ProgramError> {
                 #(#parse_steps)*
 
                 Ok(input)
@@ -184,26 +206,8 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
                 offset: usize,
                 __program_id: &#krate::prelude::Address,
             ) -> Result<*mut u8, #krate::__solana_program_error::ProgramError> {
-                let mut __inner_buf = core::mem::MaybeUninit::<
-                    [#krate::__internal::AccountView; #count_expr]
-                >::uninit();
-                let input = Self::parse_accounts(input, &mut __inner_buf, __program_id)?;
-                // SAFETY: parse_accounts initializes every element before
-                // returning Ok.
-                let __inner = core::mem::ManuallyDrop::new(__inner_buf.assume_init());
-                let mut __j = 0usize;
-                while __j < #count_expr {
-                    // SAFETY: `__j < count_expr`; the caller's `base + offset`
-                    // points into the preallocated outer account buffer.
-                    core::ptr::write(
-                        base.add(offset + __j),
-                        // SAFETY: `__inner` owns `count_expr` initialized
-                        // AccountView values.
-                        core::ptr::read(__inner.as_ptr().add(__j)),
-                    );
-                    __j += 1;
-                }
-                Ok(input)
+                // SAFETY: forwards the caller's `ParseAccountsRaw` contract.
+                unsafe { Self::parse_accounts_into(input, base, offset, __program_id) }
             }
         }
 

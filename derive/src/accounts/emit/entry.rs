@@ -34,6 +34,10 @@ struct SlotOffset {
 }
 
 impl SlotOffset {
+    /// The slot index relative to `__offset`, the caller-supplied base of this
+    /// struct's region in the flattened account array. Absolute indices are
+    /// required: `parse_account_dup` resolves the SVM dup byte, which is an
+    /// index into the whole transaction's account list, against `base`.
     fn to_tokens(&self) -> proc_macro2::TokenStream {
         let krate = crate::krate::lang_path();
         let fixed = self.fixed;
@@ -41,7 +45,7 @@ impl SlotOffset {
             let inner = composite_parse_ty(ty);
             quote! { <#inner as #krate::traits::AccountCount>::COUNT }
         });
-        quote! { #fixed #(+ #terms)* }
+        quote! { __offset + #fixed #(+ #terms)* }
     }
 
     /// The offset rendered for the debug log. Stringifying `to_tokens()` would

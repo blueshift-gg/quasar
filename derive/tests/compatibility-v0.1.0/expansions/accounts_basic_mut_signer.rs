@@ -102,13 +102,35 @@ impl BasicAccounts {
     #[inline(always)]
     #[doc(hidden)]
     pub unsafe fn parse_accounts(
-        mut input: *mut u8,
+        input: *mut u8,
         buf: &mut core::mem::MaybeUninit<
             [::quasar_lang::__internal::AccountView; 4usize],
         >,
         __program_id: &::quasar_lang::prelude::Address,
     ) -> Result<*mut u8, ::quasar_lang::__solana_program_error::ProgramError> {
-        let base = buf.as_mut_ptr() as *mut ::quasar_lang::__internal::AccountView;
+        Self::parse_accounts_into(
+            input,
+            buf.as_mut_ptr() as *mut ::quasar_lang::__internal::AccountView,
+            0usize,
+            __program_id,
+        )
+    }
+    /// Parse this struct's accounts directly into `base[__offset..]`.
+    ///
+    /// # Safety
+    ///
+    /// `base[__offset .. __offset + COUNT]` must be writable
+    /// `AccountView` slots, `base[..__offset]` must already be
+    /// initialized, and `input` must point at this struct's first
+    /// account entry.
+    #[inline(always)]
+    #[doc(hidden)]
+    pub unsafe fn parse_accounts_into(
+        mut input: *mut u8,
+        base: *mut ::quasar_lang::__internal::AccountView,
+        __offset: usize,
+        __program_id: &::quasar_lang::prelude::Address,
+    ) -> Result<*mut u8, ::quasar_lang::__solana_program_error::ProgramError> {
         {
             const __EXPECTED: u32 = ::quasar_lang::__internal::header_expected(
                 <Signer as ::quasar_lang::account_load::AccountLoad>::IS_SIGNER,
@@ -124,7 +146,7 @@ impl BasicAccounts {
                 ::quasar_lang::__internal::parse_account(
                     input,
                     base,
-                    0usize,
+                    __offset + 0usize,
                     __EXPECTED,
                     __MASK,
                 )?
@@ -157,7 +179,7 @@ impl BasicAccounts {
                 ::quasar_lang::__internal::parse_account(
                     input,
                     base,
-                    1usize,
+                    __offset + 1usize,
                     __EXPECTED,
                     __MASK,
                 )?
@@ -190,7 +212,7 @@ impl BasicAccounts {
                 ::quasar_lang::__internal::parse_account(
                     input,
                     base,
-                    2usize,
+                    __offset + 2usize,
                     __EXPECTED,
                     __MASK,
                 )?
@@ -215,7 +237,7 @@ impl BasicAccounts {
                 ::quasar_lang::__internal::parse_account(
                     input,
                     base,
-                    3usize,
+                    __offset + 3usize,
                     __EXPECTED,
                     __MASK,
                 )?
@@ -284,20 +306,7 @@ unsafe impl ::quasar_lang::traits::ParseAccountsRaw for BasicAccounts {
         offset: usize,
         __program_id: &::quasar_lang::prelude::Address,
     ) -> Result<*mut u8, ::quasar_lang::__solana_program_error::ProgramError> {
-        let mut __inner_buf = core::mem::MaybeUninit::<
-            [::quasar_lang::__internal::AccountView; 4usize],
-        >::uninit();
-        let input = Self::parse_accounts(input, &mut __inner_buf, __program_id)?;
-        let __inner = core::mem::ManuallyDrop::new(__inner_buf.assume_init());
-        let mut __j = 0usize;
-        while __j < 4usize {
-            core::ptr::write(
-                base.add(offset + __j),
-                core::ptr::read(__inner.as_ptr().add(__j)),
-            );
-            __j += 1;
-        }
-        Ok(input)
+        unsafe { Self::parse_accounts_into(input, base, offset, __program_id) }
     }
 }
 impl<'input> ::quasar_lang::remaining::RemainingItem<'input> for BasicAccounts {
