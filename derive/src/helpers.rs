@@ -23,6 +23,18 @@ fn duplicate_arg_error(ident: &Ident) -> syn::Error {
     syn::Error::new(ident.span(), format!("duplicate `{ident}`"))
 }
 
+/// Whether `tokens` mention `ident` anywhere, including inside groups.
+///
+/// Used to bind only the account fields an emitted expression actually reads,
+/// instead of every field in the struct.
+pub(crate) fn mentions_ident(tokens: &proc_macro2::TokenStream, ident: &Ident) -> bool {
+    tokens.clone().into_iter().any(|tree| match tree {
+        proc_macro2::TokenTree::Ident(found) => found == *ident,
+        proc_macro2::TokenTree::Group(group) => mentions_ident(&group.stream(), ident),
+        _ => false,
+    })
+}
+
 /// Join const-evaluable `bool` terms into one `||` chain, folding literals away
 /// so the emitted const reads `true` rather than `false || true`.
 pub(crate) fn or_bool_terms(

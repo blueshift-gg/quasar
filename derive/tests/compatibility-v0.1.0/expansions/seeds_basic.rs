@@ -68,11 +68,7 @@ impl<'__quasar_seed> VaultPdaSeedSetWithBump<'__quasar_seed> {
     /// construction cost once.
     #[inline(always)]
     pub fn signer_seeds(&self) -> [::quasar_lang::cpi::Seed<'_>; 3usize] {
-        [
-            ::quasar_lang::cpi::Seed::from(b"vault"),
-            ::quasar_lang::cpi::Seed::from(self.inner._authority.as_ref()),
-            ::quasar_lang::cpi::Seed::from(&self._bump),
-        ]
+        self.as_slices().map(::quasar_lang::cpi::Seed::from)
     }
 }
 impl<'__quasar_seed> ::quasar_lang::cpi::CpiSignerSeeds

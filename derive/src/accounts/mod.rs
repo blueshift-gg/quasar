@@ -817,14 +817,19 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
         has_instruction_args,
     } = ctx;
 
-    let field_refs: Vec<proc_macro2::TokenStream> = plan
-        .fields
-        .iter()
-        .map(|fp| {
-            let field_name = &fp.ident;
-            quote! { let #field_name = &self.#field_name; }
-        })
-        .collect();
+    // Bind only the fields the address expression reads; binding all of them is
+    // what forced the `allow(unused_variables)` on these helpers.
+    let field_refs = |addr_expr: &syn::Expr| -> Vec<proc_macro2::TokenStream> {
+        let addr_tokens = quote! { #addr_expr };
+        plan.fields
+            .iter()
+            .filter(|fp| crate::helpers::mentions_ident(&addr_tokens, &fp.ident))
+            .map(|fp| {
+                let field_name = &fp.ident;
+                quote! { let #field_name = &self.#field_name; }
+            })
+            .collect()
+    };
 
     let signer_methods: Vec<proc_macro2::TokenStream> = plan
         .fields
@@ -835,6 +840,7 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
             let addr_expr = &signer_helper.addr_expr;
             let set_ty = &signer_helper.set_ty;
             let method_name = format_ident!("{}_signer", field_name);
+            let field_refs = field_refs(addr_expr);
             if has_instruction_args {
                 Some(quote! {
                     #[inline(always)]
@@ -856,7 +862,6 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
             } else {
                 Some(quote! {
                     #[inline(always)]
-                    #[allow(unused_variables)]
                     pub fn #method_name<'__quasar_seed>(
                         &'__quasar_seed self,
                         bumps: &'__quasar_seed #bumps_name,

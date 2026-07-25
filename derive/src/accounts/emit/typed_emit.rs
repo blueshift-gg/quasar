@@ -84,9 +84,6 @@ pub(crate) fn emit_epilogue_behavior(
         return unsigned_exit;
     }
 
-    let field_refs = account_fields
-        .iter()
-        .map(|ident| quote! { let #ident = &self.#ident; });
     let mut exit_call = quote! {
         #args_block
         #bhv::exit(&mut self.#field_ident, &__bhv_args)?;
@@ -96,7 +93,12 @@ pub(crate) fn emit_epilogue_behavior(
         let key = candidate.key.to_string();
         let signer_field = candidate.field_ident;
         let addr_expr = candidate.addr_expr;
-        let refs = field_refs.clone();
+        // Bind only the fields this signer's address expression reads.
+        let addr_tokens = quote! { #addr_expr };
+        let refs = account_fields
+            .iter()
+            .filter(|ident| crate::helpers::mentions_ident(&addr_tokens, ident))
+            .map(|ident| quote! { let #ident = &self.#ident; });
         let fallback = exit_call;
         exit_call = quote! {
             if #bhv::uses_exit_signer_arg::<{

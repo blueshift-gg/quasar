@@ -4,14 +4,11 @@ pub struct InitEscrowBumps {
 }
 impl InitEscrow {
     #[inline(always)]
-    #[allow(unused_variables)]
     pub fn escrow_signer<'__quasar_seed>(
         &'__quasar_seed self,
         bumps: &'__quasar_seed InitEscrowBumps,
     ) -> <Escrow as ::quasar_lang::traits::HasSeeds>::WithBump<'__quasar_seed> {
         let payer = &self.payer;
-        let escrow = &self.escrow;
-        let system_program = &self.system_program;
         Escrow::seeds(payer.address()).with_bump(bumps.escrow)
     }
 }

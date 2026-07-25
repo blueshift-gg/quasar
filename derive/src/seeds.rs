@@ -319,7 +319,7 @@ pub(crate) fn generate_seeds_impl(
             /// construction cost once.
             #[inline(always)]
             pub fn signer_seeds(&self) -> [#krate::cpi::Seed<'_>; #n_slices_with_bump] {
-                [ #( #krate::cpi::Seed::from(#slice_exprs_bump) ),* ]
+                self.as_slices().map(#krate::cpi::Seed::from)
             }
         }
 
