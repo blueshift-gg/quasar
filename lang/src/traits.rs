@@ -404,8 +404,14 @@ pub trait Event {
     const DISCRIMINATOR: &'static [u8];
     /// Serialized event payload size in bytes.
     const DATA_SIZE: usize;
-    /// Writes the event payload into an exactly sized buffer.
-    fn write_data(&self, buf: &mut [u8]);
+    /// Writes the event payload into `buf`.
+    ///
+    /// # Safety
+    ///
+    /// `buf` must be at least `Self::DATA_SIZE` bytes. The derived impl
+    /// memcpys the payload without checking, so a shorter buffer writes out
+    /// of bounds.
+    unsafe fn write_data(&self, buf: &mut [u8]);
     /// Emits the encoded event through the supplied transport function.
     fn emit(&self, f: impl FnOnce(&[u8]) -> Result<(), ProgramError>) -> Result<(), ProgramError>;
 }
