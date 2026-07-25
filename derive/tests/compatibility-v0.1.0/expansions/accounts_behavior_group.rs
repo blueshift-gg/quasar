@@ -61,7 +61,7 @@ for UseCustomBehavior {
             } else {
                 __bhv_builder
             };
-            Self::__assert_builder(&__bhv_builder);
+            ::quasar_lang::account_behavior::assert_builder(&__bhv_builder);
             let __bhv_args = ::quasar_lang::account_behavior::BehaviorArgsBuilder::build_check(
                 __bhv_builder,
             )?;
@@ -76,12 +76,6 @@ impl ::quasar_lang::traits::AccountCount for UseCustomBehavior {
     const COUNT: usize = 1usize;
     const NEEDS_EVENT_CPI: bool = false;
 }
-impl UseCustomBehavior {
-    #[inline(always)]
-    fn __assert_builder<__B: ::quasar_lang::account_behavior::BehaviorArgsBuilder>(
-        _: &__B,
-    ) {}
-}
 unsafe impl ::quasar_lang::traits::ParseAccountsRaw for UseCustomBehavior {
     #[inline(always)]
     unsafe fn parse_accounts_raw(
@@ -94,7 +88,7 @@ unsafe impl ::quasar_lang::traits::ParseAccountsRaw for UseCustomBehavior {
             ::quasar_lang::__internal::parse_account::<
                 Account<MyData>,
                 false,
-            >(input, base, __offset + 0usize)?
+            >(input, base, __offset)?
         };
         ::quasar_lang::debug_log!("account data @0: validation passed");
         Ok(input)

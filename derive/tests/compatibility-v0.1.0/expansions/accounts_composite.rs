@@ -27,7 +27,7 @@ for UsesAccountArray {
         let (__chunk, __rest) = unsafe { __accounts_rest.split_at_mut_unchecked(1) };
         __accounts_rest = __rest;
         let payer = unsafe { __chunk.get_unchecked_mut(0) };
-        let (__chunk, __rest) = unsafe {
+        let (__chunk, _) = unsafe {
             __accounts_rest
                 .split_at_mut_unchecked(
                     <AccountsArray<
@@ -36,7 +36,6 @@ for UsesAccountArray {
                     > as ::quasar_lang::traits::AccountCount>::COUNT,
                 )
         };
-        __accounts_rest = __rest;
         let (pairs, __composite_bumps_pairs) = unsafe {
             <AccountsArray<
                 SignerPair,
@@ -47,7 +46,6 @@ for UsesAccountArray {
                 __program_id,
             )
         }?;
-        let _ = __accounts_rest;
         let payer = <Signer as ::quasar_lang::account_load::AccountLoad>::load(payer)?;
         Ok((
             Self { payer, pairs },
@@ -77,22 +75,20 @@ unsafe impl ::quasar_lang::traits::ParseAccountsRaw for UsesAccountArray {
             ::quasar_lang::__internal::parse_account::<
                 Signer,
                 false,
-            >(input, base, __offset + 0usize)?
+            >(input, base, __offset)?
         };
         ::quasar_lang::debug_log!("account payer @0: validation passed");
-        {
-            input = unsafe {
-                <AccountsArray<
-                    SignerPair,
-                    2,
-                > as ::quasar_lang::traits::ParseAccountsRaw>::parse_accounts_raw(
-                    input,
-                    base,
-                    __offset + 1usize,
-                    __program_id,
-                )?
-            };
-        }
+        input = unsafe {
+            <AccountsArray<
+                SignerPair,
+                2,
+            > as ::quasar_lang::traits::ParseAccountsRaw>::parse_accounts_raw(
+                input,
+                base,
+                __offset + 1usize,
+                __program_id,
+            )?
+        };
         Ok(input)
     }
 }

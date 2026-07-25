@@ -79,7 +79,7 @@ unsafe impl ::quasar_lang::traits::ParseAccountsRaw for TwoDyn {
             ::quasar_lang::__internal::parse_account::<
                 Account<TwoDynArgsAccount>,
                 true,
-            >(input, base, __offset + 0usize)?
+            >(input, base, __offset)?
         };
         ::quasar_lang::debug_log!("account account @0: validation passed");
         Ok(input)

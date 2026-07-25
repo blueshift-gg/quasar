@@ -67,7 +67,7 @@ unsafe impl ::quasar_lang::traits::ParseAccountsRaw for ReallocAccounts {
             ::quasar_lang::__internal::parse_account::<
                 Signer,
                 true,
-            >(input, base, __offset + 0usize)?
+            >(input, base, __offset)?
         };
         ::quasar_lang::debug_log!("account payer @0: validation passed");
         input = unsafe {

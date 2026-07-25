@@ -90,6 +90,18 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
                 )
             })
             .collect();
+        // A schema whose fields are all dynamic has no fixed header to write, so
+        // materializing the header pointer would bind a value nothing reads.
+        let zc_header_block = if zc_header_stmts.is_empty() {
+            quote! {}
+        } else {
+            quote! {
+                // SAFETY: after the realloc above, the compact header starts
+                // immediately after the discriminator.
+                let __zc = unsafe { &mut *(__ptr.add(#disc_len) as *mut #zc_path) };
+                #(#zc_header_stmts)*
+            }
+        };
         let compact_set_stmts: Vec<proc_macro2::TokenStream> = field_infos
             .iter()
             .filter_map(|fi| {
@@ -151,10 +163,7 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
                     }
 
                     let __ptr = __view.data_mut_ptr();
-                    // SAFETY: after the realloc above, the compact header starts
-                    // immediately after the discriminator.
-                    let __zc = unsafe { &mut *(__ptr.add(#disc_len) as *mut #zc_path) };
-                    #(#zc_header_stmts)*
+                    #zc_header_block
 
                     // SAFETY: the slice spans the full compact schema region.
                     let __compact_data = unsafe {

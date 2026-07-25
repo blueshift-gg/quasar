@@ -256,6 +256,17 @@ pub trait BehaviorArgsBuilder {
     fn build_exit(self) -> Result<Self::Exit, ProgramError>;
 }
 
+/// Prove a behavior's argument builder implements the stable
+/// [`BehaviorArgsBuilder`] contract.
+///
+/// Generated parse bodies call this before building arguments so a plugin whose
+/// builder is missing a phase fails with this bound rather than a downstream
+/// "no method named `build_check`" error. It is a bound check only and compiles
+/// away entirely.
+#[doc(hidden)]
+#[inline(always)]
+pub fn assert_builder<B: BehaviorArgsBuilder>(_: &B) {}
+
 /// Phase id passed to `uses_arg` for `set_init_param`.
 pub const ARG_PHASE_SET_INIT_PARAM: u8 = 0;
 /// Phase id passed to `uses_arg` for `after_init`.

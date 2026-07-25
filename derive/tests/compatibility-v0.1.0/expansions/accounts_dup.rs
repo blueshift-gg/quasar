@@ -44,7 +44,7 @@ unsafe impl ::quasar_lang::traits::ParseAccountsRaw for HeaderDupReadonly {
             ::quasar_lang::__internal::parse_account::<
                 Signer,
                 false,
-            >(input, base, __offset + 0usize)?
+            >(input, base, __offset)?
         };
         ::quasar_lang::debug_log!("account source @0: validation passed");
         input = unsafe {

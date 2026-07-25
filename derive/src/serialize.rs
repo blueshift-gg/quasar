@@ -117,7 +117,7 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
         .zip(canonical_field_types.iter())
         .map(|(name, ty)| {
             quote! {
-                #name: <#ty as #krate::instruction_arg::InstructionArg>::from_zc(&pod.#name)
+                #name: <#ty as #krate::instruction_arg::InstructionArg>::from_zc(&zc.#name)
             }
         })
         .collect();
@@ -253,7 +253,6 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
 
             #[inline(always)]
             fn from_zc(zc: &Self::Zc) -> Self {
-                let pod = zc;
                 Self {
                     #(#from_zc_fields,)*
                 }

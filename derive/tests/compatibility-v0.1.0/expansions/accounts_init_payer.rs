@@ -35,7 +35,7 @@ for InitEscrow {
         };
         const _: () = assert!(
             < Account < Escrow > as ::quasar_lang::account_init::AccountInit >
-            ::DEFAULT_INIT_PARAMS_VALID || 0usize >= 1,
+            ::DEFAULT_INIT_PARAMS_VALID,
             "field `escrow` requires an init-param behavior (e.g., token(...) or mint(...))",
         );
         let __bumps_escrow: u8;
@@ -106,7 +106,7 @@ unsafe impl ::quasar_lang::traits::ParseAccountsRaw for InitEscrow {
             ::quasar_lang::__internal::parse_account::<
                 Signer,
                 true,
-            >(input, base, __offset + 0usize)?
+            >(input, base, __offset)?
         };
         ::quasar_lang::debug_log!("account payer @0: validation passed");
         input = unsafe {

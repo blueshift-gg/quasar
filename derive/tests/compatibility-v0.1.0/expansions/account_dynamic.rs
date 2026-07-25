@@ -460,9 +460,6 @@ impl DynamicAccount {
             )?;
         }
         let __ptr = __view.data_mut_ptr();
-        let __zc = unsafe {
-            &mut *(__ptr.add(1usize) as *mut __dynamic_account_zc::DynamicAccountZc)
-        };
         let __compact_data = unsafe {
             core::slice::from_raw_parts_mut(
                 __ptr.add(1usize),

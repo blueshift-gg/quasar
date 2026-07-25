@@ -39,12 +39,19 @@ impl SlotOffset {
     /// index into the whole transaction's account list, against `base`.
     fn to_tokens(&self) -> proc_macro2::TokenStream {
         let krate = crate::krate::lang_path();
-        let fixed = self.fixed;
         let terms = self.composites.iter().map(|ty| {
             let inner = composite_parse_ty(ty);
             quote! { <#inner as #krate::traits::AccountCount>::COUNT }
         });
-        quote! { __offset + #fixed #(+ #terms)* }
+        // The first account of a struct sits at `__offset` itself; emitting the
+        // `+ 0usize` it would otherwise carry adds a term that reads as if the
+        // slot were computed when it is not.
+        if self.fixed == 0 {
+            quote! { __offset #(+ #terms)* }
+        } else {
+            let fixed = self.fixed;
+            quote! { __offset + #fixed #(+ #terms)* }
+        }
     }
 
     /// The offset rendered for the debug log. Stringifying `to_tokens()` would
@@ -145,18 +152,16 @@ fn emit_parse_field_step(field: &ParseFieldPlan) -> proc_macro2::TokenStream {
         ParseFieldKind::Composite { inner_ty } => {
             let cur_offset = field.offset.to_tokens();
             quote! {
-                {
-                    input = unsafe {
-                        // SAFETY: the generated caller passes an input slice with
-                        // enough accounts for the statically computed COUNT.
-                        <#inner_ty as #krate::traits::ParseAccountsRaw>::parse_accounts_raw(
-                            input,
-                            base,
-                            #cur_offset,
-                            __program_id,
-                        )?
-                    };
-                }
+                input = unsafe {
+                    // SAFETY: the generated caller passes an input slice with
+                    // enough accounts for the statically computed COUNT.
+                    <#inner_ty as #krate::traits::ParseAccountsRaw>::parse_accounts_raw(
+                        input,
+                        base,
+                        #cur_offset,
+                        __program_id,
+                    )?
+                };
             }
         }
         ParseFieldKind::Single(header) => {
@@ -267,11 +272,21 @@ fn emit_parse_body_from_inner(
         .any(|field| matches!(field.kind, ParseFieldKind::Composite { .. }))
     {
         let mut field_lets: Vec<proc_macro2::TokenStream> = Vec::new();
+        // Only a struct that hands out more than one chunk ever rebinds the
+        // cursor, and the final chunk never needs the tail it leaves behind.
+        let rebinds = fields.len() > 1;
+        let cursor_mut = if rebinds { quote! { mut } } else { quote! {} };
         field_lets.push(quote! {
-            let mut __accounts_rest: &mut [#krate::__internal::AccountView] = accounts;
+            let #cursor_mut __accounts_rest: &mut [#krate::__internal::AccountView] = accounts;
         });
 
-        for field in fields {
+        let last = fields.len() - 1;
+        for (idx, field) in fields.iter().enumerate() {
+            let (rest_pat, advance) = if idx == last {
+                (quote! { _ }, quote! {})
+            } else {
+                (quote! { __rest }, quote! { __accounts_rest = __rest; })
+            };
             match &field.kind {
                 ParseFieldKind::Composite { inner_ty, .. } => {
                     let field_name = &field.field_name;
@@ -279,10 +294,10 @@ fn emit_parse_body_from_inner(
                     field_lets.push(quote! {
                         // SAFETY: `parse_accounts_raw` already proved this
                         // composite's COUNT accounts are present.
-                        let (__chunk, __rest) = unsafe {
+                        let (__chunk, #rest_pat) = unsafe {
                             __accounts_rest.split_at_mut_unchecked(<#inner_ty as #krate::traits::AccountCount>::COUNT)
                         };
-                        __accounts_rest = __rest;
+                        #advance
                         // SAFETY: the raw parser above validated this composite
                         // account chunk.
                         let (#field_name, #bumps_var) = unsafe { <#inner_ty as #krate::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
@@ -297,15 +312,14 @@ fn emit_parse_body_from_inner(
                     field_lets.push(quote! {
                         // SAFETY: `parse_accounts_raw` already proved at least
                         // one account remains for this field.
-                        let (__chunk, __rest) = unsafe { __accounts_rest.split_at_mut_unchecked(1) };
-                        __accounts_rest = __rest;
+                        let (__chunk, #rest_pat) = unsafe { __accounts_rest.split_at_mut_unchecked(1) };
+                        #advance
                         // SAFETY: the one-element split above guarantees index 0.
                         let #field_name = unsafe { __chunk.get_unchecked_mut(0) };
                     });
                 }
             }
         }
-        field_lets.push(quote! { let _ = __accounts_rest; });
 
         quote! {
             #(#field_lets)*

@@ -26,14 +26,6 @@ impl<'input> ::quasar_lang::traits::ParseAccounts<'input> for CloseAccounts {
         }
         Ok(())
     }
-    #[inline(always)]
-    fn epilogue_with_context(
-        &mut self,
-        _bumps: &Self::Bumps,
-        _ix_data: &[u8],
-    ) -> Result<(), ::quasar_lang::__solana_program_error::ProgramError> {
-        self.epilogue()
-    }
 }
 unsafe impl<'input> ::quasar_lang::traits::ParseAccountsUnchecked<'input>
 for CloseAccounts {
@@ -74,7 +66,7 @@ unsafe impl ::quasar_lang::traits::ParseAccountsRaw for CloseAccounts {
             ::quasar_lang::__internal::parse_account::<
                 Signer,
                 true,
-            >(input, base, __offset + 0usize)?
+            >(input, base, __offset)?
         };
         ::quasar_lang::debug_log!("account authority @0: validation passed");
         input = unsafe {

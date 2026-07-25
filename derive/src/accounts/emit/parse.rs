@@ -420,22 +420,15 @@ pub(crate) fn emit_epilogue(
 
     // The two bodies diverge only where a behavior exit signs with a PDA, which
     // is the only thing that reads `__bumps`/`__ix_data`. Otherwise they are
-    // token-identical, so emit one and forward.
+    // token-identical, and `ParseAccounts::epilogue_with_context` already
+    // defaults to `self.epilogue()`, so emitting an override would restate the
+    // default verbatim.
     if plain.to_string() == contextual.to_string() {
         return quote! {
             #[inline(always)]
             fn epilogue(&mut self) -> Result<(), #krate::__solana_program_error::ProgramError> {
                 #plain
                 Ok(())
-            }
-
-            #[inline(always)]
-            fn epilogue_with_context(
-                &mut self,
-                _bumps: &Self::Bumps,
-                _ix_data: &[u8],
-            ) -> Result<(), #krate::__solana_program_error::ProgramError> {
-                self.epilogue()
             }
         };
     }
@@ -758,23 +751,23 @@ fn emit_behavior_assertions(field_plans: &[FieldPlan]) -> proc_macro2::TokenStre
             }
 
             // If the account type requires init params (DEFAULT_INIT_PARAMS_VALID
-            // = false), at least one behavior must provide them.
-            // This fires even with zero behavior groups (count_expr = 0usize).
-            let count_expr = if init_contributor_count.is_empty() {
-                quote! { 0usize }
-            } else {
-                quote! { #(#init_contributor_count)+* }
-            };
+            // = false), at least one behavior must provide them. With no
+            // behavior groups there is nothing to count, so the type's own
+            // default is the whole condition.
             let required_msg = format!(
                 "field `{}` requires an init-param behavior (e.g., token(...) or mint(...))",
                 field_name,
             );
-            asserts.push(quote! {
-                const _: () = assert!(
+            let condition = if init_contributor_count.is_empty() {
+                quote! { <#ty as #krate::account_init::AccountInit>::DEFAULT_INIT_PARAMS_VALID }
+            } else {
+                quote! {
                     <#ty as #krate::account_init::AccountInit>::DEFAULT_INIT_PARAMS_VALID
-                        || #count_expr >= 1,
-                    #required_msg,
-                );
+                        || #(#init_contributor_count)+* >= 1
+                }
+            };
+            asserts.push(quote! {
+                const _: () = assert!(#condition, #required_msg,);
             });
         }
     }
