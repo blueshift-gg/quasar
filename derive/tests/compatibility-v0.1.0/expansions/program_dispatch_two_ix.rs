@@ -62,7 +62,7 @@ impl ::quasar_lang::account_load::AccountLoad for EventAuthority {
         Ok(())
     }
 }
-#[allow(dead_code)]
+#[cfg_attr(not(any(target_arch = "bpf", target_os = "solana")), allow(dead_code))]
 mod quasar_demo {
     use super::*;
     #[instruction(discriminator = 0)]
@@ -253,10 +253,7 @@ mod quasar_demo {
     }
 }
 #[allow(unexpected_cfgs)]
-#[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
-extern crate alloc;
-#[allow(unexpected_cfgs)]
-#[cfg(all(any(target_os = "solana", target_arch = "bpf"), feature = "alloc"))]
+#[cfg(any(not(any(target_arch = "bpf", target_os = "solana")), feature = "alloc"))]
 extern crate alloc;
 #[allow(unexpected_cfgs)]
 #[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
