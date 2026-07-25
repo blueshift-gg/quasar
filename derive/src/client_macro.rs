@@ -18,6 +18,11 @@ struct AccountDescriptor {
     /// Synthetic typed inputs replacing a derived field whose seeds read
     /// stored account data: `(input ident, definition-site type tokens)`.
     seed_inputs: Vec<(syn::Ident, TokenStream)>,
+    /// A composite field (`AccountsArray<..>` or a nested `#[account(group)]`
+    /// struct) flattens to `Inner::COUNT` accounts, not one. The derive only
+    /// sees the field's type, not the inner struct's plan, so the caller
+    /// supplies that account's metas and the client splices them in place.
+    composite: bool,
 }
 
 pub fn generate_accounts_macro(
@@ -46,7 +51,7 @@ pub fn generate_accounts_macro(
         .iter()
         .map(|descriptor| emit_account_field(name, descriptor))
         .collect();
-    let account_metas: Vec<_> = descriptors.iter().map(emit_account_meta).collect();
+    let accounts_build = emit_accounts_build(&descriptors);
     let seed_input_aliases: Vec<_> = descriptors
         .iter()
         .flat_map(|descriptor| {
@@ -80,9 +85,7 @@ pub fn generate_accounts_macro(
                 impl From<$struct_name> for #krate::client::Instruction {
                     #[allow(unused_variables)]
                     fn from(ix: $struct_name) -> #krate::client::Instruction {
-                        let accounts = ::alloc::vec![
-                            #(#account_metas)*
-                        ];
+                        let accounts = #accounts_build;
                         let data = {
                             let mut _data = ::alloc::vec![$($disc),*];
                             $(
@@ -109,9 +112,7 @@ pub fn generate_accounts_macro(
                 impl From<$struct_name> for #krate::client::Instruction {
                     #[allow(unused_variables)]
                     fn from(ix: $struct_name) -> #krate::client::Instruction {
-                        let accounts = ::alloc::vec![
-                            #(#account_metas)*
-                        ];
+                        let accounts = #accounts_build;
                         let data = {
                             let mut _data = ::alloc::vec![$($disc),*];
                             $(
@@ -144,9 +145,7 @@ pub fn generate_accounts_macro(
                 impl From<$struct_name> for #krate::client::Instruction {
                     #[allow(unused_variables)]
                     fn from(ix: $struct_name) -> #krate::client::Instruction {
-                        let mut accounts = ::alloc::vec![
-                            #(#account_metas)*
-                        ];
+                        let mut accounts = #accounts_build;
                         accounts.extend(ix.remaining_accounts);
                         let data = {
                             let mut _data = ::alloc::vec![$($disc),*];
@@ -175,9 +174,7 @@ pub fn generate_accounts_macro(
                 impl From<$struct_name> for #krate::client::Instruction {
                     #[allow(unused_variables)]
                     fn from(ix: $struct_name) -> #krate::client::Instruction {
-                        let mut accounts = ::alloc::vec![
-                            #(#account_metas)*
-                        ];
+                        let mut accounts = #accounts_build;
                         accounts.extend(ix.remaining_accounts);
                         let data = {
                             let mut _data = ::alloc::vec![$($disc),*];
@@ -207,6 +204,13 @@ pub fn generate_accounts_macro(
 }
 
 fn emit_account_field(name: &syn::Ident, descriptor: &AccountDescriptor) -> TokenStream {
+    if descriptor.composite {
+        let krate = crate::krate::lang_path();
+        let ident = &descriptor.name;
+        return quote! {
+            pub #ident: ::alloc::vec::Vec<#krate::client::AccountMeta>,
+        };
+    }
     if descriptor.fixed_address.is_some() {
         // A derived field whose seeds read stored account data is replaced by
         // typed inputs carrying those values (via definition-site re-aliases,
@@ -243,11 +247,41 @@ fn emit_account_meta(descriptor: &AccountDescriptor) -> TokenStream {
     };
     if descriptor.writable {
         quote! {
-            #krate::client::AccountMeta::new(#address, #signer),
+            #krate::client::AccountMeta::new(#address, #signer)
         }
     } else {
         quote! {
-            #krate::client::AccountMeta::new_readonly(#address, #signer),
+            #krate::client::AccountMeta::new_readonly(#address, #signer)
+        }
+    }
+}
+
+/// The `accounts` vector for one instruction.
+///
+/// Without composites this stays the original `vec![..]` literal. With one, the
+/// list is built incrementally so a composite can splice in its own metas.
+fn emit_accounts_build(descriptors: &[AccountDescriptor]) -> TokenStream {
+    let krate = crate::krate::lang_path();
+    if !descriptors.iter().any(|d| d.composite) {
+        let metas = descriptors.iter().map(emit_account_meta);
+        return quote! { ::alloc::vec![ #(#metas,)* ] };
+    }
+
+    let steps = descriptors.iter().map(|descriptor| {
+        let ident = &descriptor.name;
+        if descriptor.composite {
+            quote! { __accounts.extend(ix.#ident); }
+        } else {
+            let meta = emit_account_meta(descriptor);
+            quote! { __accounts.push(#meta); }
+        }
+    });
+    quote! {
+        {
+            let mut __accounts: ::alloc::vec::Vec<#krate::client::AccountMeta> =
+                ::alloc::vec::Vec::new();
+            #(#steps)*
+            __accounts
         }
     }
 }
@@ -307,6 +341,7 @@ fn describe_accounts(
                 },
                 fixed_address,
                 seed_inputs,
+                composite: fp.kind == crate::accounts::resolve::FieldKind::Composite,
             }
         })
         .collect()
