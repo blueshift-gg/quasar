@@ -55,7 +55,8 @@ struct InitTokenAccount {
 // the `#[program]` module); this mirror gives its `super::` paths the same
 // shape.
 mod cpi {
-    use super::*;
+    // No `use super::*`: these fixtures have no stored-data seed inputs, which
+    // are the only thing the generated struct names unqualified.
 
     __init_associated_token_instruction!(InitAssociatedTokenInstruction, [0], {});
     __init_token_account_instruction!(InitTokenAccountInstruction, [1], {});
