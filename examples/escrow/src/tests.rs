@@ -37,8 +37,8 @@ fn elf_size_stays_within_budget() {
 /// placed.
 fn base_world(test: &mut Test) -> (Pubkey, Pubkey) {
     test.add(Wallet::account().at(MAKER));
-    let mint_a = test.add(Mint::account().supply(1_000_000_000).decimals(9));
-    let mint_b = test.add(Mint::account().supply(1_000_000_000).decimals(9));
+    let mint_a = test.add(Mint::account().with_supply(1_000_000_000).decimals(9));
+    let mint_b = test.add(Mint::account().with_supply(1_000_000_000).decimals(9));
     (mint_a, mint_b)
 }
 
@@ -59,7 +59,7 @@ fn live_escrow(test: &mut Test, mint_a: Pubkey, mint_b: Pubkey) -> Pubkey {
     test.add(
         TokenAccount::account(mint_a, escrow)
             .at(VAULT_TA_A)
-            .amount(1337),
+            .with_amount(1337),
     );
     escrow
 }
@@ -70,7 +70,7 @@ fn test_make_cu(test: &mut Test) {
     test.add(
         TokenAccount::account(mint_a, MAKER)
             .at(MAKER_TA_A)
-            .amount(1_000_000),
+            .with_amount(1_000_000),
     );
     let (escrow, bump) = test.derive_pda_with_bump(Escrow::seeds(&MAKER));
 
@@ -100,7 +100,7 @@ fn test_take_cu(test: &mut Test) {
     test.add(
         TokenAccount::account(mint_b, TAKER)
             .at(TAKER_TA_B)
-            .amount(10_000),
+            .with_amount(10_000),
     );
 
     let result = test.send(TakeInstruction {
@@ -136,7 +136,7 @@ fn test_make_existing_token_accounts(test: &mut Test) {
     test.add(
         TokenAccount::account(mint_a, MAKER)
             .at(MAKER_TA_A)
-            .amount(1_000_000),
+            .with_amount(1_000_000),
     );
     let escrow = test.derive_pda(Escrow::seeds(&MAKER));
     test.add(TokenAccount::account(mint_b, MAKER).at(MAKER_TA_B));
@@ -161,7 +161,7 @@ fn test_make_existing_maker_ta_b_wrong_mint(test: &mut Test) {
     test.add(
         TokenAccount::account(mint_a, MAKER)
             .at(MAKER_TA_A)
-            .amount(1_000_000),
+            .with_amount(1_000_000),
     );
     let escrow = test.derive_pda(Escrow::seeds(&MAKER));
     test.add(TokenAccount::account(mint_a, MAKER).at(MAKER_TA_B)); // wrong mint
@@ -189,7 +189,7 @@ fn test_make_existing_maker_ta_b_wrong_owner(test: &mut Test) {
     test.add(
         TokenAccount::account(mint_a, MAKER)
             .at(MAKER_TA_A)
-            .amount(1_000_000),
+            .with_amount(1_000_000),
     );
     let escrow = test.derive_pda(Escrow::seeds(&MAKER));
     test.add(TokenAccount::account(mint_b, WRONG_OWNER).at(MAKER_TA_B)); // wrong owner
@@ -220,12 +220,12 @@ fn test_take_existing_token_accounts(test: &mut Test) {
     test.add(
         TokenAccount::account(mint_b, TAKER)
             .at(TAKER_TA_B)
-            .amount(10_000),
+            .with_amount(10_000),
     );
     test.add(
         TokenAccount::account(mint_b, MAKER)
             .at(MAKER_TA_B)
-            .amount(500),
+            .with_amount(500),
     );
 
     test.send(TakeInstruction {
@@ -247,7 +247,7 @@ fn test_refund_existing_maker_ta_a(test: &mut Test) {
     test.add(
         TokenAccount::account(mint_a, MAKER)
             .at(MAKER_TA_A)
-            .amount(5_000),
+            .with_amount(5_000),
     );
     live_escrow(test, mint_a, mint_b);
 

@@ -46,9 +46,8 @@ pub use {
 // discovery errors, the co-signer helper, and the SPL program constants.
 pub use parallax_svm::{
     co_signers, system_program, Account, AccountChange, AccountMeta, Assert, Changes, Check, Cu,
-    Instruction, Measure, ProgramError, Pubkey, ReturnData, SetupError, Token,
-    DEFAULT_WALLET_LAMPORTS, SPL_ASSOCIATED_TOKEN_PROGRAM_ID, SPL_TOKEN_2022_PROGRAM_ID,
-    SPL_TOKEN_PROGRAM_ID,
+    Instruction, Measure, ProgramError, Pubkey, ReturnData, SetupError, DEFAULT_WALLET_LAMPORTS,
+    SPL_ASSOCIATED_TOKEN_PROGRAM_ID, SPL_TOKEN_2022_PROGRAM_ID, SPL_TOKEN_PROGRAM_ID,
 };
 
 /// Imports used by most program tests.
@@ -59,7 +58,7 @@ pub mod prelude {
             AssociatedTokenAccount, Fixture, Mint, Program, TokenAccount, TokenProgram, Wallet,
         },
         quasar_test, system_program, Account, AccountChange, AccountMeta, Assert, Changes, Check,
-        Cu, Instruction, Outcome, ProgramError, Pubkey, ReturnData, Snapshot, State, Test, Token,
+        Cu, Instruction, Outcome, ProgramError, Pubkey, ReturnData, Snapshot, State, Test,
         DEFAULT_WALLET_LAMPORTS, SPL_ASSOCIATED_TOKEN_PROGRAM_ID, SPL_TOKEN_2022_PROGRAM_ID,
         SPL_TOKEN_PROGRAM_ID,
     };
