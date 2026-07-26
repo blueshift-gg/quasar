@@ -30,7 +30,7 @@ use {
         typed_emit,
     },
     crate::helpers::strip_generics,
-    quote::{format_ident, quote},
+    quote::{format_ident, quote, quote_spanned},
 };
 
 pub(crate) fn emit_parse_body(
@@ -674,6 +674,10 @@ fn emit_behavior_assertions(field_plans: &[FieldPlan]) -> proc_macro2::TokenStre
     for fp in field_plans {
         let ty = &fp.effective_ty;
         let field_name = fp.ident.to_string();
+        // Anchor each assertion to the field it is about, so a failure
+        // underlines that field rather than the whole derive. The message still
+        // names the field for the cases rustc reports without a snippet.
+        let at_field = fp.ident.span();
 
         for group in &fp.behaviors {
             let path = &group.path;
@@ -685,11 +689,11 @@ fn emit_behavior_assertions(field_plans: &[FieldPlan]) -> proc_macro2::TokenStre
                     "behavior `{}` requires `#[account(mut)]` on field `{}`",
                     group.name, field_name,
                 );
-                asserts.push(quote! {
-                    const _: () = assert!(
-                        !<#path::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::REQUIRES_MUT,
-                        #msg,
-                    );
+                let cond = quote! {
+                    !<#path::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::REQUIRES_MUT
+                };
+                asserts.push(quote_spanned! { at_field =>
+                    const _: () = assert!(#cond, #msg,);
                 });
             }
 
@@ -697,12 +701,12 @@ fn emit_behavior_assertions(field_plans: &[FieldPlan]) -> proc_macro2::TokenStre
                 "behavior `{}` sets VALIDATES_ACCOUNT_DATA and must keep RUN_CHECK = true",
                 group.name,
             );
-            asserts.push(quote! {
-                const _: () = assert!(
-                    !<#path::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::VALIDATES_ACCOUNT_DATA
-                        || <#path::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::RUN_CHECK,
-                    #validates_data_msg,
-                );
+            let cond = quote! {
+                !<#path::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::VALIDATES_ACCOUNT_DATA
+                    || <#path::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::RUN_CHECK
+            };
+            asserts.push(quote_spanned! { at_field =>
+                const _: () = assert!(#cond, #validates_data_msg,);
             });
 
             // RUN_AFTER_INIT assertion: `after_init` only runs on account
@@ -714,11 +718,11 @@ fn emit_behavior_assertions(field_plans: &[FieldPlan]) -> proc_macro2::TokenStre
                      `{}`",
                     group.name, field_name,
                 );
-                asserts.push(quote! {
-                    const _: () = assert!(
-                        !<#path::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::RUN_AFTER_INIT,
-                        #after_init_msg,
-                    );
+                let cond = quote! {
+                    !<#path::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::RUN_AFTER_INIT
+                };
+                asserts.push(quote_spanned! { at_field =>
+                    const _: () = assert!(#cond, #after_init_msg,);
                 });
             }
         }
@@ -742,11 +746,9 @@ fn emit_behavior_assertions(field_plans: &[FieldPlan]) -> proc_macro2::TokenStre
                     "at most one behavior group on field `{}` may set `SETS_INIT_PARAMS = true`",
                     field_name,
                 );
-                asserts.push(quote! {
-                    const _: () = assert!(
-                        #(#init_contributor_count)+* <= 1,
-                        #at_most_one_msg,
-                    );
+                let cond = quote! { #(#init_contributor_count)+* <= 1 };
+                asserts.push(quote_spanned! { at_field =>
+                    const _: () = assert!(#cond, #at_most_one_msg,);
                 });
             }
 
@@ -766,7 +768,7 @@ fn emit_behavior_assertions(field_plans: &[FieldPlan]) -> proc_macro2::TokenStre
                         || #(#init_contributor_count)+* >= 1
                 }
             };
-            asserts.push(quote! {
+            asserts.push(quote_spanned! { at_field =>
                 const _: () = assert!(#condition, #required_msg,);
             });
         }
