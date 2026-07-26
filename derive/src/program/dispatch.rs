@@ -176,44 +176,41 @@ fn guarded_match_arm(spec: &InstructionSpec, any_heap: bool, disc_len: usize) ->
         }
     };
 
+    // Statements only: every use site already supplies a block, so wrapping
+    // these in braces here would nest one inside another.
     let buffered_body = quote! {
-        {
-            let mut __buf = core::mem::MaybeUninit::<
-                [#krate::__internal::AccountView; <#accounts_type as #krate::traits::AccountCount>::COUNT]
-            >::uninit();
-            let __remaining_ptr = unsafe {
-                // SAFETY: the account count check above guarantees the
-                // fixed account parser has enough records to read.
-                <#accounts_type>::parse_accounts(
-                    __accounts_start,
-                    &mut __buf,
-                    unsafe {
-                        // SAFETY: Address is represented by the same 32-byte
-                        // value as the ABI program id.
-                        &*(__program_id as *const [u8; 32] as *const #krate::prelude::Address)
-                    },
-                )?
-            };
-            let mut __accounts = unsafe {
-                // SAFETY: `parse_accounts` initialized exactly COUNT slots
-                // before returning `Ok`.
-                __buf.assume_init()
-            };
-            let __data_after_disc = #data_after_disc;
-            // SAFETY: `parse_accounts` returned the remaining-region
-            // pointer for this SVM buffer, and the ABI places the
-            // instruction-data length prefix directly before
-            // `instruction_data`, giving the accounts boundary.
-            #fn_name(unsafe {
-                #krate::context::Context::from_raw_parts(
-                    __program_id,
-                    &mut __accounts,
-                    __data_after_disc,
-                    __remaining_ptr,
-                    instruction_data.as_ptr().sub(__U64_SIZE),
-                )
-            })
-        }
+        let mut __buf = core::mem::MaybeUninit::<
+            [#krate::__internal::AccountView; <#accounts_type as #krate::traits::AccountCount>::COUNT]
+        >::uninit();
+        let __remaining_ptr = unsafe {
+            // SAFETY: the account count check above guarantees the
+            // fixed account parser has enough records to read.
+            <#accounts_type as #krate::traits::ParseAccountsRaw>::parse_accounts_raw(
+                __accounts_start,
+                __buf.as_mut_ptr() as *mut #krate::__internal::AccountView,
+                0usize,
+                __program_id_addr,
+            )?
+        };
+        let mut __accounts = unsafe {
+            // SAFETY: `parse_accounts_raw` initialized exactly COUNT slots
+            // before returning `Ok`.
+            __buf.assume_init()
+        };
+        let __data_after_disc = #data_after_disc;
+        // SAFETY: `parse_accounts_raw` returned the remaining-region
+        // pointer for this SVM buffer, and the ABI places the
+        // instruction-data length prefix directly before
+        // `instruction_data`, giving the accounts boundary.
+        #fn_name(unsafe {
+            #krate::context::Context::from_raw_parts(
+                __program_id,
+                &mut __accounts,
+                __data_after_disc,
+                __remaining_ptr,
+                instruction_data.as_ptr().sub(__U64_SIZE),
+            )
+        })
     };
 
     let body = if spec.has_remaining {
@@ -370,13 +367,15 @@ fn emit_event_dispatch_block(model: &ProgramModel) -> TokenStream2 {
             .iter()
             .map(|spec| &spec.accounts_type)
             .collect();
+        let needs_event_cpi = crate::helpers::or_bool_terms(accounts_types.iter().map(|ty| {
+            quote! { <#ty as #krate::traits::AccountCount>::NEEDS_EVENT_CPI }
+        }));
         // Small dispatch tables compile smaller with the explicit 0xFF
         // invalid-instruction fast path. Larger tables benefit from
         // erasing it unless an account set can actually service event CPI.
         if instruction_specs.len() >= EVENT_FASTPATH_MIN_IX {
             quote! {
-                const __QUASAR_NEEDS_EVENT_CPI: bool =
-                    false #(|| <#accounts_types as #krate::traits::AccountCount>::NEEDS_EVENT_CPI)*;
+                const __QUASAR_NEEDS_EVENT_CPI: bool = #needs_event_cpi;
                 if __QUASAR_NEEDS_EVENT_CPI {
                     if !instruction_data.is_empty() && instruction_data[0] == 0xFF {
                         return __handle_event(ptr, instruction_data);
@@ -385,8 +384,7 @@ fn emit_event_dispatch_block(model: &ProgramModel) -> TokenStream2 {
             }
         } else {
             quote! {
-                const __QUASAR_NEEDS_EVENT_CPI: bool =
-                    false #(|| <#accounts_types as #krate::traits::AccountCount>::NEEDS_EVENT_CPI)*;
+                const __QUASAR_NEEDS_EVENT_CPI: bool = #needs_event_cpi;
                 if !instruction_data.is_empty() && instruction_data[0] == 0xFF {
                     if __QUASAR_NEEDS_EVENT_CPI {
                         return __handle_event(ptr, instruction_data);
@@ -426,6 +424,13 @@ fn emit_normal_dispatch_tail(model: &ProgramModel) -> TokenStream2 {
                 // SAFETY: the Solana entrypoint ABI stores the program
                 // id immediately after the instruction data slice.
                 &*(instruction_data.as_ptr().add(instruction_data.len()) as *const [u8; 32])
+            };
+            // Named once here rather than per arm: every buffered arm needs the
+            // same view, and the cast is a no-op on the same 32 bytes.
+            let __program_id_addr: &#krate::prelude::Address = unsafe {
+                // SAFETY: Address is represented by the same 32-byte value as
+                // the ABI program id.
+                &*(__program_id as *const [u8; 32] as *const #krate::prelude::Address)
             };
             const __U64_SIZE: usize = core::mem::size_of::<u64>();
             let __num_accounts = unsafe {

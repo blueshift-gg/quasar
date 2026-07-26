@@ -11,7 +11,6 @@ pub(crate) struct AccountsPlan {
     pub parse_steps: Vec<proc_macro2::TokenStream>,
     pub count_expr: proc_macro2::TokenStream,
     pub parse_body: proc_macro2::TokenStream,
-    pub direct_parse_body: proc_macro2::TokenStream,
 }
 
 struct ParseFieldPlan {
@@ -34,19 +33,35 @@ struct SlotOffset {
 }
 
 impl SlotOffset {
+    /// The slot index relative to `__offset`, the caller-supplied base of this
+    /// struct's region in the flattened account array. Absolute indices are
+    /// required: `parse_account_dup` resolves the SVM dup byte, which is an
+    /// index into the whole transaction's account list, against `base`.
     fn to_tokens(&self) -> proc_macro2::TokenStream {
         let krate = crate::krate::lang_path();
-        let fixed = self.fixed;
         let terms = self.composites.iter().map(|ty| {
             let inner = composite_parse_ty(ty);
             quote! { <#inner as #krate::traits::AccountCount>::COUNT }
         });
-        quote! { #fixed #(+ #terms)* }
+        // The first account of a struct sits at `__offset` itself; emitting the
+        // `+ 0usize` it would otherwise carry adds a term that reads as if the
+        // slot were computed when it is not.
+        if self.fixed == 0 {
+            quote! { __offset #(+ #terms)* }
+        } else {
+            let fixed = self.fixed;
+            quote! { __offset + #fixed #(+ #terms)* }
+        }
     }
 
-    /// The offset rendered as a string literal for the debug log.
+    /// The offset rendered for the debug log. Stringifying `to_tokens()` would
+    /// bake a whole `<Ty as AccountCount>::COUNT` path into the binary.
     fn debug_string(&self) -> String {
-        self.to_tokens().to_string()
+        if self.composites.is_empty() {
+            self.fixed.to_string()
+        } else {
+            format!("{}+{}composite", self.fixed, self.composites.len())
+        }
     }
 }
 
@@ -69,48 +84,6 @@ impl HeaderPlan {
             allow_dup: fp.dup,
         }
     }
-
-    // The three header expressions reference the single-source const fns in
-    // `quasar_lang::__internal`; the derive supplies the required-writable bit
-    // and the type's `AccountLoad` signer/executable consts.
-    fn expected_expr(&self) -> proc_macro2::TokenStream {
-        let krate = crate::krate::lang_path();
-        let ty = &self.ty;
-        let writable = self.writable;
-        quote! {
-            #krate::__internal::header_expected(
-                <#ty as #krate::account_load::AccountLoad>::IS_SIGNER,
-                #writable,
-                <#ty as #krate::account_load::AccountLoad>::IS_EXECUTABLE,
-            )
-        }
-    }
-
-    fn mask_expr(&self) -> proc_macro2::TokenStream {
-        let krate = crate::krate::lang_path();
-        let ty = &self.ty;
-        let writable = self.writable;
-        quote! {
-            #krate::__internal::header_mask(
-                <#ty as #krate::account_load::AccountLoad>::IS_SIGNER,
-                #writable,
-                <#ty as #krate::account_load::AccountLoad>::IS_EXECUTABLE,
-            )
-        }
-    }
-
-    fn flag_mask_expr(&self) -> proc_macro2::TokenStream {
-        let krate = crate::krate::lang_path();
-        let ty = &self.ty;
-        let writable = self.writable;
-        quote! {
-            #krate::__internal::header_flag_mask(
-                <#ty as #krate::account_load::AccountLoad>::IS_SIGNER,
-                #writable,
-                <#ty as #krate::account_load::AccountLoad>::IS_EXECUTABLE,
-            )
-        }
-    }
 }
 
 pub(crate) fn build_accounts_plan(
@@ -122,7 +95,6 @@ pub(crate) fn build_accounts_plan(
         parse_steps: emit_parse_account_steps(&fields),
         count_expr: emit_count_expr(&fields),
         parse_body: emit_full_parse_body(typed_plan, &fields, cx),
-        direct_parse_body: emit_direct_parse_body(typed_plan, &fields, cx),
     }
 }
 
@@ -180,18 +152,16 @@ fn emit_parse_field_step(field: &ParseFieldPlan) -> proc_macro2::TokenStream {
         ParseFieldKind::Composite { inner_ty } => {
             let cur_offset = field.offset.to_tokens();
             quote! {
-                {
-                    input = unsafe {
-                        // SAFETY: the generated caller passes an input slice with
-                        // enough accounts for the statically computed COUNT.
-                        <#inner_ty as #krate::traits::ParseAccountsRaw>::parse_accounts_raw(
-                            input,
-                            base,
-                            #cur_offset,
-                            __program_id,
-                        )?
-                    };
-                }
+                input = unsafe {
+                    // SAFETY: the generated caller passes an input slice with
+                    // enough accounts for the statically computed COUNT.
+                    <#inner_ty as #krate::traits::ParseAccountsRaw>::parse_accounts_raw(
+                        input,
+                        base,
+                        #cur_offset,
+                        __program_id,
+                    )?
+                };
             }
         }
         ParseFieldKind::Single(header) => {
@@ -207,64 +177,58 @@ fn emit_single_parse_step(
 ) -> proc_macro2::TokenStream {
     let krate = crate::krate::lang_path();
     let cur_offset = offset.to_tokens();
-    let account_index = offset.debug_string();
-    let expected_expr = header.expected_expr();
-    let mask_expr = header.mask_expr();
+    let ty = &header.ty;
+    let writable = header.writable;
 
+    // The wrapper type and the required-writable bit are the whole header: the
+    // parse helpers read `IS_SIGNER`/`IS_EXECUTABLE` off `T` through an
+    // associated const, so no header constants reach the expansion.
     if header.optional || header.allow_dup {
-        let flag_mask_expr = header.flag_mask_expr();
+        let log = debug_log_line(field_name, offset, "parsed (dup-aware)");
         let is_optional = header.optional;
-        let is_ref_mut = header.writable;
         let allow_dup = header.allow_dup;
 
-        quote! {
-            {
-                const __EXPECTED: u32 = #expected_expr;
-                const __MASK: u32 = #mask_expr;
-                const __FLAG_MASK: u32 = #flag_mask_expr;
-                input = unsafe {
-                    // SAFETY: parse_account_dup validates the current account
-                    // and advances within the pre-counted input slice.
-                    #krate::__internal::parse_account_dup(
-                        input,
-                        base,
-                        #cur_offset,
-                        __program_id,
-                        #krate::__internal::ParseFlags {
-                            expected: __EXPECTED,
-                            mask: __MASK,
-                            flag_mask: __FLAG_MASK,
-                            is_optional: #is_optional,
-                            is_ref_mut: #is_ref_mut,
-                            allow_dup: #allow_dup,
-                        },
-                    )?
-                };
-                #krate::debug_log!(concat!(
-                    "Account '", stringify!(#field_name),
-                    "' (index ", #account_index, "): parsed (dup-aware)"
-                ));
-            }
-        }
-    } else {
-        quote! {
-            {
-                const __EXPECTED: u32 = #expected_expr;
-                const __MASK: u32 = #mask_expr;
-                input = unsafe {
-                    // SAFETY: parse_account validates the current account and
-                    // advances within the pre-counted input slice.
-                    #krate::__internal::parse_account(
-                        input, base, #cur_offset, __EXPECTED, __MASK,
-                    )?
-                };
-                #krate::debug_log!(concat!(
-                    "Account '", stringify!(#field_name),
-                    "' (index ", #account_index, "): validation passed"
-                ));
-            }
-        }
+        return quote! {
+            // SAFETY: parse_account_dup validates the current account and
+            // advances within the pre-counted input slice.
+            input = unsafe {
+                #krate::__internal::parse_account_dup::<#ty, #writable>(
+                    input,
+                    base,
+                    #cur_offset,
+                    __program_id,
+                    #krate::__internal::ParseFlags {
+                        is_optional: #is_optional,
+                        is_ref_mut: #writable,
+                        allow_dup: #allow_dup,
+                    },
+                )?
+            };
+            #log
+        };
     }
+
+    let log = debug_log_line(field_name, offset, "validation passed");
+    quote! {
+        // SAFETY: parse_account validates the current account and advances
+        // within the pre-counted input slice.
+        input = unsafe {
+            #krate::__internal::parse_account::<#ty, #writable>(input, base, #cur_offset)?
+        };
+        #log
+    }
+}
+
+/// The per-account trace line, built at macro time so the expansion carries one
+/// string literal instead of a `concat!`/`stringify!` tree.
+fn debug_log_line(
+    field_name: &syn::Ident,
+    offset: &SlotOffset,
+    outcome: &str,
+) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
+    let message = format!("account {field_name} @{}: {outcome}", offset.debug_string());
+    quote! { #krate::debug_log!(#message); }
 }
 
 fn emit_count_expr(fields: &[ParseFieldPlan]) -> proc_macro2::TokenStream {
@@ -303,16 +267,36 @@ fn emit_parse_body_from_inner(
     inner_body: proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
     let krate = crate::krate::lang_path();
+    // The chunk cursor and its splits are read only by the statements emitted
+    // just below, never by a user expression, so they take definition-site
+    // hygiene and stop being shadowable by a field of the same name.
+    let accounts_rest = crate::helpers::internal_ident("__accounts_rest");
+    let chunk = crate::helpers::internal_ident("__chunk");
+    let rest = crate::helpers::internal_ident("__rest");
     if fields
         .iter()
         .any(|field| matches!(field.kind, ParseFieldKind::Composite { .. }))
     {
         let mut field_lets: Vec<proc_macro2::TokenStream> = Vec::new();
+        // Only a struct that hands out more than one chunk ever rebinds the
+        // cursor, and the final chunk never needs the tail it leaves behind.
+        let rebinds = fields.len() > 1;
+        let cursor_mut = if rebinds {
+            quote! { mut }
+        } else {
+            quote! {}
+        };
         field_lets.push(quote! {
-            let mut __accounts_rest: &mut [#krate::__internal::AccountView] = accounts;
+            let #cursor_mut #accounts_rest: &mut [#krate::__internal::AccountView] = accounts;
         });
 
-        for field in fields {
+        let last = fields.len() - 1;
+        for (idx, field) in fields.iter().enumerate() {
+            let (rest_pat, advance) = if idx == last {
+                (quote! { _ }, quote! {})
+            } else {
+                (quote! { #rest }, quote! { #accounts_rest = #rest; })
+            };
             match &field.kind {
                 ParseFieldKind::Composite { inner_ty, .. } => {
                     let field_name = &field.field_name;
@@ -320,14 +304,14 @@ fn emit_parse_body_from_inner(
                     field_lets.push(quote! {
                         // SAFETY: `parse_accounts_raw` already proved this
                         // composite's COUNT accounts are present.
-                        let (__chunk, __rest) = unsafe {
-                            __accounts_rest.split_at_mut_unchecked(<#inner_ty as #krate::traits::AccountCount>::COUNT)
+                        let (#chunk, #rest_pat) = unsafe {
+                            #accounts_rest.split_at_mut_unchecked(<#inner_ty as #krate::traits::AccountCount>::COUNT)
                         };
-                        __accounts_rest = __rest;
+                        #advance
                         // SAFETY: the raw parser above validated this composite
                         // account chunk.
                         let (#field_name, #bumps_var) = unsafe { <#inner_ty as #krate::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
-                            __chunk,
+                            #chunk,
                             __ix_data,
                             __program_id
                         ) }?;
@@ -338,15 +322,14 @@ fn emit_parse_body_from_inner(
                     field_lets.push(quote! {
                         // SAFETY: `parse_accounts_raw` already proved at least
                         // one account remains for this field.
-                        let (__chunk, __rest) = unsafe { __accounts_rest.split_at_mut_unchecked(1) };
-                        __accounts_rest = __rest;
+                        let (#chunk, #rest_pat) = unsafe { #accounts_rest.split_at_mut_unchecked(1) };
+                        #advance
                         // SAFETY: the one-element split above guarantees index 0.
-                        let #field_name = unsafe { __chunk.get_unchecked_mut(0) };
+                        let #field_name = unsafe { #chunk.get_unchecked_mut(0) };
                     });
                 }
             }
         }
-        field_lets.push(quote! { let _ = __accounts_rest; });
 
         quote! {
             #(#field_lets)*
@@ -364,41 +347,4 @@ fn emit_parse_body_from_inner(
             #inner_body
         }
     }
-}
-
-fn emit_direct_parse_body(
-    typed_plan: &resolve::specs::AccountsPlanTyped,
-    fields: &[ParseFieldPlan],
-    cx: &EmitCx,
-) -> proc_macro2::TokenStream {
-    let krate = crate::krate::lang_path();
-    let count_expr = emit_count_expr(fields);
-    let fallback_body = emit_parse_body_without_behavior_assertions(typed_plan, fields, cx);
-    quote! {
-        let mut __buf = core::mem::MaybeUninit::<
-            [#krate::__internal::AccountView; #count_expr]
-        >::uninit();
-        let _ = Self::parse_accounts(input, &mut __buf, __program_id)?;
-        // SAFETY: parse_accounts initializes the whole fixed-size buffer before
-        // returning Ok.
-        let mut __accounts = unsafe { __buf.assume_init() };
-        let accounts = &mut __accounts;
-        let __parsed_result: Result<
-            (Self, <Self as #krate::traits::ParseAccounts>::Bumps),
-            #krate::__solana_program_error::ProgramError,
-        > = {
-            #fallback_body
-        };
-        let (__parsed_accounts, __parsed_bumps) = __parsed_result?;
-        Ok((__parsed_accounts, __parsed_bumps))
-    }
-}
-
-fn emit_parse_body_without_behavior_assertions(
-    typed_plan: &resolve::specs::AccountsPlanTyped,
-    fields: &[ParseFieldPlan],
-    cx: &EmitCx,
-) -> proc_macro2::TokenStream {
-    let inner_body = super::parse::emit_parse_body_without_behavior_assertions(typed_plan, cx);
-    emit_parse_body_from_inner(fields, inner_body)
 }

@@ -246,6 +246,18 @@ fn map_idl_type(ty: &IdlType, type_sizes: &HashMap<String, usize>) -> Result<Typ
     }
 }
 
+/// The destination pointer for a write at `offset` into the CPI data buffer.
+///
+/// Offset zero is the buffer base, so naming `__ptr` directly keeps the
+/// generated write from reading as though it were displaced.
+fn data_ptr_at(offset: usize) -> TokenStream2 {
+    if offset == 0 {
+        quote! { __ptr }
+    } else {
+        quote! { __ptr.add(#offset) }
+    }
+}
+
 /// Generate the data write block for instruction args, flattening struct fields
 /// recursively into a packed byte buffer.
 fn generate_data_write(
@@ -259,8 +271,9 @@ fn generate_data_write(
 
     for (i, &byte) in disc.iter().enumerate() {
         let byte_lit = proc_macro2::Literal::u8_suffixed(byte);
+        let dst = data_ptr_at(i);
         write_stmts.push(quote! {
-            core::ptr::write(__ptr.add(#i), #byte_lit);
+            core::ptr::write(#dst, #byte_lit);
         });
     }
 
@@ -308,23 +321,24 @@ fn emit_field_write(
             let next_offset = field_offset
                 .checked_add(size)
                 .ok_or_else(|| "CPI instruction data size overflows usize".to_string())?;
+            let dst = data_ptr_at(field_offset);
             if p == "pubkey" {
                 stmts.push(quote! {
                     core::ptr::copy_nonoverlapping(
                         #access.as_ref().as_ptr(),
-                        __ptr.add(#field_offset),
+                        #dst,
                         #size,
                     );
                 });
             } else if size == 1 {
                 stmts.push(quote! {
-                    core::ptr::write(__ptr.add(#field_offset), #access as u8);
+                    core::ptr::write(#dst, #access as u8);
                 });
             } else {
                 stmts.push(quote! {
                     core::ptr::copy_nonoverlapping(
                         #access.to_le_bytes().as_ptr(),
-                        __ptr.add(#field_offset),
+                        #dst,
                         #size,
                     );
                 });

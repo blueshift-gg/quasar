@@ -151,3 +151,6 @@ pub use optional_mut_accounts::*;
 
 pub mod two_dyn;
 pub use two_dyn::*;
+
+pub mod composite_group;
+pub use composite_group::*;

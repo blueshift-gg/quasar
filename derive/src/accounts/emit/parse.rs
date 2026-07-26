@@ -30,27 +30,12 @@ use {
         typed_emit,
     },
     crate::helpers::strip_generics,
-    quote::{format_ident, quote},
+    quote::{format_ident, quote, quote_spanned},
 };
 
 pub(crate) fn emit_parse_body(
     plan: &AccountsPlanTyped,
     cx: &super::EmitCx,
-) -> proc_macro2::TokenStream {
-    emit_parse_body_inner(plan, cx, true)
-}
-
-pub(crate) fn emit_parse_body_without_behavior_assertions(
-    plan: &AccountsPlanTyped,
-    cx: &super::EmitCx,
-) -> proc_macro2::TokenStream {
-    emit_parse_body_inner(plan, cx, false)
-}
-
-fn emit_parse_body_inner(
-    plan: &AccountsPlanTyped,
-    cx: &super::EmitCx,
-    include_behavior_assertions: bool,
 ) -> proc_macro2::TokenStream {
     let parse_sequence = emit_parse_sequence(plan);
     let bump_vars = emit_bump_vars(&plan.fields);
@@ -59,11 +44,7 @@ fn emit_parse_body_inner(
     let bump_init = emit_bump_init(&plan.fields, &cx.bumps_name);
 
     // Behavior const assertions: REQUIRES_MUT and SETS_INIT_PARAMS.
-    let behavior_asserts = if include_behavior_assertions {
-        emit_behavior_assertions(&plan.fields)
-    } else {
-        quote! {}
-    };
+    let behavior_asserts = emit_behavior_assertions(&plan.fields);
 
     let construct_fields: Vec<proc_macro2::TokenStream> = plan
         .fields
@@ -434,10 +415,28 @@ pub(crate) fn emit_epilogue(
         return quote! {};
     }
 
+    let plain = quote! { #(#exit_stmts)* };
+    let contextual = quote! { #(#contextual_exit_stmts)* };
+
+    // The two bodies diverge only where a behavior exit signs with a PDA, which
+    // is the only thing that reads `__bumps`/`__ix_data`. Otherwise they are
+    // token-identical, and `ParseAccounts::epilogue_with_context` already
+    // defaults to `self.epilogue()`, so emitting an override would restate the
+    // default verbatim.
+    if plain.to_string() == contextual.to_string() {
+        return quote! {
+            #[inline(always)]
+            fn epilogue(&mut self) -> Result<(), #krate::__solana_program_error::ProgramError> {
+                #plain
+                Ok(())
+            }
+        };
+    }
+
     quote! {
         #[inline(always)]
         fn epilogue(&mut self) -> Result<(), #krate::__solana_program_error::ProgramError> {
-            #(#exit_stmts)*
+            #plain
             Ok(())
         }
 
@@ -448,7 +447,7 @@ pub(crate) fn emit_epilogue(
             __bumps: &Self::Bumps,
             __ix_data: &[u8],
         ) -> Result<(), #krate::__solana_program_error::ProgramError> {
-            #(#contextual_exit_stmts)*
+            #contextual
             Ok(())
         }
     }
@@ -457,7 +456,7 @@ pub(crate) fn emit_epilogue(
 pub(crate) fn emit_has_epilogue_typed(plan: &AccountsPlanTyped) -> proc_macro2::TokenStream {
     let krate = crate::krate::lang_path();
     // Collect const-evaluable terms for HAS_EPILOGUE.
-    let mut terms: Vec<proc_macro2::TokenStream> = vec![quote! { false }];
+    let mut terms: Vec<proc_macro2::TokenStream> = Vec::new();
 
     for fp in &plan.fields {
         let ty = &fp.effective_ty;
@@ -474,7 +473,7 @@ pub(crate) fn emit_has_epilogue_typed(plan: &AccountsPlanTyped) -> proc_macro2::
         }
     }
 
-    quote! { #(#terms)||* }
+    crate::helpers::or_bool_terms(terms)
 }
 
 // Load phase.
@@ -622,7 +621,7 @@ fn behavior_validates_account_data_expr(
         }
     });
 
-    Some(quote! { false #(|| #terms)* })
+    Some(crate::helpers::or_bool_terms(terms))
 }
 
 // User checks, structural rather than behavior-group based.
@@ -675,6 +674,10 @@ fn emit_behavior_assertions(field_plans: &[FieldPlan]) -> proc_macro2::TokenStre
     for fp in field_plans {
         let ty = &fp.effective_ty;
         let field_name = fp.ident.to_string();
+        // Anchor each assertion to the field it is about, so a failure
+        // underlines that field rather than the whole derive. The message still
+        // names the field for the cases rustc reports without a snippet.
+        let at_field = fp.ident.span();
 
         for group in &fp.behaviors {
             let path = &group.path;
@@ -686,11 +689,11 @@ fn emit_behavior_assertions(field_plans: &[FieldPlan]) -> proc_macro2::TokenStre
                     "behavior `{}` requires `#[account(mut)]` on field `{}`",
                     group.name, field_name,
                 );
-                asserts.push(quote! {
-                    const _: () = assert!(
-                        !<#path::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::REQUIRES_MUT,
-                        #msg,
-                    );
+                let cond = quote! {
+                    !<#path::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::REQUIRES_MUT
+                };
+                asserts.push(quote_spanned! { at_field =>
+                    const _: () = assert!(#cond, #msg,);
                 });
             }
 
@@ -698,12 +701,12 @@ fn emit_behavior_assertions(field_plans: &[FieldPlan]) -> proc_macro2::TokenStre
                 "behavior `{}` sets VALIDATES_ACCOUNT_DATA and must keep RUN_CHECK = true",
                 group.name,
             );
-            asserts.push(quote! {
-                const _: () = assert!(
-                    !<#path::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::VALIDATES_ACCOUNT_DATA
-                        || <#path::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::RUN_CHECK,
-                    #validates_data_msg,
-                );
+            let cond = quote! {
+                !<#path::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::VALIDATES_ACCOUNT_DATA
+                    || <#path::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::RUN_CHECK
+            };
+            asserts.push(quote_spanned! { at_field =>
+                const _: () = assert!(#cond, #validates_data_msg,);
             });
 
             // RUN_AFTER_INIT assertion: `after_init` only runs on account
@@ -715,11 +718,11 @@ fn emit_behavior_assertions(field_plans: &[FieldPlan]) -> proc_macro2::TokenStre
                      `{}`",
                     group.name, field_name,
                 );
-                asserts.push(quote! {
-                    const _: () = assert!(
-                        !<#path::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::RUN_AFTER_INIT,
-                        #after_init_msg,
-                    );
+                let cond = quote! {
+                    !<#path::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::RUN_AFTER_INIT
+                };
+                asserts.push(quote_spanned! { at_field =>
+                    const _: () = assert!(#cond, #after_init_msg,);
                 });
             }
         }
@@ -743,32 +746,30 @@ fn emit_behavior_assertions(field_plans: &[FieldPlan]) -> proc_macro2::TokenStre
                     "at most one behavior group on field `{}` may set `SETS_INIT_PARAMS = true`",
                     field_name,
                 );
-                asserts.push(quote! {
-                    const _: () = assert!(
-                        #(#init_contributor_count)+* <= 1,
-                        #at_most_one_msg,
-                    );
+                let cond = quote! { #(#init_contributor_count)+* <= 1 };
+                asserts.push(quote_spanned! { at_field =>
+                    const _: () = assert!(#cond, #at_most_one_msg,);
                 });
             }
 
             // If the account type requires init params (DEFAULT_INIT_PARAMS_VALID
-            // = false), at least one behavior must provide them.
-            // This fires even with zero behavior groups (count_expr = 0usize).
-            let count_expr = if init_contributor_count.is_empty() {
-                quote! { 0usize }
-            } else {
-                quote! { #(#init_contributor_count)+* }
-            };
+            // = false), at least one behavior must provide them. With no
+            // behavior groups there is nothing to count, so the type's own
+            // default is the whole condition.
             let required_msg = format!(
                 "field `{}` requires an init-param behavior (e.g., token(...) or mint(...))",
                 field_name,
             );
-            asserts.push(quote! {
-                const _: () = assert!(
+            let condition = if init_contributor_count.is_empty() {
+                quote! { <#ty as #krate::account_init::AccountInit>::DEFAULT_INIT_PARAMS_VALID }
+            } else {
+                quote! {
                     <#ty as #krate::account_init::AccountInit>::DEFAULT_INIT_PARAMS_VALID
-                        || #count_expr >= 1,
-                    #required_msg,
-                );
+                        || #(#init_contributor_count)+* >= 1
+                }
+            };
+            asserts.push(quote_spanned! { at_field =>
+                const _: () = assert!(#condition, #required_msg,);
             });
         }
     }

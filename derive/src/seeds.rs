@@ -219,10 +219,6 @@ pub(crate) fn generate_seeds_impl(
         .iter()
         .map(|expr| quote! { #krate::cpi::Seed::from(#expr) })
         .collect();
-    let signer_seed_exprs_bump: Vec<_> = slice_exprs_bump
-        .iter()
-        .map(|expr| quote! { #krate::cpi::Seed::from(#expr) })
-        .collect();
 
     let has_address_param = seeds_attr
         .params
@@ -239,9 +235,17 @@ pub(crate) fn generate_seeds_impl(
         quote! { _lt: core::marker::PhantomData, }
     };
 
+    // `HasSeeds::HAS_SEED_PREFIX` already defaults to true, so only a prefixless
+    // PDA has anything to say here.
+    let has_prefix_const = if has_prefix {
+        quote! {}
+    } else {
+        quote! { const HAS_SEED_PREFIX: bool = false; }
+    };
+
     quote! {
         impl #impl_generics #krate::traits::HasSeeds for #name #ty_generics #where_clause {
-            const HAS_SEED_PREFIX: bool = #has_prefix;
+            #has_prefix_const
             const SEED_PREFIX: &'static [u8] = &[#(#prefix_bytes),*];
             const SEED_DYNAMIC_COUNT: usize = #dynamic_count;
             type WithBump<'__quasar_seed> = #seed_set_bump<'__quasar_seed>;
@@ -323,7 +327,7 @@ pub(crate) fn generate_seeds_impl(
             /// construction cost once.
             #[inline(always)]
             pub fn signer_seeds(&self) -> [#krate::cpi::Seed<'_>; #n_slices_with_bump] {
-                [ #( #krate::cpi::Seed::from(#slice_exprs_bump) ),* ]
+                self.as_slices().map(#krate::cpi::Seed::from)
             }
         }
 
@@ -333,7 +337,7 @@ pub(crate) fn generate_seeds_impl(
             where
                 F: FnOnce(&[#krate::cpi::Signer<'_, '_>]) -> R,
             {
-                let seeds = [#(#signer_seed_exprs_bump),*];
+                let seeds = self.signer_seeds();
                 let signer = #krate::cpi::Signer::from(&seeds);
                 f(core::slice::from_ref(&signer))
             }
@@ -415,15 +419,14 @@ pub(crate) fn generate_seeds_impl(
                 Ok(self._bump[0])
             }
 
+            // The set carries its own bump; `_bump` is ignored.
             #[inline(always)]
             fn with_signer_seeds<R>(
                 &self,
                 _bump: &[u8],
                 f: impl FnOnce(&[#krate::cpi::Signer<'_, '_>]) -> R,
             ) -> R {
-                let seeds = [#(#signer_seed_exprs_bump),*];
-                let signer = #krate::cpi::Signer::from(&seeds);
-                f(core::slice::from_ref(&signer))
+                #krate::cpi::CpiSignerSeeds::with_signers(self, f)
             }
         }
     }

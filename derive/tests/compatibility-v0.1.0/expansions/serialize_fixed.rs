@@ -56,13 +56,12 @@ impl ::quasar_lang::instruction_arg::InstructionArg for Payload {
     type Zc = PayloadZc;
     #[inline(always)]
     fn from_zc(zc: &Self::Zc) -> Self {
-        let pod = zc;
         Self {
             amount: <u64 as ::quasar_lang::instruction_arg::InstructionArg>::from_zc(
-                &pod.amount,
+                &zc.amount,
             ),
             flag: <bool as ::quasar_lang::instruction_arg::InstructionArg>::from_zc(
-                &pod.flag,
+                &zc.flag,
             ),
         }
     }

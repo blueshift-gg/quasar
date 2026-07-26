@@ -63,18 +63,14 @@ impl ::quasar_lang::traits::Owner for DynamicAccount {
     const OWNER: ::quasar_lang::prelude::Address = crate::ID;
 }
 impl ::quasar_lang::traits::Space for DynamicAccount {
-    const SPACE: usize = 1usize
-        + <__dynamic_account_zc::__Schema as ::quasar_lang::ZeroPodCompact>::HEADER_SIZE;
+    const SPACE: usize = Self::MIN_SPACE;
 }
-impl ::quasar_lang::account_load::AccountLoad for DynamicAccount {
+impl DynamicAccount {
     #[inline(always)]
-    fn check(
-        view: &::quasar_lang::__internal::AccountView,
+    fn __quasar_check_data(
+        __data: &[u8],
     ) -> Result<(), ::quasar_lang::__solana_program_error::ProgramError> {
-        let __data = unsafe { view.borrow_unchecked() };
-        let __min = 1usize
-            + <__dynamic_account_zc::__Schema as ::quasar_lang::ZeroPodCompact>::HEADER_SIZE;
-        if __data.len() < __min {
+        if __data.len() < Self::MIN_SPACE {
             return Err(
                 ::quasar_lang::__solana_program_error::ProgramError::AccountDataTooSmall,
             );
@@ -92,31 +88,19 @@ impl ::quasar_lang::account_load::AccountLoad for DynamicAccount {
             })?;
         Ok(())
     }
+}
+impl ::quasar_lang::account_load::AccountLoad for DynamicAccount {
+    #[inline(always)]
+    fn check(
+        view: &::quasar_lang::__internal::AccountView,
+    ) -> Result<(), ::quasar_lang::__solana_program_error::ProgramError> {
+        Self::__quasar_check_data(unsafe { view.borrow_unchecked() })
+    }
     #[inline(always)]
     fn check_checked(
         view: &::quasar_lang::__internal::AccountView,
     ) -> Result<(), ::quasar_lang::__solana_program_error::ProgramError> {
-        let __data_ref = view.try_borrow()?;
-        let __data: &[u8] = &__data_ref;
-        let __min = 1usize
-            + <__dynamic_account_zc::__Schema as ::quasar_lang::ZeroPodCompact>::HEADER_SIZE;
-        if __data.len() < __min {
-            return Err(
-                ::quasar_lang::__solana_program_error::ProgramError::AccountDataTooSmall,
-            );
-        }
-        if unsafe { *__data.get_unchecked(0usize) } != 5 {
-            return Err(
-                ::quasar_lang::__solana_program_error::ProgramError::InvalidAccountData,
-            );
-        }
-        <__dynamic_account_zc::__Schema as ::quasar_lang::ZeroPodCompact>::validate(unsafe {
-                __data.get_unchecked(1usize..)
-            })
-            .map_err(|_| {
-                ::quasar_lang::__solana_program_error::ProgramError::InvalidAccountData
-            })?;
-        Ok(())
+        Self::__quasar_check_data(&view.try_borrow()?)
     }
 }
 impl ::quasar_lang::account_init::AccountInit for DynamicAccount {
@@ -199,9 +183,7 @@ impl<'a> DynamicAccountCompactMut<'a> {
                 * core::mem::size_of::<
                     <Address as ::quasar_lang::instruction_arg::InstructionArg>::Zc,
                 >();
-        let __new_total = 1usize
-            + <__dynamic_account_zc::__Schema as ::quasar_lang::ZeroPodCompact>::HEADER_SIZE
-            + __tail_size;
+        let __new_total = DynamicAccount::MIN_SPACE + __tail_size;
         let __old_total = self.__view.data_len();
         if __new_total != __old_total {
             ::quasar_lang::accounts::account::realloc_account(
@@ -238,27 +220,7 @@ impl<'a> DynamicAccountCompactMut<'a> {
         Ok(())
     }
     pub fn reload(&mut self) {
-        let (name, tags) = {
-            let __data = unsafe { self.__view.borrow_unchecked() };
-            let __r = unsafe {
-                __dynamic_account_zc::__SchemaRef::new_unchecked(
-                    __data.get_unchecked(1usize..),
-                )
-            };
-            let mut name = ::quasar_lang::pod::PodString::<8, 1usize>::default();
-            if !name.set(__r.name()) {
-                ::quasar_lang::abort_program();
-            }
-            let mut tags = ::quasar_lang::pod::PodVec::<
-                <Address as ::quasar_lang::instruction_arg::InstructionArg>::Zc,
-                2,
-                2usize,
-            >::default();
-            if !tags.set_from_slice(__r.tags()) {
-                ::quasar_lang::abort_program();
-            }
-            (name, tags)
-        };
+        let (name, tags) = DynamicAccount::__snapshot_dynamic(self.__view);
         self.name = name;
         self.tags = tags;
     }
@@ -271,32 +233,46 @@ impl<'a> Drop for DynamicAccountCompactMut<'a> {
     }
 }
 impl DynamicAccount {
+    /// Read every dynamic field out of the compact tail into owned
+    /// caches. Shared by `as_mut` and the guard's `reload`, which each
+    /// need the identical read.
+    #[inline(always)]
+    fn __snapshot_dynamic(
+        __view: &::quasar_lang::__internal::AccountView,
+    ) -> (
+        ::quasar_lang::pod::PodString<8, 1usize>,
+        ::quasar_lang::pod::PodVec<
+            <Address as ::quasar_lang::instruction_arg::InstructionArg>::Zc,
+            2,
+            2usize,
+        >,
+    ) {
+        let __data = unsafe { __view.borrow_unchecked() };
+        let __r = unsafe {
+            __dynamic_account_zc::__SchemaRef::new_unchecked(
+                __data.get_unchecked(1usize..),
+            )
+        };
+        let mut name = ::quasar_lang::pod::PodString::<8, 1usize>::default();
+        if !name.set(__r.name()) {
+            ::quasar_lang::abort_program();
+        }
+        let mut tags = ::quasar_lang::pod::PodVec::<
+            <Address as ::quasar_lang::instruction_arg::InstructionArg>::Zc,
+            2,
+            2usize,
+        >::default();
+        if !tags.set_from_slice(__r.tags()) {
+            ::quasar_lang::abort_program();
+        }
+        (name, tags)
+    }
     #[inline(always)]
     pub fn as_mut<'a>(
         &'a mut self,
         payer: &'a ::quasar_lang::__internal::AccountView,
     ) -> DynamicAccountCompactMut<'a> {
-        let (name, tags) = {
-            let __data = unsafe { self.__view.borrow_unchecked() };
-            let __r = unsafe {
-                __dynamic_account_zc::__SchemaRef::new_unchecked(
-                    __data.get_unchecked(1usize..),
-                )
-            };
-            let mut name = ::quasar_lang::pod::PodString::<8, 1usize>::default();
-            if !name.set(__r.name()) {
-                ::quasar_lang::abort_program();
-            }
-            let mut tags = ::quasar_lang::pod::PodVec::<
-                <Address as ::quasar_lang::instruction_arg::InstructionArg>::Zc,
-                2,
-                2usize,
-            >::default();
-            if !tags.set_from_slice(__r.tags()) {
-                ::quasar_lang::abort_program();
-            }
-            (name, tags)
-        };
+        let (name, tags) = Self::__snapshot_dynamic(&self.__view);
         let __view = unsafe {
             &mut *(&mut self.__view as *mut ::quasar_lang::__internal::AccountView)
         };
@@ -369,9 +345,7 @@ impl<'a> DynamicAccountCompactWriter<'a> {
         let tags = self
             .__tags
             .ok_or(::quasar_lang::error::QuasarError::CompactWriterFieldNotSet)?;
-        let __new_total = 1usize
-            + <__dynamic_account_zc::__Schema as ::quasar_lang::ZeroPodCompact>::HEADER_SIZE
-            + name.len()
+        let __new_total = DynamicAccount::MIN_SPACE + name.len()
             + tags.len()
                 * core::mem::size_of::<
                     <Address as ::quasar_lang::instruction_arg::InstructionArg>::Zc,
@@ -473,9 +447,6 @@ impl DynamicAccount {
             )?;
         }
         let __ptr = __view.data_mut_ptr();
-        let __zc = unsafe {
-            &mut *(__ptr.add(1usize) as *mut __dynamic_account_zc::DynamicAccountZc)
-        };
         let __compact_data = unsafe {
             core::slice::from_raw_parts_mut(
                 __ptr.add(1usize),

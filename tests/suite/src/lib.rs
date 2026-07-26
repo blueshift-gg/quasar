@@ -40,6 +40,8 @@ mod account_flags;
 #[cfg(test)]
 mod account_validation;
 #[cfg(test)]
+mod composite;
+#[cfg(test)]
 mod constraints;
 
 // CPI & errors

@@ -371,15 +371,12 @@ fn parse_dup_allowed_does_not_preborrow_canonical_account() {
     let base = views.as_mut_ptr() as *mut AccountView;
 
     let first = unsafe {
-        quasar_lang::__internal::parse_account_dup(
+        quasar_lang::__internal::parse_account_dup::<quasar_lang::accounts::UncheckedAccount, true>(
             buf.as_mut_ptr(),
             base,
             0,
             &program_id,
             ParseFlags {
-                expected: quasar_lang::__internal::NODUP_MUT,
-                mask: 0x00FF_FFFF,
-                flag_mask: 0x00FF_0000,
                 is_optional: false,
                 is_ref_mut: true,
                 allow_dup: false,
@@ -388,15 +385,12 @@ fn parse_dup_allowed_does_not_preborrow_canonical_account() {
         .unwrap()
     };
     unsafe {
-        quasar_lang::__internal::parse_account_dup(
+        quasar_lang::__internal::parse_account_dup::<quasar_lang::accounts::UncheckedAccount, true>(
             first,
             base,
             1,
             &program_id,
             ParseFlags {
-                expected: quasar_lang::__internal::NODUP_MUT,
-                mask: 0x00FF_FFFF,
-                flag_mask: 0x00FF_0000,
                 is_optional: false,
                 is_ref_mut: true,
                 allow_dup: true,
@@ -440,15 +434,12 @@ fn parse_dup_rejects_duplicate_without_dup_flag_even_readonly() {
     let base = views.as_mut_ptr() as *mut AccountView;
 
     let first = unsafe {
-        quasar_lang::__internal::parse_account_dup(
+        quasar_lang::__internal::parse_account_dup::<quasar_lang::accounts::UncheckedAccount, false>(
             buf.as_mut_ptr(),
             base,
             0,
             &program_id,
             ParseFlags {
-                expected: quasar_lang::__internal::NODUP,
-                mask: 0x0000_00FF,
-                flag_mask: 0,
                 is_optional: false,
                 is_ref_mut: false,
                 allow_dup: false,
@@ -457,15 +448,12 @@ fn parse_dup_rejects_duplicate_without_dup_flag_even_readonly() {
         .unwrap()
     };
     let err = unsafe {
-        quasar_lang::__internal::parse_account_dup(
+        quasar_lang::__internal::parse_account_dup::<quasar_lang::accounts::UncheckedAccount, false>(
             first,
             base,
             1,
             &program_id,
             ParseFlags {
-                expected: quasar_lang::__internal::NODUP,
-                mask: 0x0000_00FF,
-                flag_mask: 0,
                 is_optional: false,
                 is_ref_mut: false,
                 allow_dup: false,

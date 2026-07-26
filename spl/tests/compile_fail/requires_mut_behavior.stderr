@@ -1,5 +1,5 @@
 error[E0080]: evaluation panicked: behavior `token_close` requires `#[account(mut)]` on field `vault`
- --> tests/compile_fail/requires_mut_behavior.rs:8:10
-  |
-8 | #[derive(Accounts)]
-  |          ^^^^^^^^ evaluation of `<Bad as quasar_lang::traits::ParseAccountsUnchecked<'input>>::parse_with_instruction_data_unchecked::_` failed here
+  --> tests/compile_fail/requires_mut_behavior.rs:14:9
+   |
+14 |     pub vault: Account<Token>,
+   |         ^^^^^ evaluation of `<Bad as quasar_lang::traits::ParseAccountsUnchecked<'input>>::parse_with_instruction_data_unchecked::_` failed here

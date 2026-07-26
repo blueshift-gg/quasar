@@ -75,10 +75,13 @@ pub(crate) fn program_inner(attr: TokenStream2, item: TokenStream2) -> TokenStre
 
     let program_type = event_authority::emit_program_type(&program_type_name);
 
-    // Suppress dead_code warnings on the user's #[program] module.
-    // Instruction handlers and account structs inside it are only referenced
-    // from macro-generated dispatch code, which the compiler can't see.
-    module.attrs.push(syn::parse_quote!(#[allow(dead_code)]));
+    // On host builds the entrypoint is cfg'd out, so `__dispatch` is unreachable
+    // and every handler under it reads as dead. Suppress there only: an SBF
+    // build has a live entrypoint, so dead code in the user's module is real
+    // and worth reporting.
+    module.attrs.push(syn::parse_quote!(
+        #[cfg_attr(not(any(target_arch = "bpf", target_os = "solana")), allow(dead_code))]
+    ));
 
     let idl = idl::emit_idl(&model, &mod_name);
 
@@ -88,11 +91,10 @@ pub(crate) fn program_inner(attr: TokenStream2, item: TokenStream2) -> TokenStre
         #module
 
         #[allow(unexpected_cfgs)]
-        #[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
-        extern crate alloc;
-
-        #[allow(unexpected_cfgs)]
-        #[cfg(all(any(target_os = "solana", target_arch = "bpf"), feature = "alloc"))]
+        #[cfg(any(
+            not(any(target_arch = "bpf", target_os = "solana")),
+            feature = "alloc"
+        ))]
         extern crate alloc;
 
         #[allow(unexpected_cfgs)]

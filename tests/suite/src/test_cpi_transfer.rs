@@ -6,6 +6,14 @@ use {
 
 // TransferChecked discriminator 0 with Program<Token>.
 
+/// Compute ceiling for SPL `transfer_checked` through the generated CPI builder.
+///
+/// These programs carry the derive's per-instruction account walk across many
+/// instructions, so they are what an inlining or parse-shape change moves
+/// first. Without a ceiling here such a change is only ever measured by
+/// binary size. Re-measure deliberately rather than raising this.
+const MAX_TRANSFER_CHECKED_CU: u64 = 7_600;
+
 #[test]
 fn transfer_checked_spl() {
     let mut svm = svm_cpi();
@@ -38,6 +46,12 @@ fn transfer_checked_spl() {
         result.is_ok(),
         "transfer_checked SPL should succeed: {:?}",
         result.raw_result
+    );
+    assert!(
+        result.compute_units_consumed <= MAX_TRANSFER_CHECKED_CU,
+        "transfer_checked_spl should stay within {} CU, consumed {}",
+        MAX_TRANSFER_CHECKED_CU,
+        result.compute_units_consumed
     );
 }
 

@@ -131,7 +131,6 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
         parse_steps,
         count_expr,
         parse_body,
-        direct_parse_body,
     } = accounts_plan;
 
     // Instruction arg extraction: emitted ONCE as `Self::__extract_ix_args` and
@@ -207,7 +206,6 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
         needs_event_cpi_expr: emit_needs_event_cpi_expr(&typed_plan),
         parse_steps,
         parse_body,
-        direct_parse_body,
         bumps_struct,
         signer_helpers_impl,
         epilogue_method,
@@ -215,9 +213,6 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
         client_macro,
         ix_arg_extraction: ix_arg_extraction_call,
         extract_ix_args_fn: ix_arg_extraction_fn,
-        assert_builder_fn: emit::typed_emit::emit_assert_builder_fn(
-            typed_plan.fields.iter().any(|fp| !fp.behaviors.is_empty()),
-        ),
     });
 
     quote::quote! {
@@ -580,6 +575,9 @@ fn emit_idl_accounts_meta(
         .iter()
         .map(|fp| {
             let field_name = crate::helpers::snake_to_camel(&fp.ident.to_string());
+            if fp.kind == resolve::FieldKind::Composite {
+                return emit_idl_composite_entry(&field_name, &fp.effective_ty);
+            }
             let optional = fp.optional;
             let writable = fp.writable;
             let signer = emit_account_signer(fp);
@@ -622,14 +620,16 @@ fn emit_idl_accounts_meta(
             let node_docs = crate::helpers::docs_tokens_from_lines(&fp.docs);
 
             quote! {
-                #krate::idl_build::__reexport::IdlAccountNode {
-                    name: #krate::idl_build::s(#field_name),
-                    optional: #optional,
-                    writable: #krate::idl_build::__reexport::AccountFlag::Fixed(#writable),
-                    signer: #krate::idl_build::__reexport::AccountFlag::Fixed(#signer),
-                    resolver: #resolver_tokens,
-                    docs: #node_docs,
-                }
+                #krate::idl_build::AccountsMetaEntry::Node(
+                    #krate::idl_build::__reexport::IdlAccountNode {
+                        name: #krate::idl_build::s(#field_name),
+                        optional: #optional,
+                        writable: #krate::idl_build::__reexport::AccountFlag::Fixed(#writable),
+                        signer: #krate::idl_build::__reexport::AccountFlag::Fixed(#signer),
+                        resolver: #resolver_tokens,
+                        docs: #node_docs,
+                    }
+                )
             }
         })
         .collect();
@@ -643,6 +643,33 @@ fn emit_idl_accounts_meta(
                     #krate::idl_build::vec![#(#account_nodes),*],
                 )
             })
+        }
+    }
+}
+
+/// A composite field's IDL entry: a reference to the inner accounts struct's
+/// own fragment, which `build_idl` splices in. The derive cannot resolve the
+/// inner struct's fields itself, so the repeat count is left as a const
+/// expression over `AccountCount` and evaluated when the fragment runs.
+fn emit_idl_composite_entry(field_name: &str, ty: &Type) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
+    let inner_ty = crate::helpers::extract_generic_inner_type(ty, "AccountsArray").unwrap_or(ty);
+    let inner_name = crate::helpers::last_type_segment_name(inner_ty);
+    let inner = strip_generics(inner_ty).unwrap_or_else(|_| quote! { #inner_ty });
+    let outer = composite_event_ty(ty);
+
+    quote! {
+        #krate::idl_build::AccountsMetaEntry::Group {
+            field: #field_name,
+            accounts_struct: #inner_name,
+            repeat: {
+                let __inner = <#inner as #krate::traits::AccountCount>::COUNT;
+                if __inner == 0 {
+                    0
+                } else {
+                    <#outer as #krate::traits::AccountCount>::COUNT / __inner
+                }
+            },
         }
     }
 }
@@ -760,7 +787,7 @@ fn emit_needs_event_cpi_expr(plan: &resolve::specs::AccountsPlanTyped) -> proc_m
         })
         .collect();
 
-    quote! { false #(|| #terms)* }
+    crate::helpers::or_bool_terms(terms)
 }
 
 struct SignerHelpersCtx<'a> {
@@ -787,14 +814,19 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
         has_instruction_args,
     } = ctx;
 
-    let field_refs: Vec<proc_macro2::TokenStream> = plan
-        .fields
-        .iter()
-        .map(|fp| {
-            let field_name = &fp.ident;
-            quote! { let #field_name = &self.#field_name; }
-        })
-        .collect();
+    // Bind only the fields the address expression reads; binding all of them is
+    // what forced the `allow(unused_variables)` on these helpers.
+    let field_refs = |addr_expr: &syn::Expr| -> Vec<proc_macro2::TokenStream> {
+        let addr_tokens = quote! { #addr_expr };
+        plan.fields
+            .iter()
+            .filter(|fp| crate::helpers::mentions_ident(&addr_tokens, &fp.ident))
+            .map(|fp| {
+                let field_name = &fp.ident;
+                quote! { let #field_name = &self.#field_name; }
+            })
+            .collect()
+    };
 
     let signer_methods: Vec<proc_macro2::TokenStream> = plan
         .fields
@@ -805,6 +837,7 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
             let addr_expr = &signer_helper.addr_expr;
             let set_ty = &signer_helper.set_ty;
             let method_name = format_ident!("{}_signer", field_name);
+            let field_refs = field_refs(addr_expr);
             if has_instruction_args {
                 Some(quote! {
                     #[inline(always)]
@@ -826,7 +859,6 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
             } else {
                 Some(quote! {
                     #[inline(always)]
-                    #[allow(unused_variables)]
                     pub fn #method_name<'__quasar_seed>(
                         &'__quasar_seed self,
                         bumps: &'__quasar_seed #bumps_name,
@@ -839,16 +871,23 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
         })
         .collect();
 
-    quote! {
-        impl #impl_generics #name #ty_generics #where_clause {
-            #(#signer_methods)*
+    let signer_methods_impl = if signer_methods.is_empty() {
+        quote! {}
+    } else {
+        quote! {
+            impl #impl_generics #name #ty_generics #where_clause {
+                #(#signer_methods)*
+            }
         }
+    };
+
+    quote! {
+        #signer_methods_impl
 
         impl #impl_generics #krate::traits::AccountBumps for #name #ty_generics #where_clause {
             type Bumps = #bumps_name;
         }
 
-        impl #impl_generics #krate::traits::AccountGroup for #name #ty_generics #where_clause {}
     }
 }
 

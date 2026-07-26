@@ -152,7 +152,144 @@ pub enum InstructionDiscriminatorSource {
 
 /// Fragment submitted by `#[derive(Accounts)]`; carries account metadata for
 /// IDL.
-pub struct AccountsMetaFragment(pub fn() -> (String, Vec<IdlAccountNode>));
+pub struct AccountsMetaFragment(pub fn() -> (String, Vec<AccountsMetaEntry>));
+
+/// One entry of an accounts struct's IDL metadata.
+///
+/// A composite field flattens to `Inner::COUNT` accounts on the wire, but the
+/// derive only sees the field's type, not the inner struct's plan. It records
+/// the reference and [`build_idl`] splices the inner struct's own entries in.
+/// The assembled IDL stays flat, so the wire format is unchanged.
+pub enum AccountsMetaEntry {
+    /// One account, already fully described.
+    Node(IdlAccountNode),
+    /// A composite field, resolved against the inner struct's fragment.
+    Group {
+        /// The composite field's camelCase name, used to prefix inner names.
+        field: &'static str,
+        /// The inner accounts struct, keyed as its `AccountsMetaFragment`.
+        accounts_struct: &'static str,
+        /// How many back-to-back copies (`AccountsArray<T, N>` gives `N`).
+        repeat: usize,
+    },
+}
+
+/// Nesting cap for composite flattening. Composites are finite on-chain
+/// (`COUNT` is a const), so exceeding this means a fragment referenced itself.
+const MAX_GROUP_DEPTH: usize = 16;
+
+fn prefixed_name(prefix: &str, name: &str) -> String {
+    if prefix.is_empty() {
+        return String::from(name);
+    }
+    let mut out = String::from(prefix);
+    let mut chars = name.chars();
+    if let Some(first) = chars.next() {
+        out.extend(first.to_uppercase());
+        out.push_str(chars.as_str());
+    }
+    out
+}
+
+/// Re-root every account-relative path in a resolver under `prefix`.
+///
+/// Instruction-argument paths (`IdlResolver::Arg`, `IdlPdaSeed::Arg`) name args
+/// of the enclosing instruction, not accounts, so they are left alone.
+fn prefix_resolver_paths(resolver: &mut IdlResolver, prefix: &str) {
+    match resolver {
+        IdlResolver::Pda { program, seeds } => {
+            if let __reexport::IdlPdaProgram::Account { path } = program {
+                *path = prefixed_name(prefix, path);
+            }
+            for seed in seeds {
+                match seed {
+                    __reexport::IdlPdaSeed::Account { path }
+                    | __reexport::IdlPdaSeed::AccountField { path, .. } => {
+                        *path = prefixed_name(prefix, path);
+                    }
+                    __reexport::IdlPdaSeed::Const { .. } | __reexport::IdlPdaSeed::Arg { .. } => {}
+                }
+            }
+        }
+        IdlResolver::AssociatedToken {
+            mint,
+            owner,
+            token_program,
+        } => {
+            *mint = prefixed_name(prefix, mint);
+            *owner = prefixed_name(prefix, owner);
+            if let Some(token_program) = token_program {
+                *token_program = prefixed_name(prefix, token_program);
+            }
+        }
+        IdlResolver::AccountField { account, .. } => {
+            *account = prefixed_name(prefix, account);
+        }
+        IdlResolver::Optional { resolver } => prefix_resolver_paths(resolver, prefix),
+        IdlResolver::Input {}
+        | IdlResolver::Const { .. }
+        | IdlResolver::KnownProgram { .. }
+        | IdlResolver::Arg { .. }
+        | IdlResolver::Remaining { .. } => {}
+    }
+}
+
+fn flatten_accounts_meta(
+    owner: &str,
+    entries: &[AccountsMetaEntry],
+    registry: &[(String, Vec<AccountsMetaEntry>)],
+    prefix: &str,
+    depth: usize,
+    out: &mut Vec<IdlAccountNode>,
+) {
+    assert!(
+        depth <= MAX_GROUP_DEPTH,
+        "idl-build: accounts struct `{owner}` nests composite groups more than \
+         {MAX_GROUP_DEPTH} deep; this is a cycle in the registered fragments"
+    );
+
+    for entry in entries {
+        match entry {
+            AccountsMetaEntry::Node(node) => {
+                let mut node = node.clone();
+                node.name = prefixed_name(prefix, &node.name);
+                prefix_resolver_paths(&mut node.resolver, prefix);
+                out.push(node);
+            }
+            AccountsMetaEntry::Group {
+                field,
+                accounts_struct,
+                repeat,
+            } => {
+                let (_, inner) = registry
+                    .iter()
+                    .find(|(name, _)| name == accounts_struct)
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "idl-build: accounts struct `{owner}` has composite field `{field}` \
+                             of type `{accounts_struct}` but no AccountsMetaFragment with that \
+                             name was registered"
+                        )
+                    });
+                for index in 0..*repeat {
+                    let field_prefix = if *repeat == 1 {
+                        prefixed_name(prefix, field)
+                    } else {
+                        prefixed_name(prefix, &alloc::format!("{field}{index}"))
+                    };
+                    flatten_accounts_meta(
+                        accounts_struct,
+                        inner,
+                        registry,
+                        &field_prefix,
+                        depth + 1,
+                        out,
+                    );
+                }
+            }
+        }
+    }
+}
 
 /// Fragment submitted by `#[derive(Accounts)]`; carries the compiler's
 /// resolved validation and lifecycle plan for audit tooling.
@@ -181,10 +318,11 @@ pub fn build_idl(address: &str, name: &str, crate_name: &str, version: &str) -> 
     let mut validation_instructions = alloc::collections::BTreeMap::new();
 
     // Collect accounts meta fragments into a lookup table.
-    let accounts_meta: Vec<(String, Vec<IdlAccountNode>)> = inventory::iter::<AccountsMetaFragment>
-        .into_iter()
-        .map(|frag| (frag.0)())
-        .collect();
+    let accounts_meta: Vec<(String, Vec<AccountsMetaEntry>)> =
+        inventory::iter::<AccountsMetaFragment>
+            .into_iter()
+            .map(|frag| (frag.0)())
+            .collect();
     let accounts_validation: Vec<(String, IdlAccountsValidation)> =
         inventory::iter::<AccountsValidationFragment>
             .into_iter()
@@ -220,7 +358,7 @@ pub fn build_idl(address: &str, name: &str, crate_name: &str, version: &str) -> 
         // whose metadata never registered (e.g. a fragment-name mismatch),
         // which would otherwise silently emit an instruction with no accounts.
         if ix.accounts.is_empty() && !frag.accounts_struct_name.is_empty() {
-            let (_, nodes) = accounts_meta
+            let (_, entries) = accounts_meta
                 .iter()
                 .find(|(struct_name, _)| struct_name == frag.accounts_struct_name)
                 .unwrap_or_else(|| {
@@ -230,7 +368,16 @@ pub fn build_idl(address: &str, name: &str, crate_name: &str, version: &str) -> 
                         ix.name, frag.accounts_struct_name
                     )
                 });
-            ix.accounts = nodes.clone();
+            let mut nodes = Vec::new();
+            flatten_accounts_meta(
+                frag.accounts_struct_name,
+                entries,
+                &accounts_meta,
+                "",
+                0,
+                &mut nodes,
+            );
+            ix.accounts = nodes;
         }
         if !frag.accounts_struct_name.is_empty() {
             let (_, validation) = accounts_validation
@@ -568,5 +715,149 @@ mod codec_tests {
             ("A", vec![1]),
             ("B", vec![1, 2]),
         ]));
+    }
+}
+
+#[cfg(test)]
+mod composite_tests {
+    use super::*;
+
+    fn node(name: &str, resolver: IdlResolver) -> AccountsMetaEntry {
+        AccountsMetaEntry::Node(IdlAccountNode {
+            name: String::from(name),
+            optional: false,
+            writable: __reexport::AccountFlag::Fixed(false),
+            signer: __reexport::AccountFlag::Fixed(false),
+            resolver,
+            docs: Vec::new(),
+        })
+    }
+
+    fn flatten(owner: &str, registry: &[(String, Vec<AccountsMetaEntry>)]) -> Vec<IdlAccountNode> {
+        let (_, entries) = registry.iter().find(|(name, _)| name == owner).unwrap();
+        let mut out = Vec::new();
+        flatten_accounts_meta(owner, entries, registry, "", 0, &mut out);
+        out
+    }
+
+    fn names(nodes: &[IdlAccountNode]) -> Vec<&str> {
+        nodes.iter().map(|node| node.name.as_str()).collect()
+    }
+
+    #[test]
+    fn nested_group_flattens_under_the_field_name() {
+        let registry = vec![
+            (
+                String::from("Inner"),
+                vec![
+                    node("first", IdlResolver::Input {}),
+                    node("second", IdlResolver::Input {}),
+                ],
+            ),
+            (
+                String::from("Outer"),
+                vec![
+                    node("payer", IdlResolver::Input {}),
+                    AccountsMetaEntry::Group {
+                        field: "pair",
+                        accounts_struct: "Inner",
+                        repeat: 1,
+                    },
+                ],
+            ),
+        ];
+
+        assert_eq!(
+            names(&flatten("Outer", &registry)),
+            ["payer", "pairFirst", "pairSecond"]
+        );
+    }
+
+    #[test]
+    fn repeated_group_indexes_each_copy() {
+        let registry = vec![
+            (
+                String::from("Inner"),
+                vec![node("a", IdlResolver::Input {})],
+            ),
+            (
+                String::from("Outer"),
+                vec![AccountsMetaEntry::Group {
+                    field: "pairs",
+                    accounts_struct: "Inner",
+                    repeat: 3,
+                }],
+            ),
+        ];
+
+        assert_eq!(
+            names(&flatten("Outer", &registry)),
+            ["pairs0A", "pairs1A", "pairs2A"]
+        );
+    }
+
+    #[test]
+    fn inner_account_paths_are_rerooted_but_arg_paths_are_not() {
+        let registry = vec![
+            (
+                String::from("Inner"),
+                vec![
+                    node("authority", IdlResolver::Input {}),
+                    node(
+                        "vault",
+                        IdlResolver::Pda {
+                            program: __reexport::IdlPdaProgram::ProgramId {},
+                            seeds: vec![
+                                __reexport::IdlPdaSeed::Account {
+                                    path: String::from("authority"),
+                                },
+                                __reexport::IdlPdaSeed::Arg {
+                                    path: String::from("seed"),
+                                    ty: IdlType::Primitive(String::from("u64")),
+                                },
+                            ],
+                        },
+                    ),
+                ],
+            ),
+            (
+                String::from("Outer"),
+                vec![AccountsMetaEntry::Group {
+                    field: "group",
+                    accounts_struct: "Inner",
+                    repeat: 1,
+                }],
+            ),
+        ];
+
+        let nodes = flatten("Outer", &registry);
+        assert_eq!(names(&nodes), ["groupAuthority", "groupVault"]);
+
+        let IdlResolver::Pda { seeds, .. } = &nodes[1].resolver else {
+            panic!("expected a pda resolver");
+        };
+        match &seeds[0] {
+            __reexport::IdlPdaSeed::Account { path } => assert_eq!(path, "groupAuthority"),
+            other => panic!("expected an account seed, got {other:?}"),
+        }
+        match &seeds[1] {
+            // Instruction args belong to the enclosing instruction, not the group.
+            __reexport::IdlPdaSeed::Arg { path, .. } => assert_eq!(path, "seed"),
+            other => panic!("expected an arg seed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "no AccountsMetaFragment with that name")]
+    fn missing_inner_fragment_is_a_hard_error() {
+        let registry = vec![(
+            String::from("Outer"),
+            vec![AccountsMetaEntry::Group {
+                field: "pair",
+                accounts_struct: "Missing",
+                repeat: 1,
+            }],
+        )];
+        flatten("Outer", &registry);
     }
 }

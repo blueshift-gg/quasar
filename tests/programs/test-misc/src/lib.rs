@@ -3,7 +3,7 @@
 
 use quasar_lang::prelude::*;
 
-mod instructions;
+pub mod instructions;
 use instructions::*;
 #[cfg(test)]
 mod dx_tests;
@@ -358,6 +358,14 @@ mod quasar_test_misc {
 
     #[instruction(discriminator = 64)]
     pub fn close_account_alias(ctx: Ctx<CloseAccountAlias>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    /// Nested `#[account(group)]` composite: the flattened account list is
+    /// `payer` plus `SignerPair::COUNT`, so this pins both the on-chain slot
+    /// math and the generated client's account count.
+    #[instruction(discriminator = 65)]
+    pub fn composite_group(ctx: Ctx<CompositeGroup>) -> Result<(), ProgramError> {
         ctx.accounts.handler()
     }
 }

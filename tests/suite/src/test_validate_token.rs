@@ -6,6 +6,14 @@ use {
 
 // Account<Token> with SPL Token, ValidateTokenCheck.
 
+/// Compute ceiling for parse and validation of one already-initialized token account.
+///
+/// These programs carry the derive's per-instruction account walk across many
+/// instructions, so they are what an inlining or parse-shape change moves
+/// first. Without a ceiling here such a change is only ever measured by
+/// binary size. Re-measure deliberately rather than raising this.
+const MAX_VALIDATE_TOKEN_CU: u64 = 230;
+
 #[test]
 fn account_token_happy() {
     let mut svm = svm_validate();
@@ -30,6 +38,12 @@ fn account_token_happy() {
         ],
     );
     assert!(result.is_ok(), "should succeed: {:?}", result.raw_result);
+    assert!(
+        result.compute_units_consumed <= MAX_VALIDATE_TOKEN_CU,
+        "account_token_happy should stay within {} CU, consumed {}",
+        MAX_VALIDATE_TOKEN_CU,
+        result.compute_units_consumed
+    );
 }
 
 #[test]

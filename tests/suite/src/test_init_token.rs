@@ -6,6 +6,14 @@ use {
 
 // init with SPL Token.
 
+/// Compute ceiling for `init` of an SPL token account through the token behavior.
+///
+/// These programs carry the derive's per-instruction account walk across many
+/// instructions, so they are what an inlining or parse-shape change moves
+/// first. Without a ceiling here such a change is only ever measured by
+/// binary size. Re-measure deliberately rather than raising this.
+const MAX_INIT_TOKEN_CU: u64 = 6_880;
+
 #[test]
 fn init_token_spl_happy() {
     let mut svm = svm_init();
@@ -34,6 +42,12 @@ fn init_token_spl_happy() {
         result.is_ok(),
         "init token should succeed: {:?}",
         result.raw_result
+    );
+    assert!(
+        result.compute_units_consumed <= MAX_INIT_TOKEN_CU,
+        "init_token_spl_happy should stay within {} CU, consumed {}",
+        MAX_INIT_TOKEN_CU,
+        result.compute_units_consumed
     );
 }
 

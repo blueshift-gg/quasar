@@ -126,26 +126,41 @@ pub trait AccountCount {
 pub trait ParseAccounts<'input>: Sized {
     /// Generated companion type containing discovered PDA bumps.
     type Bumps: Copy;
+
     /// Parses and validates an exact account group.
+    ///
+    /// The length-checked entry point: it proves the count the unchecked
+    /// parser was generated for, then hands off. An implementor supplies only
+    /// [`ParseAccountsUnchecked::parse_with_instruction_data_unchecked`].
+    #[inline(always)]
     fn parse(
         accounts: &'input mut [AccountView],
         program_id: &Address,
-    ) -> Result<(Self, Self::Bumps), ProgramError>;
+    ) -> Result<(Self, Self::Bumps), ProgramError>
+    where
+        Self: ParseAccountsUnchecked<'input> + AccountCount,
+    {
+        Self::parse_with_instruction_data(accounts, &[], program_id)
+    }
 
     /// Parse accounts with access to instruction data.
     ///
     /// When `#[instruction(args)]` is present on the Accounts struct, the
     /// derived impl deserializes declared args from `data` and makes them
     /// available during account validation and initialization.
-    ///
-    /// The default implementation ignores `data` and delegates to `parse`.
     #[inline(always)]
     fn parse_with_instruction_data(
         accounts: &'input mut [AccountView],
-        _data: &[u8],
+        data: &[u8],
         program_id: &Address,
-    ) -> Result<(Self, Self::Bumps), ProgramError> {
-        Self::parse(accounts, program_id)
+    ) -> Result<(Self, Self::Bumps), ProgramError>
+    where
+        Self: ParseAccountsUnchecked<'input> + AccountCount,
+    {
+        check_account_count(accounts.len(), Self::COUNT)?;
+        // SAFETY: the exact-count guard above proves the unchecked parser
+        // receives the account count it was generated for.
+        unsafe { Self::parse_with_instruction_data_unchecked(accounts, data, program_id) }
     }
 
     /// Set to `true` when the struct has lifecycle operations (close, sweep,
@@ -197,6 +212,10 @@ pub trait AccountBumps {
 #[doc(hidden)]
 pub trait AccountGroup: AccountCount + AccountBumps {}
 
+// Every fixed account group is exactly a type that knows its count and its
+// bumps, so the marker needs no per-type impl.
+impl<T: AccountCount + AccountBumps + ?Sized> AccountGroup for T {}
+
 /// Internal exact-length parsing fast path used by dispatch and nested
 /// composite account parsing.
 ///
@@ -205,11 +224,15 @@ pub trait AccountGroup: AccountCount + AccountBumps {}
 /// The caller must ensure `accounts.len() == Self::COUNT`.
 #[doc(hidden)]
 pub unsafe trait ParseAccountsUnchecked<'input>: ParseAccounts<'input> {
+    /// The one method an implementor supplies; every other parse entry point
+    /// on this trait and on [`ParseAccounts`] routes through it.
+    ///
     /// # Safety
     ///
     /// `accounts.len()` must exactly match `Self::COUNT`.
-    unsafe fn parse_unchecked(
+    unsafe fn parse_with_instruction_data_unchecked(
         accounts: &'input mut [AccountView],
+        data: &[u8],
         program_id: &Address,
     ) -> Result<(Self, Self::Bumps), ProgramError>;
 
@@ -217,13 +240,12 @@ pub unsafe trait ParseAccountsUnchecked<'input>: ParseAccounts<'input> {
     ///
     /// `accounts.len()` must exactly match `Self::COUNT`.
     #[inline(always)]
-    unsafe fn parse_with_instruction_data_unchecked(
+    unsafe fn parse_unchecked(
         accounts: &'input mut [AccountView],
-        _data: &[u8],
         program_id: &Address,
     ) -> Result<(Self, Self::Bumps), ProgramError> {
         // SAFETY: Caller guarantees `accounts.len() == Self::COUNT`.
-        unsafe { Self::parse_unchecked(accounts, program_id) }
+        unsafe { Self::parse_with_instruction_data_unchecked(accounts, &[], program_id) }
     }
 }
 
@@ -404,8 +426,14 @@ pub trait Event {
     const DISCRIMINATOR: &'static [u8];
     /// Serialized event payload size in bytes.
     const DATA_SIZE: usize;
-    /// Writes the event payload into an exactly sized buffer.
-    fn write_data(&self, buf: &mut [u8]);
+    /// Writes the event payload into `buf`.
+    ///
+    /// # Safety
+    ///
+    /// `buf` must be at least `Self::DATA_SIZE` bytes. The derived impl
+    /// memcpys the payload without checking, so a shorter buffer writes out
+    /// of bounds.
+    unsafe fn write_data(&self, buf: &mut [u8]);
     /// Emits the encoded event through the supplied transport function.
     fn emit(&self, f: impl FnOnce(&[u8]) -> Result<(), ProgramError>) -> Result<(), ProgramError>;
 }

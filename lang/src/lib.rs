@@ -116,6 +116,48 @@ pub mod __internal {
             | (if executable { 0xFFu32 << 24 } else { 0 })
     }
 
+    /// The header words one field's parse step needs, derived in one place
+    /// from the wrapper type's `AccountLoad` flags plus the required-writable
+    /// bit. The accounts derive emits a single `HeaderSpec::of::<T>(writable)`
+    /// per account instead of naming `T` once per header expression.
+    #[derive(Clone, Copy)]
+    pub struct HeaderSpec {
+        /// Expected header value for an exact match.
+        pub expected: u32,
+        /// Required-mask for the cold-path minimum-requirements check.
+        pub mask: u32,
+        /// Flag-only mask (excludes the borrow-state byte).
+        pub flag_mask: u32,
+    }
+
+    impl HeaderSpec {
+        /// The spec for wrapper type `T` at a field that does or does not
+        /// require write access.
+        #[inline(always)]
+        pub const fn of<T: crate::account_load::AccountLoad>(writable: bool) -> Self {
+            let signer = T::IS_SIGNER;
+            let executable = T::IS_EXECUTABLE;
+            Self {
+                expected: header_expected(signer, writable, executable),
+                mask: header_mask(signer, writable, executable),
+                flag_mask: header_flag_mask(signer, writable, executable),
+            }
+        }
+
+        /// [`HeaderSpec::of`] reached as an associated const, so the parse
+        /// helpers below get a compile-time value from their type parameters
+        /// without the caller declaring a `const` item per account.
+        pub const fn field<T: crate::account_load::AccountLoad, const WRITABLE: bool>() -> Self {
+            Self::of::<T>(WRITABLE)
+        }
+    }
+
+    struct FieldHeader<T, const WRITABLE: bool>(core::marker::PhantomData<T>);
+
+    impl<T: crate::account_load::AccountLoad, const WRITABLE: bool> FieldHeader<T, WRITABLE> {
+        const SPEC: HeaderSpec = HeaderSpec::field::<T, WRITABLE>();
+    }
+
     /// Not borrowed, no flags required.
     pub const NODUP: u32 = header_expected(false, false, false);
     /// Not borrowed + signer.
@@ -243,12 +285,6 @@ pub mod __internal {
     /// sBPF 5-register limit to avoid stack spills.
     #[derive(Clone, Copy)]
     pub struct ParseFlags {
-        /// Expected header value (const).
-        pub expected: u32,
-        /// Required-mask for the cold-path minimum-requirements check.
-        pub mask: u32,
-        /// Flag-only mask (excludes borrow_state byte).
-        pub flag_mask: u32,
         /// Whether this field is `Option<T>`.
         pub is_optional: bool,
         /// Whether the field reference is `&mut`.
@@ -273,13 +309,13 @@ pub mod __internal {
     /// (including `data_len`) is readable, and that `base.add(offset)` is a
     /// writable `AccountView` slot.
     #[inline(always)]
-    pub unsafe fn parse_account(
+    pub unsafe fn parse_account<T: crate::account_load::AccountLoad, const WRITABLE: bool>(
         input: *mut u8,
         base: *mut AccountView,
         offset: usize,
-        expected: u32,
-        mask: u32,
     ) -> Result<*mut u8, solana_program_error::ProgramError> {
+        let expected = FieldHeader::<T, WRITABLE>::SPEC.expected;
+        let mask = FieldHeader::<T, WRITABLE>::SPEC.mask;
         debug_assert!(
             input as usize & 7 == 0,
             "parse_account: input pointer is not 8-byte aligned"
@@ -287,10 +323,10 @@ pub mod __internal {
         let raw = input as *mut RuntimeAccount;
         // SAFETY: the header is the four flag bytes at the 8-aligned start of a
         // valid `RuntimeAccount`, so the aligned u32 read is in-bounds.
-        let header = unsafe { *(raw as *const u32) };
+        let actual = unsafe { *(raw as *const u32) };
 
-        if crate::utils::hint::unlikely(header != expected) {
-            let err = crate::decode_header_error(header, expected, mask);
+        if crate::utils::hint::unlikely(actual != expected) {
+            let err = crate::decode_header_error(actual, expected, mask);
             if err != 0 {
                 return Err(solana_program_error::ProgramError::from(err));
             }
@@ -325,13 +361,14 @@ pub mod __internal {
     /// initialized (the dup branch reads an earlier slot), and that
     /// `base.add(offset)` is a writable `AccountView` slot.
     #[inline(always)]
-    pub unsafe fn parse_account_dup(
+    pub unsafe fn parse_account_dup<T: crate::account_load::AccountLoad, const WRITABLE: bool>(
         input: *mut u8,
         base: *mut AccountView,
         offset: usize,
         program_id: &solana_address::Address,
         flags: ParseFlags,
     ) -> Result<*mut u8, solana_program_error::ProgramError> {
+        let header = FieldHeader::<T, WRITABLE>::SPEC;
         debug_assert!(
             input as usize & 7 == 0,
             "parse_account_dup: input pointer is not 8-byte aligned"
@@ -358,7 +395,7 @@ pub mod __internal {
         let is_none_sentinel =
             flags.is_optional && crate::keys_eq(unsafe { &(*raw).address }, program_id);
         if !is_none_sentinel {
-            check_header_flags(actual_header, flags)?;
+            check_header_flags(actual_header, header)?;
         }
 
         // SAFETY: `base.add(offset)` is within the caller-provided output
@@ -378,14 +415,14 @@ pub mod __internal {
     #[inline(always)]
     fn check_header_flags(
         actual_header: u32,
-        flags: ParseFlags,
+        header: HeaderSpec,
     ) -> Result<(), solana_program_error::ProgramError> {
-        let expected_flags = flags.expected & flags.flag_mask;
-        if crate::utils::hint::unlikely((actual_header & flags.flag_mask) != expected_flags) {
+        let expected_flags = header.expected & header.flag_mask;
+        if crate::utils::hint::unlikely((actual_header & header.flag_mask) != expected_flags) {
             // `decode_header_error` returns 0 when the mismatched bit is
             // outside the required mask; that must fall through rather than
             // become `Err(from(0))`.
-            let err = crate::decode_header_error(actual_header, flags.expected, flags.mask);
+            let err = crate::decode_header_error(actual_header, header.expected, header.mask);
             if err != 0 {
                 return Err(solana_program_error::ProgramError::from(err));
             }

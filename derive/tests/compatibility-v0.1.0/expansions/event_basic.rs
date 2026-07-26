@@ -13,7 +13,7 @@ impl ::quasar_lang::traits::Event for MakeEvent {
     const DISCRIMINATOR: &'static [u8] = &[1];
     const DATA_SIZE: usize = 80usize;
     #[inline(always)]
-    fn write_data(&self, buf: &mut [u8]) {
+    unsafe fn write_data(&self, buf: &mut [u8]) {
         unsafe {
             core::ptr::copy_nonoverlapping(
                 self as *const Self as *const u8,
@@ -36,9 +36,11 @@ impl ::quasar_lang::traits::Event for MakeEvent {
         let data_offset = unsafe {
             ::quasar_lang::event::write_cpi_disc(ptr, Self::DISCRIMINATOR)
         };
-        self.write_data(unsafe {
-            core::slice::from_raw_parts_mut(ptr.add(data_offset), __DATA_SIZE)
-        });
+        unsafe {
+            self.write_data(
+                core::slice::from_raw_parts_mut(ptr.add(data_offset), __DATA_SIZE),
+            );
+        }
         f(unsafe { buf.assume_init_ref() })
     }
 }
@@ -53,10 +55,12 @@ impl MakeEvent {
                 <Self as ::quasar_lang::traits::Event>::DISCRIMINATOR,
             )
         };
-        <Self as ::quasar_lang::traits::Event>::write_data(
-            self,
-            unsafe { core::slice::from_raw_parts_mut(ptr.add(data_offset), 80usize) },
-        );
+        unsafe {
+            <Self as ::quasar_lang::traits::Event>::write_data(
+                self,
+                core::slice::from_raw_parts_mut(ptr.add(data_offset), 80usize),
+            );
+        }
         ::quasar_lang::log::log_data(&[unsafe { buf.assume_init_ref() }]);
     }
 }

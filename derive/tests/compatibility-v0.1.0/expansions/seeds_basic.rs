@@ -1,5 +1,4 @@
 impl ::quasar_lang::traits::HasSeeds for VaultPda {
-    const HAS_SEED_PREFIX: bool = true;
     const SEED_PREFIX: &'static [u8] = &[118u8, 97u8, 117u8, 108u8, 116u8];
     const SEED_DYNAMIC_COUNT: usize = 1usize;
     type WithBump<'__quasar_seed> = VaultPdaSeedSetWithBump<'__quasar_seed>;
@@ -68,11 +67,7 @@ impl<'__quasar_seed> VaultPdaSeedSetWithBump<'__quasar_seed> {
     /// construction cost once.
     #[inline(always)]
     pub fn signer_seeds(&self) -> [::quasar_lang::cpi::Seed<'_>; 3usize] {
-        [
-            ::quasar_lang::cpi::Seed::from(b"vault"),
-            ::quasar_lang::cpi::Seed::from(self.inner._authority.as_ref()),
-            ::quasar_lang::cpi::Seed::from(&self._bump),
-        ]
+        self.as_slices().map(::quasar_lang::cpi::Seed::from)
     }
 }
 impl<'__quasar_seed> ::quasar_lang::cpi::CpiSignerSeeds
@@ -82,11 +77,7 @@ for VaultPdaSeedSetWithBump<'__quasar_seed> {
     where
         F: FnOnce(&[::quasar_lang::cpi::Signer<'_, '_>]) -> R,
     {
-        let seeds = [
-            ::quasar_lang::cpi::Seed::from(b"vault"),
-            ::quasar_lang::cpi::Seed::from(self.inner._authority.as_ref()),
-            ::quasar_lang::cpi::Seed::from(&self._bump),
-        ];
+        let seeds = self.signer_seeds();
         let signer = ::quasar_lang::cpi::Signer::from(&seeds);
         f(core::slice::from_ref(&signer))
     }
@@ -169,12 +160,6 @@ for VaultPdaSeedSetWithBump<'__quasar_seed> {
         _bump: &[u8],
         f: impl FnOnce(&[::quasar_lang::cpi::Signer<'_, '_>]) -> R,
     ) -> R {
-        let seeds = [
-            ::quasar_lang::cpi::Seed::from(b"vault"),
-            ::quasar_lang::cpi::Seed::from(self.inner._authority.as_ref()),
-            ::quasar_lang::cpi::Seed::from(&self._bump),
-        ];
-        let signer = ::quasar_lang::cpi::Signer::from(&seeds);
-        f(core::slice::from_ref(&signer))
+        ::quasar_lang::cpi::CpiSignerSeeds::with_signers(self, f)
     }
 }

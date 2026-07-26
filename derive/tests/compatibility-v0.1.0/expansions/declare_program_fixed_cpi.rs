@@ -173,7 +173,7 @@ pub mod external_vault {
             let mut __buf = core::mem::MaybeUninit::<[u8; 133usize]>::uninit();
             let __ptr = __buf.as_mut_ptr() as *mut u8;
             unsafe {
-                core::ptr::write(__ptr.add(0usize), 9u8);
+                core::ptr::write(__ptr, 9u8);
                 core::ptr::write(__ptr.add(1usize), 4u8);
                 core::ptr::copy_nonoverlapping(
                     config.limits[0usize].to_le_bytes().as_ptr(),

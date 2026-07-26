@@ -1,5 +1,21 @@
 use heck::{ToLowerCamelCase, ToSnakeCase, ToUpperCamelCase};
 
+/// An identifier for a binding that only generated code may see.
+///
+/// `Span::mixed_site()` gives the binding definition-site hygiene, so it is
+/// visible to the rest of this expansion and to nothing else. A field or local
+/// in the user's crate that happens to share the name can no longer capture it
+/// or be captured by it — the compiler enforces what the `__` prefix could only
+/// suggest.
+///
+/// Only for names the user never writes. Anything that deliberately crosses the
+/// macro boundary — a field name the user's own expressions refer to, the
+/// `__quasar_pda_*` helpers, the client macro's parameters — must keep
+/// call-site hygiene or the reference stops resolving.
+pub(crate) fn internal_ident(name: &str) -> syn::Ident {
+    syn::Ident::new(name, proc_macro2::Span::mixed_site())
+}
+
 pub(crate) fn pascal_to_snake(value: &str) -> String {
     value.to_snake_case()
 }
@@ -21,6 +37,37 @@ use {
 
 fn duplicate_arg_error(ident: &Ident) -> syn::Error {
     syn::Error::new(ident.span(), format!("duplicate `{ident}`"))
+}
+
+/// Whether `tokens` mention `ident` anywhere, including inside groups.
+///
+/// Used to bind only the account fields an emitted expression actually reads,
+/// instead of every field in the struct.
+pub(crate) fn mentions_ident(tokens: &proc_macro2::TokenStream, ident: &Ident) -> bool {
+    tokens.clone().into_iter().any(|tree| match tree {
+        proc_macro2::TokenTree::Ident(found) => found == *ident,
+        proc_macro2::TokenTree::Group(group) => mentions_ident(&group.stream(), ident),
+        _ => false,
+    })
+}
+
+/// Join const-evaluable `bool` terms into one `||` chain, folding literals away
+/// so the emitted const reads `true` rather than `false || true`.
+pub(crate) fn or_bool_terms(
+    terms: impl IntoIterator<Item = proc_macro2::TokenStream>,
+) -> proc_macro2::TokenStream {
+    let mut kept = Vec::new();
+    for term in terms {
+        match term.to_string().as_str() {
+            "true" => return quote! { true },
+            "false" => {}
+            _ => kept.push(term),
+        }
+    }
+    if kept.is_empty() {
+        return quote! { false };
+    }
+    quote! { #(#kept)||* }
 }
 
 /// Parse `#[max(N)]` or `#[max(N, pfx = P)]` from an attribute list.

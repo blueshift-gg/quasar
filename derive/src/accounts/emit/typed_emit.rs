@@ -25,6 +25,7 @@ pub(crate) fn emit_post_load_behavior(
     did_init_var: Option<&syn::Ident>,
 ) -> proc_macro2::TokenStream {
     let krate = crate::krate::lang_path();
+    let bhv_args = crate::helpers::internal_ident("__bhv_args");
     let path = &call.path;
     let bhv = quote! { <#path::Behavior as #krate::account_behavior::AccountBehavior<#field_ty>> };
     let args_block = emit_behavior_args_builder(call, field_ty, phase.as_behavior_phase(), &[]);
@@ -34,26 +35,25 @@ pub(crate) fn emit_post_load_behavior(
         PostLoadPhase::AfterInit => quote! {
             if #bhv::RUN_AFTER_INIT {
                 #args_block
-                #bhv::after_init(&mut #field_ident, &__bhv_args)?;
+                #bhv::after_init(&mut #field_ident, &#bhv_args)?;
             }
         },
         PostLoadPhase::Check => {
-            let fresh_init_guard = if let Some(did_init_var) = did_init_var {
-                quote! { !(#did_init_var && #bhv::INIT_SATISFIES_CHECK) }
-            } else {
-                quote! { true }
+            let fresh_init_guard = match did_init_var {
+                Some(did_init_var) => quote! { && !(#did_init_var && #bhv::INIT_SATISFIES_CHECK) },
+                None => quote! {},
             };
             quote! {
-                if #bhv::RUN_CHECK && #fresh_init_guard {
+                if #bhv::RUN_CHECK #fresh_init_guard {
                     #args_block
-                    #bhv::check(&#field_ident, &__bhv_args)?;
+                    #bhv::check(&#field_ident, &#bhv_args)?;
                 }
             }
         }
         PostLoadPhase::Update => quote! {
             if #bhv::RUN_UPDATE {
                 #args_block
-                #bhv::update(&mut #field_ident, &__bhv_args)?;
+                #bhv::update(&mut #field_ident, &#bhv_args)?;
             }
         },
     }
@@ -70,6 +70,7 @@ pub(crate) fn emit_epilogue_behavior(
     ix_arg_extraction: &proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
     let krate = crate::krate::lang_path();
+    let bhv_args = crate::helpers::internal_ident("__bhv_args");
     let path = &call.path;
     let bhv = quote! { <#path::Behavior as #krate::account_behavior::AccountBehavior<#field_ty>> };
     let args_block = emit_behavior_args_builder(call, field_ty, BehaviorPhase::Exit, &[]);
@@ -77,7 +78,7 @@ pub(crate) fn emit_epilogue_behavior(
     let unsigned_exit = quote! {
         if #bhv::RUN_EXIT {
             #args_block
-            #bhv::exit(&mut self.#field_ident, &__bhv_args)?;
+            #bhv::exit(&mut self.#field_ident, &#bhv_args)?;
         }
     };
 
@@ -85,19 +86,21 @@ pub(crate) fn emit_epilogue_behavior(
         return unsigned_exit;
     }
 
-    let field_refs = account_fields
-        .iter()
-        .map(|ident| quote! { let #ident = &self.#ident; });
     let mut exit_call = quote! {
         #args_block
-        #bhv::exit(&mut self.#field_ident, &__bhv_args)?;
+        #bhv::exit(&mut self.#field_ident, &#bhv_args)?;
     };
 
     for candidate in signer_candidates.iter().rev() {
         let key = candidate.key.to_string();
         let signer_field = candidate.field_ident;
         let addr_expr = candidate.addr_expr;
-        let refs = field_refs.clone();
+        // Bind only the fields this signer's address expression reads.
+        let addr_tokens = quote! { #addr_expr };
+        let refs = account_fields
+            .iter()
+            .filter(|ident| crate::helpers::mentions_ident(&addr_tokens, ident))
+            .map(|ident| quote! { let #ident = &self.#ident; });
         let fallback = exit_call;
         exit_call = quote! {
             if #bhv::uses_exit_signer_arg::<{
@@ -109,7 +112,7 @@ pub(crate) fn emit_epilogue_behavior(
                 #args_block
                 #bhv::exit_signed(
                     &mut self.#field_ident,
-                    &__bhv_args,
+                    &#bhv_args,
                     &__bhv_signer,
                 )?;
             } else {
@@ -136,6 +139,7 @@ pub(crate) fn emit_behavior_init(
     inferable_accounts: &[&syn::Ident],
 ) -> proc_macro2::TokenStream {
     let krate = crate::krate::lang_path();
+    let bhv_args = crate::helpers::internal_ident("__bhv_args");
     let payer_ident = &spec.payer.ident;
     let idempotent = spec.idempotent;
     let has_address = spec.verified_address.is_some();
@@ -156,7 +160,7 @@ pub(crate) fn emit_behavior_init(
                     #args_block
                     <#path::Behavior as #krate::account_behavior::AccountBehavior<#field_ty>>::set_init_param(
                         &mut __init_params,
-                        &__bhv_args,
+                        &#bhv_args,
                     )?;
                 }
             }
@@ -291,18 +295,20 @@ fn emit_behavior_args_builder(
     inferable_accounts: &[&syn::Ident],
 ) -> proc_macro2::TokenStream {
     let krate = crate::krate::lang_path();
+    let bhv_args = crate::helpers::internal_ident("__bhv_args");
+    let bhv_builder = crate::helpers::internal_ident("__bhv_builder");
     // Exit args reference `self.field`; every other phase uses local bindings.
     let exit_context = matches!(phase, BehaviorPhase::Exit);
     let path = &call.path;
     let bhv = quote! { <#path::Behavior as #krate::account_behavior::AccountBehavior<#field_ty>> };
-    let phase_const = emit_arg_phase_const(phase);
+    let phase_guard = emit_arg_phase_guard(phase);
     let inferred_accounts = inferable_accounts.iter().map(|account| {
         let key = account.to_string();
         quote! {
             #bhv::infer_init_account::<{
                 #krate::account_behavior::behavior_arg_key_hash(#key)
             }>(
-                &mut __bhv_args,
+                &mut #bhv_args,
                 #krate::traits::AsAccountView::to_account_view(&#account),
             );
         }
@@ -315,13 +321,12 @@ fn emit_behavior_args_builder(
             let key_lit = key.to_string();
             let val = emit_lowered_value(&arg.lowered, exit_context);
             quote! {
-                let __bhv_builder = if #bhv::uses_arg::<
-                    { #phase_const },
-                    { #krate::account_behavior::behavior_arg_key_hash(#key_lit) },
+                let #bhv_builder = if #krate::account_behavior::#phase_guard::<
+                    __QuasarBhv, __QuasarBhvAcct, { #krate::account_behavior::key(#key_lit) },
                 >() {
-                    __bhv_builder.#key(#val)
+                    #bhv_builder.#key(#val)
                 } else {
-                    __bhv_builder
+                    #bhv_builder
                 };
             }
         })
@@ -335,57 +340,56 @@ fn emit_behavior_args_builder(
 
     let args_binding = if inferable_accounts.is_empty() {
         quote! {
-            let __bhv_args =
-                #krate::account_behavior::BehaviorArgsBuilder::#build_method(__bhv_builder)?;
+            let #bhv_args =
+                #krate::account_behavior::BehaviorArgsBuilder::#build_method(#bhv_builder)?;
         }
     } else {
         quote! {
-            let mut __bhv_args =
-                #krate::account_behavior::BehaviorArgsBuilder::#build_method(__bhv_builder)?;
+            let mut #bhv_args =
+                #krate::account_behavior::BehaviorArgsBuilder::#build_method(#bhv_builder)?;
             #(#inferred_accounts)*
         }
     };
 
+    // Every argument site in this block guards on the same behavior and the
+    // same account type. Naming the pair once keeps each site to one line and
+    // reports an unresolved behavior module here rather than once per argument.
+    // These stay concrete types, so the guard keeps the inference behaviour its
+    // `if` position exists to preserve.
+    let aliases = if call.args.is_empty() {
+        quote! {}
+    } else {
+        quote! {
+            type __QuasarBhv = #path::Behavior;
+            type __QuasarBhvAcct = #field_ty;
+        }
+    };
+
     quote! {
-        let __bhv_builder = #path::Args::builder();
+        #aliases
+        let #bhv_builder = #path::Args::builder();
         #(#setters)*
         // Bound check: the builder must implement the stable BehaviorArgsBuilder
         // contract. A plugin whose builder is missing a phase fails here with a
-        // clear diagnostic instead of a "no method" error. The assertion helper
-        // is defined once per derive (see `emit_assert_builder_fn`).
-        Self::__assert_builder(&__bhv_builder);
+        // clear diagnostic instead of a "no method" error.
+        #krate::account_behavior::assert_builder(&#bhv_builder);
         #args_binding
     }
 }
 
-/// Emit the single `__assert_builder` helper on the accounts struct's inherent
-/// impl, used by every behavior-args block to prove the builder implements the
-/// stable `BehaviorArgsBuilder` contract. Empty when the struct has no
-/// behavior groups.
-pub(crate) fn emit_assert_builder_fn(has_behaviors: bool) -> proc_macro2::TokenStream {
-    let krate = crate::krate::lang_path();
-    if !has_behaviors {
-        return quote! {};
-    }
-    quote! {
-        #[inline(always)]
-        fn __assert_builder<__B: #krate::account_behavior::BehaviorArgsBuilder>(_: &__B) {}
-    }
-}
-
-fn emit_arg_phase_const(phase: BehaviorPhase) -> proc_macro2::TokenStream {
-    let krate = crate::krate::lang_path();
-    match phase {
-        BehaviorPhase::SetInitParam => {
-            quote! { #krate::account_behavior::ARG_PHASE_SET_INIT_PARAM }
-        }
-        BehaviorPhase::AfterInit => {
-            quote! { #krate::account_behavior::ARG_PHASE_AFTER_INIT }
-        }
-        BehaviorPhase::Check => quote! { #krate::account_behavior::ARG_PHASE_CHECK },
-        BehaviorPhase::Update => quote! { #krate::account_behavior::ARG_PHASE_UPDATE },
-        BehaviorPhase::Exit => quote! { #krate::account_behavior::ARG_PHASE_EXIT },
-    }
+/// The per-phase `uses_*_arg` guard for an argument site.
+///
+/// The phase is fixed when the site is emitted, so it rides in the function
+/// name instead of a `{ ARG_PHASE_* }` const-generic argument.
+fn emit_arg_phase_guard(phase: BehaviorPhase) -> syn::Ident {
+    let name = match phase {
+        BehaviorPhase::SetInitParam => "uses_set_init_param_arg",
+        BehaviorPhase::AfterInit => "uses_after_init_arg",
+        BehaviorPhase::Check => "uses_check_arg",
+        BehaviorPhase::Update => "uses_update_arg",
+        BehaviorPhase::Exit => "uses_exit_arg",
+    };
+    format_ident!("{}", name)
 }
 
 /// Emit a lowered behavior-arg value. `on_self` selects the receiver:

@@ -83,9 +83,12 @@ pub(crate) fn event_inner(attr: TokenStream2, item: TokenStream2) -> TokenStream
                 // SAFETY: `write_log_disc` initialized the discriminator bytes
                 // and returned the payload offset. The remaining `#data_size`
                 // bytes fit exactly in the buffer.
-                <Self as #krate::traits::Event>::write_data(self, unsafe {
-                    core::slice::from_raw_parts_mut(ptr.add(data_offset), #data_size)
-                });
+                unsafe {
+                    <Self as #krate::traits::Event>::write_data(
+                        self,
+                        core::slice::from_raw_parts_mut(ptr.add(data_offset), #data_size),
+                    );
+                }
                 // SAFETY: Discriminator and payload bytes were initialized
                 // above before exposing the full buffer as a slice.
                 #krate::log::log_data(&[unsafe { buf.assume_init_ref() }]);
@@ -173,10 +176,10 @@ pub(crate) fn event_inner(attr: TokenStream2, item: TokenStream2) -> TokenStream
             const DATA_SIZE: usize = #data_size;
 
             #[inline(always)]
-            fn write_data(&self, buf: &mut [u8]) {
+            unsafe fn write_data(&self, buf: &mut [u8]) {
                 // SAFETY: The compile-time size assertion above proves `Self`
-                // has exactly `DATA_SIZE` bytes with no padding, and callers
-                // pass a buffer of that length.
+                // has exactly `DATA_SIZE` bytes with no padding, and the
+                // caller guarantees `buf` holds at least that many.
                 unsafe {
                     core::ptr::copy_nonoverlapping(
                         self as *const Self as *const u8,
@@ -203,12 +206,12 @@ pub(crate) fn event_inner(attr: TokenStream2, item: TokenStream2) -> TokenStream
                 // SAFETY: `write_cpi_disc` initialized the prefix bytes and
                 // returned the payload offset. The remaining `__DATA_SIZE`
                 // bytes fit exactly in the buffer.
-                self.write_data(unsafe {
-                    core::slice::from_raw_parts_mut(
+                unsafe {
+                    self.write_data(core::slice::from_raw_parts_mut(
                         ptr.add(data_offset),
                         __DATA_SIZE,
-                    )
-                });
+                    ));
+                }
 
                 // SAFETY: Prefix and payload bytes were initialized above.
                 f(unsafe { buf.assume_init_ref() })

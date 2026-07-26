@@ -503,7 +503,10 @@ pub(crate) fn instruction_inner(attr: TokenStream2, item: TokenStream2) -> Token
     } else {
         let direct_name = format_ident!("__quasar_direct_{}", fn_name);
         quote! {
-            #[inline(always)]
+            // `inline`, not `inline(always)`: forcing the parse into `__dispatch`
+            // spills registers. Letting the inliner pick per call site measured
+            // cheaper on every escrow instruction and 808 bytes smaller.
+            #[inline]
             fn #direct_name(
                 __program_id: &[u8; 32],
                 __accounts_start: *mut u8,
@@ -512,12 +515,37 @@ pub(crate) fn instruction_inner(attr: TokenStream2, item: TokenStream2) -> Token
                 let __program_id_addr = unsafe {
                     &*(__program_id as *const [u8; 32] as *const #krate::prelude::Address)
                 };
-                let (__accounts, __bumps) = unsafe {
-                    <#accounts_ty>::parse_direct_with_instruction_data_unchecked(
-                        __accounts_start,
-                        __ix_data,
-                        __program_id_addr,
-                    )?
+                // The view buffer is scoped to the parse: the account wrappers
+                // hold raw views rather than borrowing it, so keeping it alive
+                // across the handler call would only pin stack.
+                let (__accounts, __bumps) = {
+                    let mut __buf = core::mem::MaybeUninit::<
+                        [#krate::__internal::AccountView;
+                            <#accounts_ty as #krate::traits::AccountCount>::COUNT]
+                    >::uninit();
+                    // SAFETY: dispatch checked the runtime account count against
+                    // COUNT before reaching this arm.
+                    let _ = unsafe {
+                        <#accounts_ty as #krate::traits::ParseAccountsRaw>::parse_accounts_raw(
+                            __accounts_start,
+                            __buf.as_mut_ptr() as *mut #krate::__internal::AccountView,
+                            0usize,
+                            __program_id_addr,
+                        )?
+                    };
+                    // SAFETY: `parse_accounts_raw` initialized every slot before
+                    // returning `Ok`. Referencing the array in place keeps
+                    // its length static and avoids moving it out.
+                    let __accounts_buf = unsafe {
+                        &mut *__buf.as_mut_ptr()
+                    };
+                    unsafe {
+                        <#accounts_ty as #krate::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
+                            __accounts_buf,
+                            __ix_data,
+                            __program_id_addr,
+                        )?
+                    }
                 };
                 #body_fn_name(#krate::context::Ctx {
                     accounts: __accounts,
