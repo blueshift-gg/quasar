@@ -186,6 +186,10 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
         codec_imports.push("getBooleanCodec");
     }
     if used.contains("option") {
+        // Nullable, not Option: the generated interfaces type optional fields
+        // as `T | null`, and `getNullableCodec` decodes to exactly that with
+        // the same one-byte-prefix wire. `getOptionCodec` yields `Option<T>`
+        // wrapper objects, which silently diverge from the declared types.
         codec_imports.push("getNullableCodec");
     }
     // For Web3.js v3, a custom codec is needed to handle its Address type
