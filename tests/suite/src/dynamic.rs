@@ -2753,8 +2753,10 @@ fn build_set_inner_instruction(
     new_name: &[u8],
     new_tags: &[Address],
 ) -> Instruction {
-    // Instruction data: [disc(65)][u8:name_len][u16:tags_count][name][tags]
-    let mut data = vec![65];
+    // Instruction data: [disc(66)][u8:name_len][u16:tags_count][name][tags].
+    // 65 belongs to `composite_group`; this instruction took the next free
+    // discriminator when both landed on the release branch.
+    let mut data = vec![66];
     data.push(new_name.len() as u8);
     data.extend_from_slice(&(new_tags.len() as u16).to_le_bytes());
     data.extend_from_slice(new_name);

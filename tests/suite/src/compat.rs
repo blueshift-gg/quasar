@@ -198,6 +198,9 @@ pub struct ExecutionResult {
     pub raw_result: Result<(), solana_instruction::error::InstructionError>,
     pub accounts: Vec<Account>,
     pub logs: Vec<String>,
+    /// Compute units the instruction consumed. The suite pins ceilings on the
+    /// token programs, so this has to survive the compat layer.
+    pub compute_units_consumed: u64,
 }
 
 impl ExecutionResult {
@@ -378,6 +381,7 @@ impl SuiteSvm {
             raw_result: result.raw_result,
             accounts,
             logs,
+            compute_units_consumed: result.compute_units_consumed,
         }
     }
 }

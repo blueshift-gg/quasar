@@ -163,7 +163,6 @@ fn account_field_seeds_are_client_inputs_not_fetches() {
     }
 }
 
-
 /// A single instruction that derives both a PDA and an associated-token
 /// account, so both derivation kinds are exercised by the accessor assertions.
 fn address_accessor_idl() -> Idl {
@@ -240,8 +239,8 @@ fn builders_expose_derived_pda_and_ata_addresses() {
         "Promise<Instruction & { readonly poolAddress: Address; readonly userAtaAddress: \
          Address }>"
     ));
-    assert!(kit.contains("poolAddress: (accountOverrides.pool ?? accountsMap[\"pool\"]),"));
-    assert!(kit.contains("userAtaAddress: (accountOverrides.userAta ?? accountsMap[\"userAta\"]),"));
+    assert!(kit.contains("poolAddress: (accountOverrides.pool ?? __pool),"));
+    assert!(kit.contains("userAtaAddress: (accountOverrides.userAta ?? __userAta),"));
 
     // Web3 attaches the accessors to the constructed class instance.
     assert!(web3.contains(
@@ -249,10 +248,8 @@ fn builders_expose_derived_pda_and_ata_addresses() {
          userAtaAddress: Address }>"
     ));
     assert!(web3.contains("return Object.assign(instruction, {"));
-    assert!(web3.contains("poolAddress: (accountOverrides.pool ?? accountsMap[\"pool\"]),"));
-    assert!(
-        web3.contains("userAtaAddress: (accountOverrides.userAta ?? accountsMap[\"userAta\"]),")
-    );
+    assert!(web3.contains("poolAddress: (accountOverrides.pool ?? __pool),"));
+    assert!(web3.contains("userAtaAddress: (accountOverrides.userAta ?? __userAta),"));
 }
 
 #[test]

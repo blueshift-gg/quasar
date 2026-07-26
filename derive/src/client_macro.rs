@@ -34,6 +34,10 @@ struct AccountDescriptor {
     /// For a derived (PDA/ATA) field, a `{field}_address(&self)` accessor
     /// method exposing the address the builder derives; `None` otherwise.
     address_accessor: Option<TokenStream>,
+    /// A composite field (`AccountsArray<..>` or a nested `#[account(group)]`
+    /// struct) flattens to `Inner::COUNT` accounts, not one, so the caller
+    /// supplies that account's metas and the client splices them in place.
+    composite: bool,
 }
 
 /// How an off-chain instruction obtains an account address.
@@ -51,7 +55,9 @@ struct ClientMacroParts<'a> {
     canonical_account_fields: &'a [TokenStream],
     raw_account_fields: &'a [TokenStream],
     raw_account_values: &'a [TokenStream],
-    account_metas: &'a [TokenStream],
+    /// The `accounts` vector expression: a flat literal, or an incremental
+    /// build when a composite field splices in its own metas.
+    accounts_expr: &'a TokenStream,
     address_accessors: &'a [TokenStream],
     has_derived_accounts: bool,
 }
@@ -115,6 +121,7 @@ pub fn generate_accounts_macro(
         .filter_map(emit_raw_account_value)
         .collect();
     let account_metas: Vec<_> = descriptors.iter().map(emit_raw_account_meta).collect();
+    let accounts_expr = emit_accounts_expr(&descriptors, &account_metas);
     let address_accessors: Vec<_> = descriptors
         .iter()
         .filter_map(|descriptor| descriptor.address_accessor.clone())
@@ -127,7 +134,7 @@ pub fn generate_accounts_macro(
         canonical_account_fields: &canonical_account_fields,
         raw_account_fields: &raw_account_fields,
         raw_account_values: &raw_account_values,
-        account_metas: &account_metas,
+        accounts_expr: &accounts_expr,
         address_accessors: &address_accessors,
         has_derived_accounts,
     };
@@ -175,8 +182,8 @@ fn emit_instruction_macro_arm(
         krate,
         canonical_account_fields,
         raw_account_fields,
+        accounts_expr,
         raw_account_values,
-        account_metas,
         address_accessors,
         has_derived_accounts,
     } = parts;
@@ -245,16 +252,12 @@ fn emit_instruction_macro_arm(
     };
     let accounts = if flavor.has_remaining() {
         quote! {
-            let mut accounts = ::alloc::vec![
-                #(#account_metas)*
-            ];
+            let mut accounts = #accounts_expr;
             accounts.extend(ix.remaining_accounts);
         }
     } else {
         quote! {
-            let accounts = ::alloc::vec![
-                #(#account_metas)*
-            ];
+            let accounts = #accounts_expr;
         }
     };
     let data = if flavor.is_compact() {
@@ -310,6 +313,14 @@ fn emit_instruction_macro_arm(
 
 fn emit_canonical_account_field(name: &syn::Ident, descriptor: &AccountDescriptor) -> TokenStream {
     let docs = crate::helpers::docs_tokens_as_attrs(&descriptor.docs);
+    if descriptor.composite {
+        let krate = crate::krate::lang_path();
+        let ident = &descriptor.name;
+        return quote! {
+            #docs
+            pub #ident: ::alloc::vec::Vec<#krate::client::AccountMeta>,
+        };
+    }
     if !matches!(descriptor.address, ClientAddress::Caller) {
         // A derived field whose seeds read stored account data is replaced by
         // typed inputs carrying those values (via definition-site re-aliases,
@@ -345,6 +356,13 @@ fn emit_raw_account_field(descriptor: &AccountDescriptor) -> TokenStream {
     }
     let krate = crate::krate::lang_path();
     let docs = crate::helpers::docs_tokens_as_attrs(&descriptor.docs);
+    if descriptor.composite {
+        let ident = &descriptor.name;
+        return quote! {
+            #docs
+            pub #ident: ::alloc::vec::Vec<#krate::client::AccountMeta>,
+        };
+    }
     let ident = &descriptor.name;
     quote! {
         #docs
@@ -361,9 +379,41 @@ fn emit_raw_account_value(descriptor: &AccountDescriptor) -> Option<TokenStream>
     }
 }
 
+/// The `accounts` vector for one instruction.
+///
+/// Without composites this stays a flat `vec![..]` literal. With one, the list
+/// is built incrementally so a composite can splice in its own metas.
+fn emit_accounts_expr(descriptors: &[AccountDescriptor], metas: &[TokenStream]) -> TokenStream {
+    let krate = crate::krate::lang_path();
+    if !descriptors.iter().any(|descriptor| descriptor.composite) {
+        return quote! { ::alloc::vec![ #(#metas)* ] };
+    }
+    let steps = descriptors.iter().map(|descriptor| {
+        let ident = &descriptor.name;
+        if descriptor.composite {
+            quote! { __accounts.extend(ix.#ident); }
+        } else {
+            let meta = emit_raw_account_meta(descriptor);
+            quote! { __accounts.push(#meta); }
+        }
+    });
+    quote! {
+        {
+            let mut __accounts: ::alloc::vec::Vec<#krate::client::AccountMeta> =
+                ::alloc::vec::Vec::new();
+            #(#steps)*
+            __accounts
+        }
+    }
+}
+
 fn emit_raw_account_meta(descriptor: &AccountDescriptor) -> TokenStream {
     let krate = crate::krate::lang_path();
     let ident = &descriptor.name;
+    if descriptor.composite {
+        // Spliced by `emit_accounts_expr`; a composite has no single meta.
+        return quote! {};
+    }
     let signer = &descriptor.signer;
     let address = match &descriptor.address {
         ClientAddress::Constant(address) => address.clone(),
@@ -453,6 +503,7 @@ fn describe_accounts(
             AccountDescriptor {
                 name: fp.ident.clone(),
                 docs: fp.docs.clone(),
+                composite: fp.kind == crate::accounts::resolve::FieldKind::Composite,
                 writable: fp.writable,
                 address_accessor,
                 signer: if fp.behavior_init_signer {
@@ -581,22 +632,19 @@ pub(crate) fn field_derivation<'p>(
         if fp.idl_resolver.is_some() {
             return None;
         }
-        let group = fp
-            .behaviors
-            .iter()
-            .find(|group| {
-                // The IDL reads a behavior's declared `IDL_RESOLVER` const while
-                // building; a proc macro cannot evaluate a trait const, so the
-                // only signal available here is the behavior's path. Match its
-                // final segment exactly — `ends_with` also accepted
-                // `my_associated_token`, which the IDL would not resolve as an
-                // ATA.
-                group
-                    .path
-                    .segments
-                    .last()
-                    .is_some_and(|segment| segment.ident == "associated_token")
-            })?;
+        let group = fp.behaviors.iter().find(|group| {
+            // The IDL reads a behavior's declared `IDL_RESOLVER` const while
+            // building; a proc macro cannot evaluate a trait const, so the
+            // only signal available here is the behavior's path. Match its
+            // final segment exactly — `ends_with` also accepted
+            // `my_associated_token`, which the IDL would not resolve as an
+            // ATA.
+            group
+                .path
+                .segments
+                .last()
+                .is_some_and(|segment| segment.ident == "associated_token")
+        })?;
         // An unmapped behavior arg resolves to the same-named account field
         // (mirroring the runtime init inference).
         let arg = |key: &str| {

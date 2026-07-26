@@ -141,13 +141,13 @@ pub struct SyncInstructionRaw {
 
 pub struct SyncInstruction {
     pub authority: Address,
-    pub pool_seed_seed: u64,
+    pub seed: u64,
 }
 
 impl From<SyncInstruction> for SyncInstructionRaw {
     fn from(ix: SyncInstruction) -> SyncInstructionRaw {
         let authority = ix.authority;
-        let pool = Address::find_program_address(&[b"pool", ix.pool_seed_seed.to_le_bytes().as_ref()], &ID).0;
+        let pool = Address::find_program_address(&[b"pool", ix.seed.to_le_bytes().as_ref()], &ID).0;
         SyncInstructionRaw {
             authority,
             pool,

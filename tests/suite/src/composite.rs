@@ -5,9 +5,9 @@
 //! on-chain parser about that count and its ordering.
 
 use {
+    crate::compat::{AccountMeta, Instruction, Pubkey},
     crate::helpers::*,
     quasar_lang::traits::AccountCount,
-    quasar_svm::{AccountMeta, Instruction, Pubkey},
     quasar_test_misc::{cpi::*, instructions::CompositeGroup},
 };
 

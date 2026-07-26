@@ -435,9 +435,10 @@ mod tests {
         // exact pin would fight the consumer's own framework version.
         let plain = generate_rust_cargo_toml("example", "1.2.3", false, false);
         assert!(!plain.contains("quasar-lang"));
-        // wincode and solana-address stay exactly pinned: they implement each
-        // other's traits and must resolve as a pair.
-        assert!(plain.contains("wincode = { version = \"=0.4.9\""));
+        // wincode and solana-address move together, but as ranges: exact pins
+        // cannot coexist with a litesvm-era dependency graph.
+        assert!(plain.contains("wincode = { version = \"0.5\""));
+        assert!(!plain.contains(" = \"=\""), "no exact pins: {plain}");
         assert!(!plain.contains("git ="));
         assert!(!plain.contains("branch ="));
 
