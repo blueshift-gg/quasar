@@ -51,5 +51,5 @@ codegen-units = 1
 # TEMPORARY: until zeropod >=0.3.4 (solana-address <3) is published.
 # Publish zeropod before any quasar release, then delete this patch.
 [patch.crates-io]
-zeropod = { path = "vendor/zeropod/zeropod" }
-zeropod-derive = { path = "vendor/zeropod/zeropod-derive" }
+zeropod = { git = "https://github.com/blueshift-gg/zeropod", rev = "d08742d" }
+zeropod-derive = { git = "https://github.com/blueshift-gg/zeropod", rev = "d08742d" }

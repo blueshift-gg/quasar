@@ -6209,6 +6209,7 @@ dependencies = [
 [[package]]
 name = "zeropod"
 version = "0.3.3"
+source = "git+https://github.com/blueshift-gg/zeropod?rev=d08742d#d08742df8a7e7434fd90c24cc86e1792a58b05f1"
 dependencies = [
  "solana-address 2.6.1",
  "solana-program-error",
@@ -6219,6 +6220,7 @@ dependencies = [
 [[package]]
 name = "zeropod-derive"
 version = "0.3.3"
+source = "git+https://github.com/blueshift-gg/zeropod?rev=d08742d#d08742df8a7e7434fd90c24cc86e1792a58b05f1"
 dependencies = [
  "proc-macro2",
  "quote",

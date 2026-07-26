@@ -178,13 +178,13 @@ fn generate_cargo_toml(name: &str, development_root: Option<&Path>) -> String {
     // requirement needs the widened solana-address cap; mirror the
     // workspace's temporary crates-io patch until zeropod >=0.3.4 ships.
     let zeropod_patch = development_root
-        .map(|root| {
-            let zeropod = root.join("vendor/zeropod");
-            format!(
-                "\n[patch.crates-io]\nzeropod = {{ path = \"{}\" }}\nzeropod-derive = {{ path = \"{}\" }}\n",
-                zeropod.join("zeropod").display(),
-                zeropod.join("zeropod-derive").display(),
+        .map(|_| {
+            concat!(
+                "\n[patch.crates-io]\n",
+                "zeropod = { git = \"https://github.com/blueshift-gg/zeropod\", rev = \"d08742d\" }\n",
+                "zeropod-derive = { git = \"https://github.com/blueshift-gg/zeropod\", rev = \"d08742d\" }\n",
             )
+            .to_string()
         })
         .unwrap_or_default();
     format!(

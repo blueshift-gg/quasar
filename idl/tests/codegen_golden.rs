@@ -70,13 +70,10 @@ fn write_rust_client(idl: &Idl, root: &Path) {
     );
     // TEMPORARY: mirrors the workspace zeropod patch until zeropod >=0.3.4
     // (solana-address <3, wincode 0.5) is published.
-    let zeropod = workspace.join("vendor/zeropod");
     fs::write(
         root.join("Cargo.toml"),
         format!(
-            "{manifest}\n[workspace]\n\n[patch.crates-io]\nzeropod = {{ path = {:?} }}\nzeropod-derive = {{ path = {:?} }}\n",
-            zeropod.join("zeropod"),
-            zeropod.join("zeropod-derive"),
+            "{manifest}\n[workspace]\n\n[patch.crates-io]\nzeropod = {{ git = \"https://github.com/blueshift-gg/zeropod\", rev = \"d08742d\" }}\nzeropod-derive = {{ git = \"https://github.com/blueshift-gg/zeropod\", rev = \"d08742d\" }}\n",
         ),
     )
     .unwrap();

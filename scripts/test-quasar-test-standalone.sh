@@ -40,8 +40,8 @@ qt = { package = "quasar-test", path = "$package_dir" }
 # TEMPORARY: mirrors the workspace zeropod patch until zeropod >=0.3.4
 # (solana-address <3, wincode 0.5) is published.
 [patch.crates-io]
-zeropod = { path = "$repo_root/vendor/zeropod/zeropod" }
-zeropod-derive = { path = "$repo_root/vendor/zeropod/zeropod-derive" }
+zeropod = { git = "https://github.com/blueshift-gg/zeropod", rev = "d08742d" }
+zeropod-derive = { git = "https://github.com/blueshift-gg/zeropod", rev = "d08742d" }
 EOF
 
 cat >"$tmp/consumer/src/lib.rs" <<'EOF'

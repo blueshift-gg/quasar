@@ -58,11 +58,10 @@ quasar-lang = {{ path = "{lang}" }}
 # TEMPORARY: mirrors the workspace zeropod patch until zeropod >=0.3.4
 # (solana-address <3, wincode 0.5) is published.
 [patch.crates-io]
-zeropod = {{ path = "{zeropod}/zeropod" }}
-zeropod-derive = {{ path = "{zeropod}/zeropod-derive" }}
+zeropod = {{ git = "https://github.com/blueshift-gg/zeropod", rev = "d08742d" }}
+zeropod-derive = {{ git = "https://github.com/blueshift-gg/zeropod", rev = "d08742d" }}
 "#,
-            lang = workspace_root().join("lang").display(),
-            zeropod = workspace_root().join("vendor/zeropod").display()
+            lang = workspace_root().join("lang").display()
         ),
     )?;
     write_file(
