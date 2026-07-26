@@ -387,7 +387,15 @@ fn strip_seed_into(expr: &Expr) -> &Expr {
 }
 
 /// If `expr` is a single-segment path, return that identifier.
+///
+/// Sees through a leading `&`: an `Address` seed is passed by reference, so
+/// the seed argument reads `&authority`, and the identifier underneath is what
+/// names the account field or instruction argument.
 fn single_ident(expr: &Expr) -> Option<syn::Ident> {
+    let expr = match expr {
+        Expr::Reference(reference) => reference.expr.as_ref(),
+        other => other,
+    };
     if let Expr::Path(ep) = expr {
         if ep.qself.is_none() && ep.path.segments.len() == 1 {
             return Some(ep.path.segments[0].ident.clone());

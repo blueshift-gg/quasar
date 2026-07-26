@@ -312,8 +312,8 @@ fn emit_pda_address_fns(
     };
     // `find_address` takes every seed by value.
     let owned_source_arg = |source: &SeedSource| match source {
-        SeedSource::PlainAccount(i) | SeedSource::ArgRef(i) => quote! { *#i },
-        SeedSource::DerivedAccount(i) => quote! { #i },
+        SeedSource::PlainAccount(i) | SeedSource::ArgRef(i) => quote! { #i },
+        SeedSource::DerivedAccount(i) => quote! { &#i },
         SeedSource::ArgValue(i, _) => quote! { #i },
         SeedSource::FieldValue { input, .. } => quote! { #input },
         SeedSource::Const(expr) => quote! { #expr },
@@ -842,18 +842,23 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
                 Some(quote! {
                     #[inline(always)]
                     #[allow(unused_variables)]
-                    pub fn #method_name<'__quasar_seed>(
+                    pub fn #method_name<'__quasar_seed, __R>(
                         &'__quasar_seed self,
                         bumps: &'__quasar_seed #bumps_name,
                         data: &'__quasar_seed [u8],
-                    ) -> Result<
-                        <#set_ty as #krate::traits::HasSeeds>::WithBump<'__quasar_seed>,
-                        #krate::prelude::ProgramError,
-                    > {
+                        f: impl FnOnce(
+                            &<#set_ty as #krate::traits::HasSeeds>::WithBump<'_>,
+                        ) -> __R,
+                    ) -> Result<__R, #krate::prelude::ProgramError> {
                         let __ix_data = data;
                         #ix_arg_extraction
                         #(#field_refs)*
-                        Ok(#addr_expr.with_bump(bumps.#field_name))
+                        // The seed set borrows the instruction arguments
+                        // destructured just above, which are locals. Handing it
+                        // to a closure keeps it from escaping, so the seeds stay
+                        // borrowed instead of every seed set owning its copy.
+                        let __seeds = #addr_expr.with_bump(bumps.#field_name);
+                        Ok(f(&__seeds))
                     }
                 })
             } else {
