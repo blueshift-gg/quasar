@@ -96,19 +96,11 @@ pub(super) fn eligible_plugin_accounts(idl: &Idl) -> Vec<&IdlAccountDef> {
 }
 
 pub(super) fn eligible_plugin_instructions(idl: &Idl) -> Vec<&IdlInstruction> {
-    idl.instructions
-        .iter()
-        .filter(|instruction| !instruction_has_account_field_pda_seeds(instruction))
-        .collect()
+    idl.instructions.iter().collect()
 }
 
 fn plugin_instruction_has_input(instruction: &IdlInstruction) -> bool {
-    instruction.remaining_accounts.is_some()
-        || !instruction.args.is_empty()
-        || instruction
-            .accounts
-            .iter()
-            .any(|account| account.optional || matches!(account.resolver, IdlResolver::Input {}))
+    instruction_has_input(instruction)
 }
 
 fn lower_first(value: &str) -> String {
@@ -130,15 +122,15 @@ pub(super) fn emit_instruction_builders(
         let pascal = snake_to_pascal(&instruction.name);
         let arg_types = instruction_arg_types(instruction);
 
-        let mut user_accounts = Vec::new();
-        let mut has_non_input_accounts = false;
-        for account in &instruction.accounts {
-            if account.optional || matches!(account.resolver, IdlResolver::Input {}) {
-                user_accounts.push(account);
-            } else {
-                has_non_input_accounts = true;
-            }
-        }
+        let user_accounts: Vec<_> = instruction
+            .accounts
+            .iter()
+            .filter(|account| {
+                account_source(account)
+                    .expect("validated account resolver")
+                    .is_input()
+            })
+            .collect();
 
         let input_account_names: HashSet<&str> = user_accounts
             .iter()
@@ -149,7 +141,7 @@ pub(super) fn emit_instruction_builders(
             .filter(|account| account.optional)
             .map(|account| account.name.as_str())
             .collect();
-        let needs_account_resolver = instruction_has_account_field_pda_seeds(instruction);
+        let has_input = instruction_has_input(instruction);
 
         let account_expr = |name: &str| {
             if input_account_names.contains(name) {
@@ -159,7 +151,7 @@ pub(super) fn emit_instruction_builders(
                     format!("(accountOverrides.{name} ?? input.{name})")
                 }
             } else {
-                format!("(accountOverrides.{name} ?? accountsMap[\"{name}\"])")
+                format!("(accountOverrides.{name} ?? {})", binding_name(name))
             }
         };
 
@@ -172,11 +164,8 @@ pub(super) fn emit_instruction_builders(
         });
 
         let mut method_params = Vec::new();
-        if !user_accounts.is_empty() || !instruction.args.is_empty() || has_remaining {
+        if has_input {
             method_params.push(format!("input: {pascal}InstructionInput"));
-        }
-        if needs_account_resolver {
-            method_params.push("resolver: AccountDataResolver".to_string());
         }
         let return_type = if has_pdas {
             "Promise<Instruction>"
@@ -191,28 +180,20 @@ pub(super) fn emit_instruction_builders(
                 method_params.join(", ")
             )
             .expect("write to String");
-            let mut unchecked_args = Vec::new();
-            if !user_accounts.is_empty() || !instruction.args.is_empty() || has_remaining {
-                unchecked_args.push("input");
+            let mut raw_args = Vec::new();
+            if has_input {
+                raw_args.push("input");
             }
-            unchecked_args.push("{}");
-            if needs_account_resolver {
-                unchecked_args.push("resolver");
-            }
+            raw_args.push("{}");
             writeln!(
                 out,
-                "    return this.create{pascal}InstructionUnchecked({});",
-                unchecked_args.join(", ")
+                "    return this.create{pascal}InstructionRaw({});",
+                raw_args.join(", ")
             )
             .expect("write to String");
             out.push_str("  }\n\n");
 
-            let override_position =
-                if !user_accounts.is_empty() || !instruction.args.is_empty() || has_remaining {
-                    1
-                } else {
-                    0
-                };
+            let override_position = usize::from(has_input);
             method_params.insert(
                 override_position,
                 format!("accountOverrides: {pascal}InstructionAccountOverrides"),
@@ -224,80 +205,24 @@ pub(super) fn emit_instruction_builders(
             if instruction.accounts.is_empty() {
                 ""
             } else {
-                "Unchecked"
+                "Raw"
             },
             method_params.join(", ")
         )
         .expect("write to String");
 
-        if has_non_input_accounts {
-            out.push_str("    const accountsMap: Record<string, Address> = {};\n");
-        }
-
-        for account in &instruction.accounts {
-            if account.optional {
-                continue;
-            }
-            if let IdlResolver::Const { address: value } = &account.resolver {
-                writeln!(
-                    out,
-                    "    accountsMap[\"{}\"] = address(\"{}\");",
-                    account.name, value
-                )
-                .expect("write to String");
-            }
-        }
-
-        for account in resolved_account_order(instruction).expect("validated derived-account order")
-        {
-            if let IdlResolver::Pda { program, seeds } = &account.resolver {
-                let helper_name = matches!(program, IdlPdaProgram::ProgramId {})
-                    .then(|| exportable_pda_helpers.get(&format!("{:?}", seeds)))
-                    .flatten();
-                if let Some(helper_name) = helper_name {
-                    let args = helper_call_args(seeds, &account_expr);
-                    writeln!(
-                        out,
-                        "    accountsMap[\"{}\"] = await {}({});",
-                        account.name, helper_name, args
-                    )
-                    .expect("write to String");
-                } else {
-                    emit_account_field_seed_resolvers(out, seeds, idl, &account_expr);
-                    let program_expr = match program {
-                        IdlPdaProgram::ProgramId {} => "PROGRAM_ADDRESS".to_string(),
-                        IdlPdaProgram::Account { path } => account_expr(path),
-                    };
-                    emit_inline_pda_derivation(
-                        out,
-                        &account.name,
-                        seeds,
-                        idl,
-                        InlinePdaTarget {
-                            target: TsTarget::Kit,
-                            program_expr: &program_expr,
-                        },
-                        &arg_types,
-                        &account_expr,
-                    );
-                }
-            } else if let IdlResolver::AssociatedToken {
-                mint,
-                owner,
-                token_program,
-            } = &account.resolver
-            {
-                emit_associated_token_derivation(
-                    out,
-                    &account.name,
-                    mint,
-                    owner,
-                    token_program.as_deref(),
-                    TsTarget::Kit,
-                    &account_expr,
-                );
-            }
-        }
+        emit_account_bindings(
+            out,
+            instruction,
+            &BindingContext {
+                idl,
+                target: TsTarget::Kit,
+                program_id_expr: "PROGRAM_ADDRESS",
+                exportable_pda_helpers,
+                arg_types: &arg_types,
+            },
+            &account_expr,
+        );
 
         let disc = crate::codegen::format_disc_decimal(&instruction.discriminator);
         let has_dynamic_args = instruction.args.iter().any(is_arg_dynamic);

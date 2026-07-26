@@ -1,6 +1,12 @@
-import { AccountRole, address } from "@solana/kit";
+import {
+  AccountRole,
+  address,
+  getProgramDerivedAddress,
+  getU64Codec,
+} from "@solana/kit";
 import {
   GoldenDemoClient,
+  PROGRAM_ADDRESS,
   PROGRAM_ERRORS,
   ProgramEvent,
   VaultCodec,
@@ -61,6 +67,31 @@ async function main() {
     "unknown event discriminator was accepted",
   );
   assert(PROGRAM_ERRORS[6000]?.name === "Unauthorized", "error map changed");
+
+  // A PDA seeded by a field of that same account: the seed value is a plain
+  // input, so the builder derives the address with no RPC and no resolver.
+  const poolSeed = 42n;
+  const sync = await client.createSyncInstruction({ authority, poolSeed });
+  const [expectedPool] = await getProgramDerivedAddress({
+    programAddress: PROGRAM_ADDRESS,
+    seeds: [
+      new Uint8Array([112, 111, 111, 108]),
+      getU64Codec().encode(poolSeed),
+    ],
+  });
+  const syncAccounts = sync.accounts as readonly {
+    address: string;
+    role: unknown;
+  }[];
+  assert(syncAccounts.length === 2, "sync account count changed");
+  assert(
+    syncAccounts[1].address === expectedPool,
+    "account-field seed PDA changed",
+  );
+  assert(
+    syncAccounts[1].role === AccountRole.WRITABLE,
+    "sync pool role changed",
+  );
 }
 
 void main();

@@ -1,8 +1,9 @@
 use {
     super::model::{
         account_field_definition, account_field_seed_inputs, python_field_path, reject_generics,
-        resolved_account_order, resolver_is_derived, CodegenResult, ProgramModel,
+        resolved_account_order, CodegenResult, ProgramModel,
     },
+    crate::codegen::accounts::{account_source, AccountSource},
     crate::codegen::naming::{camel_to_snake, snake_to_pascal, to_screaming_snake},
     crate::types::{
         Idl, IdlAccountNode, IdlArg, IdlCodec, IdlFieldDef, IdlPdaProgram, IdlPdaSeed, IdlResolver,
@@ -113,6 +114,9 @@ pub fn generate_python_client(idl: &Idl) -> CodegenResult<String> {
     for type_def in &idl.types {
         writeln!(out, "\n@dataclass").unwrap();
         writeln!(out, "class {}:", type_def.name).unwrap();
+        if let Some(docstring) = crate::codegen::docs::py_docstring(&type_def.docs, "    ") {
+            out.push_str(&docstring);
+        }
         if type_def.fields.is_empty() {
             out.push_str("    pass\n");
         } else {
@@ -196,23 +200,19 @@ pub fn generate_python_client(idl: &Idl) -> CodegenResult<String> {
         // Input dataclass
         writeln!(out, "\n@dataclass").unwrap();
         writeln!(out, "class {}Input:", class_name).unwrap();
+        if let Some(docstring) = crate::codegen::docs::py_docstring(&ix.docs, "    ") {
+            out.push_str(&docstring);
+        }
 
         // Required account fields. Optional accounts are emitted after every
         // required field so the generated dataclass never places a defaulted
         // field before a required account, PDA seed input, or instruction arg.
         let mut has_any_fields = false;
         for acc in &ix.accounts {
-            if acc.optional {
+            // Constants, argument-carried addresses, and derived accounts are
+            // filled in by the client; only true inputs reach the caller.
+            if acc.optional || !account_source(acc)?.is_input() {
                 continue;
-            }
-            if matches!(acc.resolver, IdlResolver::Const { .. }) {
-                continue; // Known addresses are auto-filled
-            }
-            if matches!(
-                acc.resolver,
-                IdlResolver::Pda { .. } | IdlResolver::AssociatedToken { .. }
-            ) {
-                continue; // Derived addresses are filled by the client
             }
             writeln!(out, "    {}: Pubkey", camel_to_snake(&acc.name)).unwrap();
             has_any_fields = true;
@@ -268,14 +268,36 @@ pub fn generate_python_client(idl: &Idl) -> CodegenResult<String> {
         }
         out.push('\n');
 
+        // Every account can be overridden, including the derived ones: a
+        // client that infers an address must still let the caller correct it.
+        writeln!(out, "\n@dataclass").unwrap();
+        writeln!(out, "class {}Overrides:", class_name).unwrap();
+        for acc in &ix.accounts {
+            writeln!(
+                out,
+                "    {}: Optional[Pubkey] = None",
+                camel_to_snake(&acc.name)
+            )
+            .unwrap();
+        }
+        if ix.accounts.is_empty() {
+            out.push_str("    pass\n");
+        }
+
         // Builder function
         writeln!(
             out,
-            "\ndef create_{}_instruction(input: {}Input) -> Instruction:",
-            fn_name, class_name
+            "\ndef create_{}_instruction(input: {}Input, overrides: Optional[{}Overrides] = None)              -> Instruction:",
+            fn_name, class_name, class_name
         )
         .unwrap();
 
+        writeln!(
+            out,
+            "    overrides = overrides if overrides is not None else {}Overrides()",
+            class_name
+        )
+        .unwrap();
         out.push_str("    accounts_map = {}\n");
 
         // Resolve addresses independently from account-meta order: derived
@@ -284,14 +306,12 @@ pub fn generate_python_client(idl: &Idl) -> CodegenResult<String> {
         for acc in ix
             .accounts
             .iter()
-            .filter(|acc| acc.optional || !resolver_is_derived(&acc.resolver))
+            .filter(|acc| acc.optional || !account_source(acc).is_ok_and(|s| s.is_derived()))
         {
-            let key_expr = python_account_key_expr(acc, idl);
-            writeln!(out, "    accounts_map[\"{}\"] = {}", acc.name, key_expr).unwrap();
+            write_python_account_binding(&mut out, acc, idl);
         }
         for acc in resolved_account_order(ix)? {
-            let key_expr = python_account_key_expr(acc, idl);
-            writeln!(out, "    accounts_map[\"{}\"] = {}", acc.name, key_expr).unwrap();
+            write_python_account_binding(&mut out, acc, idl);
         }
         for acc in &ix.accounts {
             writeln!(
@@ -526,14 +546,31 @@ pub fn generate_python_client(idl: &Idl) -> CodegenResult<String> {
     Ok(out)
 }
 
+/// Bind one account, letting an explicit override win over the computed value.
+fn write_python_account_binding(out: &mut String, account: &IdlAccountNode, idl: &Idl) {
+    let name = camel_to_snake(&account.name);
+    let computed = python_account_key_expr(account, idl);
+    let binding = format!(
+        "overrides.{name} if overrides.{name} is not None else {computed}",
+        name = name,
+        computed = computed
+    );
+    writeln!(out, "    accounts_map[\"{}\"] = {binding}", account.name).unwrap();
+}
+
 fn python_account_key_expr(account: &IdlAccountNode, idl: &Idl) -> String {
     if account.optional {
         let name = camel_to_snake(&account.name);
         return format!("input.{name} if input.{name} is not None else PROGRAM_ID");
     }
 
+    match account_source(account).expect("validated account resolver") {
+        AccountSource::Constant(address) => return format!("Pubkey.from_string(\"{address}\")"),
+        AccountSource::Arg(path) => return format!("input.{}", camel_to_snake(path)),
+        AccountSource::Input | AccountSource::Derived => {}
+    }
+
     match &account.resolver {
-        IdlResolver::Const { address } => format!("Pubkey.from_string(\"{address}\")"),
         IdlResolver::Pda { program, seeds } => {
             let seed_exprs = seeds
                 .iter()

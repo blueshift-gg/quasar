@@ -114,11 +114,25 @@ impl<'input> ::quasar_lang::remaining::RemainingItem<'input> for UseCustomBehavi
 #[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
 #[macro_export]
 macro_rules! __use_custom_behavior_instruction {
-    ($struct_name:ident, [$($disc:expr),*], { $($arg_name:ident : $arg_ty:ty),* }) => {
+    (
+        $struct_name:ident, $raw_name:ident, [$($disc:expr),*], { $($arg_name:ident :
+        $arg_ty:ty),* }
+    ) => {
         pub struct $struct_name { pub data : ::quasar_lang::prelude::Address, $(pub
-        $arg_name : $arg_ty,)* } impl From < $struct_name > for
+        $arg_name : $arg_ty,)* } #[doc =
+        r" Every account spelled out, including the ones the input builder"] #[doc =
+        r" resolves for you. Build it from `$struct_name` and replace an"] #[doc =
+        r" address the client would otherwise derive."] pub struct $raw_name { pub data :
+        ::quasar_lang::prelude::Address, $(pub $arg_name : $arg_ty,)* } impl From <
+        $struct_name > for $raw_name { #[allow(unused_variables)] fn from(ix :
+        $struct_name) -> $raw_name { $raw_name { data : ix.data, $($arg_name : ix.
+        $arg_name,)* } } } impl From < $struct_name > for
+        ::quasar_lang::client::Instruction { #[inline] fn from(ix : $struct_name) ->
+        ::quasar_lang::client::Instruction { < $raw_name as ::core::convert::Into <
+        ::quasar_lang::client::Instruction >> ::into(< $struct_name as
+        ::core::convert::Into < $raw_name >> ::into(ix),) } } impl From < $raw_name > for
         ::quasar_lang::client::Instruction { #[allow(unused_variables)] fn from(ix :
-        $struct_name) -> ::quasar_lang::client::Instruction { let accounts =
+        $raw_name) -> ::quasar_lang::client::Instruction { let accounts =
         ::alloc::vec![::quasar_lang::client::AccountMeta::new_readonly(ix.data, false),];
         let data = { let mut _data = ::alloc::vec![$($disc),*]; $(_data
         .extend_from_slice(& < $arg_ty as ::quasar_lang::client::SerializeArg >
@@ -126,13 +140,24 @@ macro_rules! __use_custom_behavior_instruction {
         { program_id : $crate::ID, accounts, data, } } }
     };
     (
-        $struct_name:ident, [$($disc:expr),*], { $($arg_name:ident : $arg_ty:ty),* },
-        compact
+        $struct_name:ident, $raw_name:ident, [$($disc:expr),*], { $($arg_name:ident :
+        $arg_ty:ty),* }, compact
     ) => {
         pub struct $struct_name { pub data : ::quasar_lang::prelude::Address, $(pub
-        $arg_name : $arg_ty,)* } impl From < $struct_name > for
+        $arg_name : $arg_ty,)* } #[doc =
+        r" Every account spelled out, including the ones the input builder"] #[doc =
+        r" resolves for you. Build it from `$struct_name` and replace an"] #[doc =
+        r" address the client would otherwise derive."] pub struct $raw_name { pub data :
+        ::quasar_lang::prelude::Address, $(pub $arg_name : $arg_ty,)* } impl From <
+        $struct_name > for $raw_name { #[allow(unused_variables)] fn from(ix :
+        $struct_name) -> $raw_name { $raw_name { data : ix.data, $($arg_name : ix.
+        $arg_name,)* } } } impl From < $struct_name > for
+        ::quasar_lang::client::Instruction { #[inline] fn from(ix : $struct_name) ->
+        ::quasar_lang::client::Instruction { < $raw_name as ::core::convert::Into <
+        ::quasar_lang::client::Instruction >> ::into(< $struct_name as
+        ::core::convert::Into < $raw_name >> ::into(ix),) } } impl From < $raw_name > for
         ::quasar_lang::client::Instruction { #[allow(unused_variables)] fn from(ix :
-        $struct_name) -> ::quasar_lang::client::Instruction { let accounts =
+        $raw_name) -> ::quasar_lang::client::Instruction { let accounts =
         ::alloc::vec![::quasar_lang::client::AccountMeta::new_readonly(ix.data, false),];
         let data = { let mut _data = ::alloc::vec![$($disc),*]; $(_data
         .extend_from_slice(& < $arg_ty as ::quasar_lang::client::CompactSerializeArg >
@@ -142,32 +167,56 @@ macro_rules! __use_custom_behavior_instruction {
         data, } } }
     };
     (
-        $struct_name:ident, [$($disc:expr),*], { $($arg_name:ident : $arg_ty:ty),* },
-        remaining
+        $struct_name:ident, $raw_name:ident, [$($disc:expr),*], { $($arg_name:ident :
+        $arg_ty:ty),* }, remaining
     ) => {
         pub struct $struct_name { pub data : ::quasar_lang::prelude::Address, $(pub
         $arg_name : $arg_ty,)* pub remaining_accounts : ::alloc::vec::Vec <
-        ::quasar_lang::client::AccountMeta >, } impl From < $struct_name > for
-        ::quasar_lang::client::Instruction { #[allow(unused_variables)] fn from(ix :
-        $struct_name) -> ::quasar_lang::client::Instruction { let mut accounts =
-        ::alloc::vec![::quasar_lang::client::AccountMeta::new_readonly(ix.data, false),];
-        accounts.extend(ix.remaining_accounts); let data = { let mut _data =
+        ::quasar_lang::client::AccountMeta >, } #[doc =
+        r" Every account spelled out, including the ones the input builder"] #[doc =
+        r" resolves for you. Build it from `$struct_name` and replace an"] #[doc =
+        r" address the client would otherwise derive."] pub struct $raw_name { pub data :
+        ::quasar_lang::prelude::Address, $(pub $arg_name : $arg_ty,)* pub
+        remaining_accounts : ::alloc::vec::Vec < ::quasar_lang::client::AccountMeta >, }
+        impl From < $struct_name > for $raw_name { #[allow(unused_variables)] fn from(ix
+        : $struct_name) -> $raw_name { $raw_name { data : ix.data, $($arg_name : ix.
+        $arg_name,)* remaining_accounts : ix.remaining_accounts, } } } impl From <
+        $struct_name > for ::quasar_lang::client::Instruction { #[inline] fn from(ix :
+        $struct_name) -> ::quasar_lang::client::Instruction { < $raw_name as
+        ::core::convert::Into < ::quasar_lang::client::Instruction >> ::into(<
+        $struct_name as ::core::convert::Into < $raw_name >> ::into(ix),) } } impl From <
+        $raw_name > for ::quasar_lang::client::Instruction { #[allow(unused_variables)]
+        fn from(ix : $raw_name) -> ::quasar_lang::client::Instruction { let mut accounts
+        = ::alloc::vec![::quasar_lang::client::AccountMeta::new_readonly(ix.data,
+        false),]; accounts.extend(ix.remaining_accounts); let data = { let mut _data =
         ::alloc::vec![$($disc),*]; $(_data.extend_from_slice(& < $arg_ty as
         ::quasar_lang::client::SerializeArg > ::serialize_arg(& ix. $arg_name));)* _data
         }; ::quasar_lang::client::Instruction { program_id : $crate::ID, accounts, data,
         } } }
     };
     (
-        $struct_name:ident, [$($disc:expr),*], { $($arg_name:ident : $arg_ty:ty),* },
-        compact, remaining
+        $struct_name:ident, $raw_name:ident, [$($disc:expr),*], { $($arg_name:ident :
+        $arg_ty:ty),* }, compact, remaining
     ) => {
         pub struct $struct_name { pub data : ::quasar_lang::prelude::Address, $(pub
         $arg_name : $arg_ty,)* pub remaining_accounts : ::alloc::vec::Vec <
-        ::quasar_lang::client::AccountMeta >, } impl From < $struct_name > for
-        ::quasar_lang::client::Instruction { #[allow(unused_variables)] fn from(ix :
-        $struct_name) -> ::quasar_lang::client::Instruction { let mut accounts =
-        ::alloc::vec![::quasar_lang::client::AccountMeta::new_readonly(ix.data, false),];
-        accounts.extend(ix.remaining_accounts); let data = { let mut _data =
+        ::quasar_lang::client::AccountMeta >, } #[doc =
+        r" Every account spelled out, including the ones the input builder"] #[doc =
+        r" resolves for you. Build it from `$struct_name` and replace an"] #[doc =
+        r" address the client would otherwise derive."] pub struct $raw_name { pub data :
+        ::quasar_lang::prelude::Address, $(pub $arg_name : $arg_ty,)* pub
+        remaining_accounts : ::alloc::vec::Vec < ::quasar_lang::client::AccountMeta >, }
+        impl From < $struct_name > for $raw_name { #[allow(unused_variables)] fn from(ix
+        : $struct_name) -> $raw_name { $raw_name { data : ix.data, $($arg_name : ix.
+        $arg_name,)* remaining_accounts : ix.remaining_accounts, } } } impl From <
+        $struct_name > for ::quasar_lang::client::Instruction { #[inline] fn from(ix :
+        $struct_name) -> ::quasar_lang::client::Instruction { < $raw_name as
+        ::core::convert::Into < ::quasar_lang::client::Instruction >> ::into(<
+        $struct_name as ::core::convert::Into < $raw_name >> ::into(ix),) } } impl From <
+        $raw_name > for ::quasar_lang::client::Instruction { #[allow(unused_variables)]
+        fn from(ix : $raw_name) -> ::quasar_lang::client::Instruction { let mut accounts
+        = ::alloc::vec![::quasar_lang::client::AccountMeta::new_readonly(ix.data,
+        false),]; accounts.extend(ix.remaining_accounts); let data = { let mut _data =
         ::alloc::vec![$($disc),*]; $(_data.extend_from_slice(& < $arg_ty as
         ::quasar_lang::client::CompactSerializeArg > ::compact_header(& ix.
         $arg_name));)* $(_data.extend_from_slice(& < $arg_ty as

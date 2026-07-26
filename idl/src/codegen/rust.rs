@@ -1,8 +1,8 @@
 use {
+    super::accounts::{account_source, AccountSource},
     super::model::{
-        account_field_definition, account_field_seed_inputs, resolved_account_dependencies,
-        resolved_account_order, resolver_is_derived, CodegenError, CodegenResult, ProgramFeatures,
-        ProgramModel, WireType,
+        account_field_definition, account_field_seed_inputs, resolved_account_order, CodegenError,
+        CodegenResult, ProgramFeatures, ProgramModel, WireType,
     },
     crate::codegen::naming::{
         camel_to_snake, pascal_to_snake, snake_to_pascal,
@@ -19,8 +19,32 @@ use {
 };
 
 /// Generate Cargo.toml content for the standalone client crate.
-pub fn generate_cargo_toml(name: &str, version: &str, has_pdas: bool) -> String {
+/// Cargo manifest for a generated client crate.
+///
+/// A client is an off-chain crate: it builds instructions and decodes account
+/// data. It deliberately does not depend on `quasar-lang`, whose exact-version
+/// pin would collide with whatever framework version the consumer builds
+/// against. Dependency ranges are caret, not `=`, for the same reason.
+pub fn generate_cargo_toml(
+    name: &str,
+    version: &str,
+    has_pdas: bool,
+    needs_lang_runtime: bool,
+) -> String {
     let quasar_version = env!("CARGO_PKG_VERSION");
+    // Only clients that actually reference the runtime (dynamic string/vec
+    // wrappers, exotic PDA seed types) take the dependency.
+    let quasar_lang = if needs_lang_runtime {
+        let major_minor = quasar_version
+            .rsplit_once('.')
+            .map_or(quasar_version, |(prefix, _)| prefix);
+        format!("quasar-lang = \"{major_minor}\"\n")
+    } else {
+        String::new()
+    };
+    // `solana-address` implements the wincode traits against one exact wincode
+    // version; a caret range on either lets cargo pick a pair that does not
+    // implement `SchemaRead`/`SchemaWrite` for `Address`. They move together.
     let solana_address = if has_pdas {
         r#"solana-address = { version = "=2.2.0", features = ["curve25519", "wincode"] }"#
     } else {
@@ -31,14 +55,42 @@ pub fn generate_cargo_toml(name: &str, version: &str, has_pdas: bool) -> String 
 name = "{name}-client"
 version = "{version}"
 edition = "2021"
+description = "Generated Solana client for the {name} program."
+license = "Apache-2.0 OR MIT"
 
 [dependencies]
-quasar-lang = "={quasar_version}"
-wincode = {{ version = "=0.4.9", features = ["derive"] }}
+{quasar_lang}wincode = {{ version = "=0.4.9", features = ["derive"] }}
 {solana_address}
 solana-instruction = "3"
 "#,
     )
+}
+
+/// Whether the generated client references the `quasar-lang` runtime: dynamic
+/// field wrappers or a PDA seed type with no inline byte encoding.
+fn needs_lang_runtime(idl: &Idl) -> bool {
+    let dynamic_fields = idl.types.iter().flat_map(|ty| ty.fields.iter());
+    if dynamic_fields
+        .clone()
+        .any(|f| is_direct_dynamic(&f.ty, &f.codec))
+    {
+        return true;
+    }
+    idl.instructions.iter().any(|ix| {
+        ix.accounts.iter().any(|account| {
+            let IdlResolver::Pda { seeds, .. } = &account.resolver else {
+                return false;
+            };
+            seeds.iter().any(|seed| match seed {
+                IdlPdaSeed::Arg { ty, .. } => {
+                    pda_scalar_type(ty).is_none() && !matches!(ty, IdlType::Array { .. })
+                }
+                IdlPdaSeed::AccountField { .. }
+                | IdlPdaSeed::Account { .. }
+                | IdlPdaSeed::Const { .. } => false,
+            })
+        })
+    })
 }
 
 pub fn generate_cargo_toml_for_program(model: &ProgramModel<'_>) -> String {
@@ -46,6 +98,7 @@ pub fn generate_cargo_toml_for_program(model: &ProgramModel<'_>) -> String {
         &model.identity.client_name,
         &model.idl.version,
         model.features.has_pdas,
+        needs_lang_runtime(model.idl),
     )
 }
 
@@ -668,9 +721,6 @@ fn emit_single_instruction(
     writeln!(out, "pub struct {raw_instruction_name} {{").expect("write to String");
 
     for account in &ix.accounts {
-        if !account.optional && matches!(account.resolver, IdlResolver::Const { .. }) {
-            continue;
-        }
         // Optional accounts become `Option<Address>`; an absent (`None`) slot is
         // encoded as the program id sentinel per the runtime convention.
         let field_ty = if account.optional {
@@ -882,20 +932,14 @@ fn emit_resolved_instruction(
 ) -> CodegenResult<()> {
     let account_field_seeds = rust_account_field_seed_inputs(idl, ix);
 
+    crate::codegen::docs::line_comments(out, &ix.docs, "", "///");
     writeln!(out, "pub struct {instruction_name} {{").expect("write to String");
 
     // Required caller-controlled accounts first. Optional accounts stay
     // caller-controlled even when their wrapped resolver is a PDA: `None`
     // retains the runtime's program-id sentinel convention.
     for account in &ix.accounts {
-        if account.optional
-            || matches!(
-                account.resolver,
-                IdlResolver::Const { .. }
-                    | IdlResolver::Pda { .. }
-                    | IdlResolver::AssociatedToken { .. }
-            )
-        {
+        if account.optional || !account_source(account)?.is_input() {
             continue;
         }
         writeln!(out, "    pub {}: Address,", camel_to_snake(&account.name))
@@ -953,26 +997,29 @@ fn emit_resolved_instruction(
     // Bind every caller-controlled account before deriving PDAs. A PDA may
     // appear before one of its input seed accounts in the IDL account list.
     for account in &ix.accounts {
-        if !account.optional && resolver_is_derived(&account.resolver) {
-            continue;
-        }
         let field_name = camel_to_snake(&account.name);
-        if !account.optional {
-            if let IdlResolver::Const { address } = &account.resolver {
-                let is_pda_dependency = ix
-                    .accounts
-                    .iter()
-                    .flat_map(resolved_account_dependencies)
-                    .any(|dependency| dependency == account.name);
-                if is_pda_dependency {
-                    writeln!(
-                        out,
-                        "        let {field_name} = solana_address::address!(\"{address}\");"
-                    )
-                    .expect("write to String");
-                }
+        match account_source(account)? {
+            AccountSource::Derived => continue,
+            AccountSource::Constant(address) => {
+                writeln!(
+                    out,
+                    "        let {field_name} = solana_address::address!(\"{address}\");"
+                )
+                .expect("write to String");
                 continue;
             }
+            // The address already travels as an instruction argument; binding
+            // it here keeps it out of the caller-facing account list.
+            AccountSource::Arg(path) => {
+                writeln!(
+                    out,
+                    "        let {field_name} = ix.{};",
+                    camel_to_snake(path)
+                )
+                .expect("write to String");
+                continue;
+            }
+            AccountSource::Input => {}
         }
         if account.optional {
             // Optional accounts use the program id as their wire sentinel.
@@ -1039,14 +1086,11 @@ fn emit_resolved_instruction(
 
     writeln!(out, "        {raw_instruction_name} {{").expect("write to String");
     for account in &ix.accounts {
-        if !matches!(account.resolver, IdlResolver::Const { .. }) {
-            let field_name = camel_to_snake(&account.name);
-            if account.optional {
-                writeln!(out, "            {field_name}: ix.{field_name},")
-                    .expect("write to String");
-            } else {
-                writeln!(out, "            {field_name},").expect("write to String");
-            }
+        let field_name = camel_to_snake(&account.name);
+        if account.optional {
+            writeln!(out, "            {field_name}: ix.{field_name},").expect("write to String");
+        } else {
+            writeln!(out, "            {field_name},").expect("write to String");
         }
     }
     for arg in &ix.args {
@@ -1384,6 +1428,7 @@ fn emit_single_type(
     out.push_str("#[derive(SchemaWrite, SchemaRead)]\n");
     writeln!(out, "pub struct {} {{", type_name).expect("write to String");
     for field in fields {
+        crate::codegen::docs::line_comments(&mut out, &field.docs, "    ", "///");
         writeln!(
             out,
             "    pub {}: {},",
@@ -1786,7 +1831,8 @@ fn emit_manual_impls(
         .iter()
         .map(|f| (camel_to_snake(&f.name), rust_field_type(&f.ty, &f.codec)))
         .collect();
-    for (field_name, field_type) in &fields {
+    for (field, (field_name, field_type)) in idl_fields.iter().zip(&fields) {
+        crate::codegen::docs::line_comments(out, &field.docs, "    ", "///");
         writeln!(out, "    pub {}: {},", field_name, field_type).expect("write to String");
     }
     out.push_str("}\n\n");
@@ -2096,12 +2142,14 @@ fn account_meta_expr(account: &IdlAccountNode) -> String {
     let field_name = camel_to_snake(&account.name);
     let signer = matches!(account.signer, AccountFlag::Fixed(true));
     // Optional accounts default an absent slot to the program id sentinel.
-    let key = if account.optional {
-        format!("ix.{field_name}.unwrap_or(ID)")
-    } else if let IdlResolver::Const { address } = &account.resolver {
-        format!("solana_address::address!(\"{address}\")")
-    } else {
-        format!("ix.{field_name}")
+    let key = match account_source(account).expect("validated account resolver") {
+        AccountSource::Input if account.optional => format!("ix.{field_name}.unwrap_or(ID)"),
+        // The Raw builder carries constants as fields so a caller can swap one
+        // (legacy Token for Token-2022, say) without hand-building the metas.
+        AccountSource::Constant(_) => format!("ix.{field_name}"),
+        AccountSource::Input | AccountSource::Arg(_) | AccountSource::Derived => {
+            format!("ix.{field_name}")
+        }
     };
     if matches!(account.writable, AccountFlag::Fixed(true)) {
         format!("AccountMeta::new({}, {})", key, signer)

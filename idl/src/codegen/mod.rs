@@ -1,8 +1,11 @@
+pub mod accounts;
 pub mod c;
+pub mod docs;
 pub mod golang;
 pub mod model;
 mod naming;
 pub mod python;
+pub mod readme;
 pub mod rust;
 pub mod typescript;
 
@@ -320,7 +323,9 @@ mod tests {
         assert!(output.contains("uint64_t pda_key_buf_capacity"));
         assert!(output.contains("uint64_t pda_status = find_program_address"));
         assert!(output.contains("&derived_pda_keys[0]"));
-        assert!(output.contains("meta_buf[0] = meta_writable(&pda_key_buf[0]);"));
+        assert!(output.contains(
+            "meta_buf[0] = meta_writable(accounts->vault ? accounts->vault : &pda_key_buf[0]);"
+        ));
         assert!(output.contains(".pda_status = pda_status"));
         assert!(!output.contains("sizeof(args->amount)"));
     }
@@ -334,12 +339,21 @@ mod tests {
     }
 
     #[test]
-    fn rust_client_manifest_pins_the_generator_version() {
-        let manifest = generate_rust_cargo_toml("example", "1.2.3", false);
+    fn rust_client_manifest_stays_off_chain_and_range_compatible() {
+        // A client that never touches the runtime must not depend on it: an
+        // exact pin would fight the consumer's own framework version.
+        let plain = generate_rust_cargo_toml("example", "1.2.3", false, false);
+        assert!(!plain.contains("quasar-lang"));
+        // wincode and solana-address stay exactly pinned: they implement each
+        // other's traits and must resolve as a pair.
+        assert!(plain.contains("wincode = { version = \"=0.4.9\""));
+        assert!(!plain.contains("git ="));
+        assert!(!plain.contains("branch ="));
 
-        assert!(manifest.contains(&format!("quasar-lang = \"={}\"", env!("CARGO_PKG_VERSION"))));
-        assert!(!manifest.contains("git ="));
-        assert!(!manifest.contains("branch ="));
+        // Clients that do reference it take a caret range, not a pin.
+        let with_runtime = generate_rust_cargo_toml("example", "1.2.3", false, true);
+        assert!(with_runtime.contains("quasar-lang = \""));
+        assert!(!with_runtime.contains("quasar-lang = \"="));
     }
 
     #[test]
@@ -419,17 +433,17 @@ mod tests {
             generate_ts_client_kit(&idl).unwrap(),
         ] {
             let const_program = typescript
-                .find("accountsMap[\"tokenProgram\"] =")
+                .find("const __tokenProgram: Address =")
                 .expect("constant program binding");
             let parent = typescript
-                .find("accountsMap[\"parent\"] =")
+                .find("const __parent: Address =")
                 .expect("parent PDA derivation");
             let child = typescript
-                .find("accountsMap[\"child\"] =")
+                .find("const __child: Address =")
                 .expect("child PDA derivation");
             assert!(const_program < parent && parent < child);
-            assert!(typescript.contains("accountsMap[\"parent\"]"));
-            assert!(typescript.contains("accountsMap[\"tokenProgram\"]"));
+            assert!(typescript.contains("?? __parent)"));
+            assert!(typescript.contains("?? __tokenProgram)"));
             assert!(typescript.contains("export async function findParentAddress"));
             assert!(!typescript.contains("export async function findChildAddress"));
         }
@@ -491,14 +505,15 @@ mod tests {
         }
 
         let python = generate_python_client(&idl).unwrap();
-        assert!(python.contains(
-            "accounts_map[\"maybeSeed\"] = input.maybe_seed if input.maybe_seed is not None else \
-             PROGRAM_ID"
-        ));
-        assert!(python.contains(
-            "accounts_map[\"maybeProgram\"] = input.maybe_program if input.maybe_program is not \
-             None else PROGRAM_ID"
-        ));
+        for (key, snake) in [
+            ("maybeSeed", "maybe_seed"),
+            ("maybeProgram", "maybe_program"),
+        ] {
+            assert!(python.contains(&format!(
+                "accounts_map[\"{key}\"] = overrides.{snake} if overrides.{snake} is not None \
+                 else input.{snake} if input.{snake} is not None else PROGRAM_ID"
+            )));
+        }
 
         let go = generate_go_client(&idl).unwrap();
         assert!(
@@ -544,14 +559,15 @@ mod tests {
         assert!(kit.contains("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"));
         for output in [&typescript, &kit] {
             assert!(output.contains("export interface CreateInstructionAccountOverrides"));
-            assert!(output.contains("return this.createCreateInstructionUnchecked(input, {});"));
-            assert!(output.contains("createCreateInstructionUnchecked("));
-            assert!(output.contains("accountOverrides.ownerTokens ?? accountsMap[\"ownerTokens\"]"));
+            assert!(output.contains("return this.createCreateInstructionRaw(input, {});"));
+            assert!(output.contains("createCreateInstructionRaw("));
+            assert!(output.contains("accountOverrides.ownerTokens ?? __ownerTokens"));
         }
         assert!(python.contains("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"));
         assert!(go.contains("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"));
         assert!(c.contains("SEED_TEST_ASSOCIATED_TOKEN_PROGRAM_ID"));
-        assert!(!c.contains("Pubkey *ownerTokens;"));
+        // Derived in C too, but overridable: NULL keeps the derived address.
+        assert!(c.contains("Pubkey *ownerTokens; /* optional override */"));
     }
 
     #[test]

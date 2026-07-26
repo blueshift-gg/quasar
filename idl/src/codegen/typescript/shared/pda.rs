@@ -2,7 +2,10 @@ use {
     super::{codec::ts_type, InlinePdaTarget, TsTarget},
     crate::{
         codegen::{
-            model::{account_field_definition, account_field_seed_inputs},
+            accounts::{
+                account_source, AccountSource, ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID,
+            },
+            model::{account_field_definition, account_field_seed_inputs, resolved_account_order},
             naming::snake_to_pascal,
         },
         types::{Idl, IdlPdaProgram, IdlPdaSeed, IdlResolver, IdlType},
@@ -254,8 +257,8 @@ pub(super) fn emit_inline_pda_derivation(
         TsTarget::Web3js => {
             writeln!(
                 out,
-                "    accountsMap[\"{}\"] = (await Address.findProgramAddress(",
-                account_name
+                "    const {}: Address = (await Address.findProgramAddress(",
+                binding_name(account_name)
             )
             .expect("write to String");
             out.push_str("      [\n");
@@ -266,8 +269,8 @@ pub(super) fn emit_inline_pda_derivation(
         TsTarget::Kit => {
             writeln!(
                 out,
-                "    accountsMap[\"{}\"] = (await getProgramDerivedAddress({{",
-                account_name
+                "    const {}: Address = (await getProgramDerivedAddress({{",
+                binding_name(account_name)
             )
             .expect("write to String");
             writeln!(out, "      programAddress: {},", target.program_expr)
@@ -293,29 +296,25 @@ pub(super) fn emit_associated_token_derivation(
     let owner = account_expr(owner);
     let token_program = token_program
         .map(account_expr)
-        .unwrap_or_else(|| match target {
-            TsTarget::Web3js => {
-                "new Address(\"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA\")".to_string()
-            }
-            TsTarget::Kit => "address(\"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA\")".to_string(),
-        });
+        .unwrap_or_else(|| address_literal(target, TOKEN_PROGRAM_ID));
+    let binding = binding_name(account_name);
+    let ata_program = address_literal(target, ASSOCIATED_TOKEN_PROGRAM_ID);
 
     match target {
         TsTarget::Web3js => {
             writeln!(
                 out,
-                "    accountsMap[\"{account_name}\"] = (await Address.findProgramAddress(\n      \
-                 [{owner}.toBytes(), {token_program}.toBytes(), {mint}.toBytes()],\n      new \
-                 Address(\"ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL\"),\n    ))[0];"
+                "    const {binding}: Address = (await Address.findProgramAddress(\n      \
+                 [{owner}.toBytes(), {token_program}.toBytes(), {mint}.toBytes()],\n      \
+                 {ata_program},\n    ))[0];"
             )
             .expect("write to String");
         }
         TsTarget::Kit => {
             writeln!(
                 out,
-                "    accountsMap[\"{account_name}\"] = (await getProgramDerivedAddress({{\n      \
-                 programAddress: address(\"ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL\"),\n      \
-                 seeds: [getAddressCodec().encode({owner}), \
+                "    const {binding}: Address = (await getProgramDerivedAddress({{\n      \
+                 programAddress: {ata_program},\n      seeds: [getAddressCodec().encode({owner}), \
                  getAddressCodec().encode({token_program}), \
                  getAddressCodec().encode({mint})],\n    }}))[0];"
             )
@@ -354,7 +353,7 @@ pub(super) fn write_inline_pda_seed_lines(
                 account,
                 field,
             } => {
-                let expr = account_field_seed_var(path, field);
+                let expr = format!("input.{}", account_field_seed_input_name(path, field));
                 let Some(ty) = account_field_definition(idl, account, field).map(|field| &field.ty)
                 else {
                     writeln!(out, "        {},", expr).expect("write to String");
@@ -403,82 +402,148 @@ pub(super) fn pda_is_exportable(
     })
 }
 
-pub(super) fn emit_account_field_seed_resolvers(
-    out: &mut String,
-    seeds: &[IdlPdaSeed],
-    idl: &Idl,
-    account_expr: &impl Fn(&str) -> String,
-) {
-    let mut seen = HashSet::new();
-    for seed in seeds {
-        let IdlPdaSeed::AccountField {
-            path,
-            account,
-            field,
-        } = seed
-        else {
-            continue;
-        };
-        let key = format!("{path}.{field}");
-        if !seen.insert(key) {
-            continue;
-        }
-        if account_field_definition(idl, account, field).is_none() {
-            continue;
-        }
+/// Local const holding a client-computed address.
+///
+/// Generated code references these bindings by name, so an account the
+/// generator fails to bind is a `cannot find name` error in the emitted client
+/// rather than an `undefined` address at runtime. The previous
+/// `Record<string, Address>` typed every miss as `Address` and hid it from
+/// `tsc --strict`.
+pub(super) fn binding_name(account: &str) -> String {
+    format!("__{account}")
+}
 
-        let data_var = account_field_data_var(path, field);
-        let account_var = account_field_account_var(path, field);
-        let value_var = account_field_seed_var(path, field);
-        writeln!(
-            out,
-            "    const {data_var} = await resolver.getAccountData({});",
-            account_expr(path)
-        )
-        .expect("write to String");
-        writeln!(
-            out,
-            "    if ({data_var} === null) throw new Error(\"Unable to resolve account data for \
-             {path}\");"
-        )
-        .expect("write to String");
-        writeln!(
-            out,
-            "    const {account_var} = this.decode{account}({data_var});"
-        )
-        .expect("write to String");
-        writeln!(
-            out,
-            "    const {value_var} = {account_var}.{};",
-            ts_field_access(field)
-        )
-        .expect("write to String");
+/// An address literal in the target's own type.
+pub(super) fn address_literal(target: TsTarget, value: &str) -> String {
+    match target {
+        TsTarget::Web3js => format!("new Address(\"{value}\")"),
+        TsTarget::Kit => format!("address(\"{value}\")"),
     }
 }
 
-pub(super) fn has_account_field_pda_seeds(idl: &Idl) -> bool {
-    idl.instructions
-        .iter()
-        .any(instruction_has_account_field_pda_seeds)
+/// What a target needs in order to bind the addresses it computes itself.
+pub(super) struct BindingContext<'a> {
+    pub idl: &'a Idl,
+    pub target: TsTarget,
+    /// How this target spells its own program id.
+    pub program_id_expr: &'a str,
+    pub exportable_pda_helpers: &'a HashMap<String, String>,
+    pub arg_types: &'a HashMap<String, IdlType>,
 }
 
-pub(super) fn instruction_has_account_field_pda_seeds(ix: &crate::types::IdlInstruction) -> bool {
-    !account_field_seed_inputs(ix).is_empty()
+/// Bind every address the client computes itself: constants, addresses carried
+/// by an instruction argument, then derived accounts in dependency order.
+pub(super) fn emit_account_bindings(
+    out: &mut String,
+    ix: &crate::types::IdlInstruction,
+    ctx: &BindingContext<'_>,
+    account_expr: &impl Fn(&str) -> String,
+) {
+    let BindingContext {
+        idl,
+        target,
+        program_id_expr,
+        exportable_pda_helpers,
+        arg_types,
+    } = *ctx;
+    for account in &ix.accounts {
+        // `ProgramModel::try_new` rejects any resolver that cannot be lowered,
+        // so classification here cannot fail.
+        match account_source(account).expect("validated account resolver") {
+            AccountSource::Constant(value) => {
+                writeln!(
+                    out,
+                    "    const {}: Address = {};",
+                    binding_name(&account.name),
+                    address_literal(target, value)
+                )
+                .expect("write to String");
+            }
+            AccountSource::Arg(path) => {
+                writeln!(
+                    out,
+                    "    const {}: Address = input.{path};",
+                    binding_name(&account.name)
+                )
+                .expect("write to String");
+            }
+            AccountSource::Input | AccountSource::Derived => {}
+        }
+    }
+
+    for account in resolved_account_order(ix).expect("validated derived-account order") {
+        match &account.resolver {
+            IdlResolver::Pda { program, seeds } => {
+                let helper_name = matches!(program, IdlPdaProgram::ProgramId {})
+                    .then(|| exportable_pda_helpers.get(&format!("{seeds:?}")))
+                    .flatten();
+                if let Some(helper_name) = helper_name {
+                    writeln!(
+                        out,
+                        "    const {}: Address = await {helper_name}({});",
+                        binding_name(&account.name),
+                        helper_call_args(seeds, account_expr)
+                    )
+                    .expect("write to String");
+                    continue;
+                }
+                let program_expr = match program {
+                    IdlPdaProgram::ProgramId {} => program_id_expr.to_string(),
+                    IdlPdaProgram::Account { path } => account_expr(path),
+                };
+                let inline_target = InlinePdaTarget {
+                    target,
+                    program_expr: &program_expr,
+                };
+                emit_inline_pda_derivation(
+                    out,
+                    &account.name,
+                    seeds,
+                    idl,
+                    inline_target,
+                    arg_types,
+                    account_expr,
+                );
+            }
+            IdlResolver::AssociatedToken {
+                mint,
+                owner,
+                token_program,
+            } => emit_associated_token_derivation(
+                out,
+                &account.name,
+                mint,
+                owner,
+                token_program.as_deref(),
+                target,
+                account_expr,
+            ),
+            // `resolved_account_order` yields only derived accounts.
+            other => unreachable!("non-derived account in derivation order: {other:?}"),
+        }
+    }
 }
 
-pub(super) fn account_field_data_var(path: &str, field: &str) -> String {
-    format!("__{}Data", account_field_var_stem(path, field))
+/// Whether the generated builder takes an `input` object at all: caller-supplied
+/// accounts, args, remaining accounts, or an account-field seed value.
+pub(super) fn instruction_has_input(ix: &crate::types::IdlInstruction) -> bool {
+    ix.remaining_accounts.is_some()
+        || !ix.args.is_empty()
+        || !account_field_seed_inputs(ix).is_empty()
+        || ix
+            .accounts
+            .iter()
+            .any(|account| account.optional || matches!(account.resolver, IdlResolver::Input {}))
 }
 
-pub(super) fn account_field_account_var(path: &str, field: &str) -> String {
-    format!("__{}Account", account_field_var_stem(path, field))
-}
-
-pub(super) fn account_field_seed_var(path: &str, field: &str) -> String {
-    format!("__{}Seed", account_field_var_stem(path, field))
-}
-
-pub(super) fn account_field_var_stem(path: &str, field: &str) -> String {
+/// Input field carrying an account-field seed value, e.g. `configSeed` for
+/// `config.seed`.
+///
+/// A seed read out of an account's own data cannot be fetched during
+/// derivation: the address is what the fetch would need. Every generator
+/// therefore takes the value as an explicit input, and TypeScript follows the
+/// same rule (see `resolved_account_dependencies`).
+pub(super) fn account_field_seed_input_name(path: &str, field: &str) -> String {
     let mut out = String::new();
     for part in path.split('.').chain(field.split('.')) {
         if part.is_empty() {
@@ -491,10 +556,6 @@ pub(super) fn account_field_var_stem(path: &str, field: &str) -> String {
         }
     }
     out
-}
-
-pub(super) fn ts_field_access(field: &str) -> String {
-    field.split('.').collect::<Vec<_>>().join(".")
 }
 
 pub(super) fn is_identifier(path: &str) -> bool {

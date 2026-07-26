@@ -18,12 +18,19 @@ pub use errors::*;
 pub use pda::*;
 
 //// instructions/mod.rs ////
+use solana_address::Address;
 pub mod make;
+pub mod sync;
+pub mod settle;
 
 pub use make::*;
+pub use sync::*;
+pub use settle::*;
 
 pub enum ProgramInstruction {
     Make { amount: u64, flag: bool },
+    Sync,
+    Settle { target: Address, amount: u64, bonus: Option<u64> },
 }
 
 fn quasar_take<'a>(data: &'a [u8], offset: &mut usize, len: usize) -> Option<&'a [u8]> {
@@ -47,6 +54,22 @@ pub fn decode_instruction(data: &[u8]) -> Option<ProgramInstruction> {
             quasar_take(payload, &mut offset, flag_size)?;
             if offset != payload.len() { return None; }
             Some(ProgramInstruction::Make { amount, flag })
+        }
+        1 => if data.len() == 1 { Some(ProgramInstruction::Sync) } else { None },
+        2 => {
+            let payload = &data[1..];
+            let mut offset = 0usize;
+            let target: Address = wincode::deserialize(payload.get(offset..)?).ok()?;
+            let target_size = usize::try_from(wincode::serialized_size(&target).ok()?).ok()?;
+            quasar_take(payload, &mut offset, target_size)?;
+            let amount: u64 = wincode::deserialize(payload.get(offset..)?).ok()?;
+            let amount_size = usize::try_from(wincode::serialized_size(&amount).ok()?).ok()?;
+            quasar_take(payload, &mut offset, amount_size)?;
+            let bonus: Option<u64> = wincode::deserialize(payload.get(offset..)?).ok()?;
+            let bonus_size = usize::try_from(wincode::serialized_size(&bonus).ok()?).ok()?;
+            quasar_take(payload, &mut offset, bonus_size)?;
+            if offset != payload.len() { return None; }
+            Some(ProgramInstruction::Settle { target, amount, bonus })
         }
         _ => None,
     }
@@ -106,13 +129,139 @@ impl From<MakeInstructionRaw> for Instruction {
     }
 }
 
+//// instructions/sync.rs ////
+use solana_instruction::{AccountMeta, Instruction};
+use crate::ID;
+use solana_address::Address;
+
+pub struct SyncInstructionRaw {
+    pub authority: Address,
+    pub pool: Address,
+}
+
+pub struct SyncInstruction {
+    pub authority: Address,
+    pub pool_seed_seed: u64,
+}
+
+impl From<SyncInstruction> for SyncInstructionRaw {
+    fn from(ix: SyncInstruction) -> SyncInstructionRaw {
+        let authority = ix.authority;
+        let pool = Address::find_program_address(&[b"pool", ix.pool_seed_seed.to_le_bytes().as_ref()], &ID).0;
+        SyncInstructionRaw {
+            authority,
+            pool,
+        }
+    }
+}
+
+impl From<SyncInstruction> for Instruction {
+    fn from(ix: SyncInstruction) -> Instruction {
+        SyncInstructionRaw::from(ix).into()
+    }
+}
+
+impl From<SyncInstructionRaw> for Instruction {
+    fn from(ix: SyncInstructionRaw) -> Instruction {
+        let accounts = vec![
+            AccountMeta::new_readonly(ix.authority, true),
+            AccountMeta::new(ix.pool, false),
+        ];
+        let data = vec![1];
+        Instruction {
+            program_id: ID,
+            accounts,
+            data,
+        }
+    }
+}
+
+//// instructions/settle.rs ////
+use solana_instruction::{AccountMeta, Instruction};
+use crate::ID;
+use solana_address::Address;
+
+pub struct SettleInstructionRaw {
+    pub payer: Address,
+    pub mint: Address,
+    pub token_program: Address,
+    pub recipient: Address,
+    pub payer_tokens: Address,
+    pub maybe_refund: Option<Address>,
+    pub target: Address,
+    pub amount: u64,
+    pub bonus: Option<u64>,
+}
+
+pub struct SettleInstruction {
+    pub payer: Address,
+    pub mint: Address,
+    pub target: Address,
+    pub amount: u64,
+    pub bonus: Option<u64>,
+    pub maybe_refund: Option<Address>,
+}
+
+impl From<SettleInstruction> for SettleInstructionRaw {
+    fn from(ix: SettleInstruction) -> SettleInstructionRaw {
+        let payer = ix.payer;
+        let mint = ix.mint;
+        let token_program = solana_address::address!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+        let recipient = ix.target;
+        let maybe_refund = ix.maybe_refund.unwrap_or(ID);
+        let payer_tokens = Address::find_program_address(&[payer.as_ref(), token_program.as_ref(), mint.as_ref()], &solana_address::address!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL")).0;
+        SettleInstructionRaw {
+            payer,
+            mint,
+            token_program,
+            recipient,
+            payer_tokens,
+            maybe_refund: ix.maybe_refund,
+            target: ix.target,
+            amount: ix.amount,
+            bonus: ix.bonus,
+        }
+    }
+}
+
+impl From<SettleInstruction> for Instruction {
+    fn from(ix: SettleInstruction) -> Instruction {
+        SettleInstructionRaw::from(ix).into()
+    }
+}
+
+impl From<SettleInstructionRaw> for Instruction {
+    fn from(ix: SettleInstructionRaw) -> Instruction {
+        let accounts = vec![
+            AccountMeta::new(ix.payer, true),
+            AccountMeta::new_readonly(ix.mint, false),
+            AccountMeta::new_readonly(ix.token_program, false),
+            AccountMeta::new_readonly(ix.recipient, false),
+            AccountMeta::new(ix.payer_tokens, false),
+            AccountMeta::new_readonly(ix.maybe_refund.unwrap_or(ID), false),
+        ];
+        let mut data = vec![2];
+        wincode::serialize_into(&mut data, &ix.target).expect("serialization into Vec<u8> is infallible");
+        wincode::serialize_into(&mut data, &ix.amount).expect("serialization into Vec<u8> is infallible");
+        wincode::serialize_into(&mut data, &ix.bonus).expect("serialization into Vec<u8> is infallible");
+        Instruction {
+            program_id: ID,
+            accounts,
+            data,
+        }
+    }
+}
+
 //// state/mod.rs ////
 pub mod vault;
+pub mod pool;
 
 pub use vault::*;
+pub use pool::*;
 
 pub enum ProgramAccount {
     Vault(Vault),
+    Pool(Pool),
 }
 
 pub fn decode_account(data: &[u8]) -> Option<ProgramAccount> {
@@ -120,6 +269,11 @@ pub fn decode_account(data: &[u8]) -> Option<ProgramAccount> {
         let value = wincode::deserialize::<Vault>(data).ok()?;
         if usize::try_from(wincode::serialized_size(&value).ok()?).ok()? != data.len() { return None; }
         return Some(ProgramAccount::Vault(value));
+    }
+    if data.starts_with(POOL_ACCOUNT_DISCRIMINATOR) {
+        let value = wincode::deserialize::<Pool>(data).ok()?;
+        if usize::try_from(wincode::serialized_size(&value).ok()?).ok()? != data.len() { return None; }
+        return Some(ProgramAccount::Pool(value));
     }
     None
 }
@@ -192,6 +346,68 @@ where
     }
 }
 
+//// state/pool.rs ////
+use wincode::{SchemaWrite, SchemaRead};
+use wincode::config::ConfigCore;
+use wincode::error::{ReadError, ReadResult, WriteResult};
+use wincode::io::{Reader, Writer};
+use std::mem::MaybeUninit;
+use solana_address::Address;
+
+pub const POOL_ACCOUNT_DISCRIMINATOR: &[u8] = &[43];
+
+#[derive(Clone, Copy)]
+pub struct Pool {
+    pub seed: u64,
+    pub authority: Address,
+}
+
+// SAFETY: TYPE_META remains dynamic and size_of counts exactly the
+// discriminator, fixed fields, length prefixes, and payload bytes
+// written below.
+unsafe impl<C: ConfigCore> SchemaWrite<C> for Pool
+where
+    Address: SchemaWrite<C, Src = Address>,
+    u64: SchemaWrite<C, Src = u64>,
+{
+    type Src = Self;
+
+    fn size_of(src: &Self) -> WriteResult<usize> {
+        Ok(1
+            + <u64 as SchemaWrite<C>>::size_of(&src.seed)?
+            + <Address as SchemaWrite<C>>::size_of(&src.authority)?)
+    }
+
+    fn write(mut writer: impl Writer, src: &Self) -> WriteResult<()> {
+        writer.write(POOL_ACCOUNT_DISCRIMINATOR)?;
+        <u64 as SchemaWrite<C>>::write(writer.by_ref(), &src.seed)?;
+        <Address as SchemaWrite<C>>::write(writer.by_ref(), &src.authority)?;
+        Ok(())
+    }
+}
+
+// SAFETY: TYPE_META remains dynamic and read initializes dst exactly
+// once, only after every discriminator, field, and payload validates.
+unsafe impl<'de, C: ConfigCore> SchemaRead<'de, C> for Pool
+where
+    Address: SchemaRead<'de, C, Dst = Address>,
+    u64: SchemaRead<'de, C, Dst = u64>,
+{
+    type Dst = Self;
+
+    fn read(mut reader: impl Reader<'de>, dst: &mut MaybeUninit<Self>) -> ReadResult<()> {
+        let disc = reader.take_byte()?;
+        if disc != 43 {
+            return Err(ReadError::InvalidValue("invalid account discriminator"));
+        }
+        dst.write(Self {
+            seed: <u64 as SchemaRead<'de, C>>::get(reader.by_ref())?,
+            authority: <Address as SchemaRead<'de, C>>::get(reader.by_ref())?,
+        });
+        Ok(())
+    }
+}
+
 //// events/mod.rs ////
 pub const VAULT_MADE_EVENT_DISCRIMINATOR: &[u8] = &[7];
 
@@ -253,5 +469,10 @@ use solana_address::Address;
 /// Seeds: [b"vault", authority]
 pub fn find_vault_address(authority: &Address, program_id: &Address) -> (Address, u8) {
     Address::find_program_address(&[b"vault", authority.as_ref()], program_id)
+}
+
+/// Seeds: [b"pool", pool:seed]
+pub fn find_pool_address(pool_seed_seed: &[u8], program_id: &Address) -> (Address, u8) {
+    Address::find_program_address(&[b"pool", pool_seed_seed], program_id)
 }
 

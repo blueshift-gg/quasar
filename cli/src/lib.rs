@@ -519,7 +519,7 @@ fn print_help() {
     print_cmd("idl     <path>", "Generate the program IDL");
     print_cmd(
         "client  <idl> [--target target]",
-        "Generate client code from IDL",
+        "Generate client code from IDL (rust, kit, web3; python/go/c preview)",
     );
     print_cmd("lint    [--update-lock] [--strict]", "Check release safety");
     print_cmd(

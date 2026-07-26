@@ -251,7 +251,7 @@ mod quasar_raw_demo {
     #[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
     pub mod cpi {
         use super::*;
-        __normal_init_instruction!(NormalInstruction, [0u8], {});
+        __normal_init_instruction!(NormalInstruction, NormalInstructionRaw, [0u8], {});
     }
 }
 #[allow(unexpected_cfgs)]

@@ -1,8 +1,21 @@
 {
   "name": "golden_demo-client-kit",
   "version": "0.1.0",
-  "private": true,
-  "exports": "./client.ts",
+  "description": "Generated Solana client for the golden_demo program.",
+  "license": "Apache-2.0 OR MIT",
+  "type": "module",
+  "types": "./client.ts",
+  "exports": {
+    ".": {
+      "types": "./client.ts",
+      "default": "./client.ts"
+    }
+  },
+  "files": [
+    "client.ts",
+    "README.md"
+  ],
+  "sideEffects": false,
   "dependencies": {
     "@solana/codecs": "^7.0.0",
     "@solana/kit": "^7.0.0"

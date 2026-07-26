@@ -231,14 +231,23 @@ fn test_update_pda_wrong_seeds() {
 
     let account_data = build_user_account_data(authority, 42, bump);
 
-    let mut instruction: Instruction = UpdatePdaInstruction {
+    // The client derives the canonical PDA. The raw builder spells every
+    // address out, so the account under test is named rather than patched in
+    // by meta index.
+    let derived: UpdatePdaInstructionRaw = UpdatePdaInstruction {
         authority,
         new_value: 100,
     }
     .into();
-    // The client derives the canonical PDA meta; repoint it at the address
-    // under test.
-    instruction.accounts[1].pubkey = wrong_pda;
+    assert_ne!(
+        derived.user, wrong_pda,
+        "the input builder must derive the canonical PDA"
+    );
+    let instruction: Instruction = UpdatePdaInstructionRaw {
+        user: wrong_pda,
+        ..derived
+    }
+    .into();
 
     let result = mollusk.process_instruction(
         &instruction,

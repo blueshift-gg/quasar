@@ -9,6 +9,9 @@ use {
 /// Internal account descriptor for client macro generation.
 struct AccountDescriptor {
     name: syn::Ident,
+    /// The field's doc comments, so the generated client documents itself in
+    /// the same editor the program is written in.
+    docs: Vec<String>,
     writable: bool,
     signer: TokenStream,
     /// Const address expression for `Program<T>`/`Sysvar<T>` fields. These
@@ -49,7 +52,7 @@ pub fn generate_accounts_macro(
         .iter()
         .map(|descriptor| emit_account_field(name, descriptor))
         .collect();
-    let accounts_build = emit_accounts_build(&descriptors);
+    let accounts_build = emit_accounts_build(&descriptors, false);
     let seed_input_aliases: Vec<_> = descriptors
         .iter()
         .flat_map(|descriptor| {
@@ -65,9 +68,22 @@ pub fn generate_accounts_macro(
         })
         .collect();
 
+    let raw_account_fields: Vec<TokenStream> =
+        descriptors.iter().map(emit_raw_account_field).collect();
+    let raw_field_inits: Vec<TokenStream> = descriptors.iter().map(emit_raw_field_init).collect();
+    let raw_accounts_build = emit_accounts_build(&descriptors, true);
+
     let arms =
         [(false, false), (true, false), (false, true), (true, true)].map(|(compact, remaining)| {
-            emit_macro_arm(compact, remaining, &account_fields, &accounts_build)
+            emit_macro_arm(
+                compact,
+                remaining,
+                &account_fields,
+                &raw_account_fields,
+                &raw_field_inits,
+                &accounts_build,
+                &raw_accounts_build,
+            )
         });
 
     quote! {
@@ -88,11 +104,15 @@ pub fn generate_accounts_macro(
 /// The four public arms differ only in whether trailing accounts join the
 /// struct and which serializer the args go through, so they are generated from
 /// the same body rather than written out four times.
+#[allow(clippy::too_many_arguments)]
 fn emit_macro_arm(
     compact: bool,
     remaining: bool,
     account_fields: &[TokenStream],
+    raw_account_fields: &[TokenStream],
+    raw_field_inits: &[TokenStream],
     accounts_build: &TokenStream,
+    raw_accounts_build: &TokenStream,
 ) -> TokenStream {
     let krate = crate::krate::lang_path();
 
@@ -104,18 +124,32 @@ fn emit_macro_arm(
         selectors.extend(quote! { , remaining });
     }
 
-    let (remaining_field, accounts_binding) = if remaining {
+    let (remaining_field, raw_accounts_binding, raw_remaining_init) = if remaining {
         (
             quote! {
                 pub remaining_accounts: ::alloc::vec::Vec<#krate::client::AccountMeta>,
             },
             quote! {
-                let mut accounts = #accounts_build;
+                let mut accounts = #raw_accounts_build;
                 accounts.extend(ix.remaining_accounts);
             },
+            quote! { remaining_accounts: ix.remaining_accounts, },
         )
     } else {
-        (quote! {}, quote! { let accounts = #accounts_build; })
+        (
+            quote! {},
+            quote! { let accounts = #raw_accounts_build; },
+            quote! {},
+        )
+    };
+    let _ = accounts_build;
+
+    let raw_from_input = quote! {
+        $raw_name {
+            #(#raw_field_inits)*
+            $($arg_name: ix.$arg_name,)*
+            #raw_remaining_init
+        }
     };
 
     let data = if compact {
@@ -146,17 +180,42 @@ fn emit_macro_arm(
     };
 
     quote! {
-        ($struct_name:ident, [$($disc:expr),*], {$($arg_name:ident : $arg_ty:ty),*} #selectors) => {
+        ($struct_name:ident, $raw_name:ident, [$($disc:expr),*], {$($arg_name:ident : $arg_ty:ty),*} #selectors) => {
             pub struct $struct_name {
                 #(#account_fields)*
                 $(pub $arg_name: $arg_ty,)*
                 #remaining_field
             }
 
-            impl From<$struct_name> for #krate::client::Instruction {
+            /// Every account spelled out, including the ones the input builder
+            /// resolves for you. Build it from `$struct_name` and replace an
+            /// address the client would otherwise derive.
+            pub struct $raw_name {
+                #(#raw_account_fields)*
+                $(pub $arg_name: $arg_ty,)*
+                #remaining_field
+            }
+
+            impl From<$struct_name> for $raw_name {
                 #[allow(unused_variables)]
+                fn from(ix: $struct_name) -> $raw_name {
+                    #raw_from_input
+                }
+            }
+
+            impl From<$struct_name> for #krate::client::Instruction {
+                #[inline]
                 fn from(ix: $struct_name) -> #krate::client::Instruction {
-                    #accounts_binding
+                    <$raw_name as ::core::convert::Into<#krate::client::Instruction>>::into(
+                        <$struct_name as ::core::convert::Into<$raw_name>>::into(ix),
+                    )
+                }
+            }
+
+            impl From<$raw_name> for #krate::client::Instruction {
+                #[allow(unused_variables)]
+                fn from(ix: $raw_name) -> #krate::client::Instruction {
+                    #raw_accounts_binding
                     let data = { #data };
                     #krate::client::Instruction {
                         program_id: $crate::ID,
@@ -169,11 +228,40 @@ fn emit_macro_arm(
     }
 }
 
+/// One field of the raw builder: every account, spelled out.
+fn emit_raw_account_field(descriptor: &AccountDescriptor) -> TokenStream {
+    let krate = crate::krate::lang_path();
+    let docs = crate::helpers::docs_tokens_as_attrs(&descriptor.docs);
+    let ident = &descriptor.name;
+    if descriptor.composite {
+        return quote! {
+            #docs
+            pub #ident: ::alloc::vec::Vec<#krate::client::AccountMeta>,
+        };
+    }
+    quote! {
+        #docs
+        pub #ident: #krate::prelude::Address,
+    }
+}
+
+/// One field initializer for `From<Input> for Raw`: a derived account keeps its
+/// derivation, everything else copies across.
+fn emit_raw_field_init(descriptor: &AccountDescriptor) -> TokenStream {
+    let ident = &descriptor.name;
+    match &descriptor.fixed_address {
+        Some(fixed) => quote! { #ident: #fixed, },
+        None => quote! { #ident: ix.#ident, },
+    }
+}
+
 fn emit_account_field(name: &syn::Ident, descriptor: &AccountDescriptor) -> TokenStream {
+    let docs = crate::helpers::docs_tokens_as_attrs(&descriptor.docs);
     if descriptor.composite {
         let krate = crate::krate::lang_path();
         let ident = &descriptor.name;
         return quote! {
+            #docs
             pub #ident: ::alloc::vec::Vec<#krate::client::AccountMeta>,
         };
     }
@@ -189,7 +277,10 @@ fn emit_account_field(name: &syn::Ident, descriptor: &AccountDescriptor) -> Toke
     }
     let krate = crate::krate::lang_path();
     let ident = &descriptor.name;
-    quote! { pub #ident: #krate::prelude::Address, }
+    quote! {
+        #docs
+        pub #ident: #krate::prelude::Address,
+    }
 }
 
 /// The definition-site re-alias for one synthetic seed input, scoped by the
@@ -203,13 +294,15 @@ fn seed_input_realias(accounts_struct: &syn::Ident, input: &syn::Ident) -> syn::
     )
 }
 
-fn emit_account_meta(descriptor: &AccountDescriptor) -> TokenStream {
+fn emit_account_meta(descriptor: &AccountDescriptor, raw: bool) -> TokenStream {
     let krate = crate::krate::lang_path();
     let ident = &descriptor.name;
     let signer = &descriptor.signer;
     let address = match &descriptor.fixed_address {
-        Some(fixed) => fixed.clone(),
-        None => quote! { ix.#ident },
+        Some(fixed) if !raw => fixed.clone(),
+        // In the raw builder every address is already a field, including the
+        // ones the input builder derives.
+        _ => quote! { ix.#ident },
     };
     if descriptor.writable {
         quote! {
@@ -226,10 +319,10 @@ fn emit_account_meta(descriptor: &AccountDescriptor) -> TokenStream {
 ///
 /// Without composites this stays the original `vec![..]` literal. With one, the
 /// list is built incrementally so a composite can splice in its own metas.
-fn emit_accounts_build(descriptors: &[AccountDescriptor]) -> TokenStream {
+fn emit_accounts_build(descriptors: &[AccountDescriptor], raw: bool) -> TokenStream {
     let krate = crate::krate::lang_path();
     if !descriptors.iter().any(|d| d.composite) {
-        let metas = descriptors.iter().map(emit_account_meta);
+        let metas = descriptors.iter().map(|d| emit_account_meta(d, raw));
         return quote! { ::alloc::vec![ #(#metas,)* ] };
     }
 
@@ -238,7 +331,7 @@ fn emit_accounts_build(descriptors: &[AccountDescriptor]) -> TokenStream {
         if descriptor.composite {
             quote! { __accounts.extend(ix.#ident); }
         } else {
-            let meta = emit_account_meta(descriptor);
+            let meta = emit_account_meta(descriptor, raw);
             quote! { __accounts.push(#meta); }
         }
     });
@@ -298,6 +391,7 @@ fn describe_accounts(
             };
             AccountDescriptor {
                 name: fp.ident.clone(),
+                docs: fp.docs.clone(),
                 writable: fp.writable,
                 signer: if fp.behavior_init_signer {
                     quote! { #account_type::__QUASAR_ACCOUNT_SIGNERS[#index] }
@@ -425,10 +519,18 @@ pub(crate) fn field_derivation<'p>(
         if fp.idl_resolver.is_some() {
             return None;
         }
-        let group = fp
-            .behaviors
-            .iter()
-            .find(|group| group.name.ends_with("associated_token"))?;
+        // The IDL reads a behavior's declared `IDL_RESOLVER` const while
+        // building; a proc macro cannot evaluate a trait const, so the only
+        // signal available here is the behavior's path. Match its final
+        // segment exactly — `ends_with` also accepted `my_associated_token`,
+        // which the IDL would not have resolved as an ATA.
+        let group = fp.behaviors.iter().find(|group| {
+            group
+                .path
+                .segments
+                .last()
+                .is_some_and(|segment| segment.ident == "associated_token")
+        })?;
         // An unmapped behavior arg resolves to the same-named account field
         // (mirroring the runtime init inference).
         let arg = |key: &str| {

@@ -1,8 +1,9 @@
 use {
     super::model::{
-        account_field_seed_inputs, reject_generics, resolved_account_order, resolver_is_derived,
-        validate_codegen_idl, CodegenResult,
+        account_field_seed_inputs, reject_generics, resolved_account_order, validate_codegen_idl,
+        CodegenResult,
     },
+    crate::codegen::accounts::{account_source, AccountSource},
     crate::codegen::naming::pascal_to_snake,
     crate::types::{
         Idl, IdlAccountNode, IdlCodec, IdlPdaProgram, IdlPdaSeed, IdlResolver, IdlType, IdlTypeDef,
@@ -171,7 +172,7 @@ fn emit_fixed_account_ids(out: &mut String, prefix: &str, idl: &Idl) {
             if account.optional {
                 continue;
             }
-            if let IdlResolver::Const { address } = &account.resolver {
+            if let Ok(AccountSource::Constant(address)) = account_source(account) {
                 emit_pubkey_const(
                     out,
                     &fixed_account_id_name(prefix, &instruction.name, &account.name),
@@ -350,28 +351,34 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
         let user_accounts: Vec<_> = ix
             .accounts
             .iter()
-            .filter(|a| {
-                a.optional
-                    || !matches!(
-                        a.resolver,
-                        IdlResolver::Const { .. }
-                            | IdlResolver::Pda { .. }
-                            | IdlResolver::AssociatedToken { .. }
-                    )
-            })
+            .filter(|a| a.optional || account_source(a).is_ok_and(|s| s.is_input()))
+            .collect();
+        // Client-computed addresses are still overridable: a NULL pointer keeps
+        // the computed value, a non-NULL one replaces it.
+        let override_accounts: Vec<_> = ix
+            .accounts
+            .iter()
+            .filter(|a| !a.optional && !account_source(a).is_ok_and(|s| s.is_input()))
             .collect();
         let account_field_seeds = account_field_seed_inputs(ix);
 
+        crate::codegen::docs::c_block(out, &ix.docs, "");
         writeln!(out, "typedef struct {{").unwrap();
         for acc in &user_accounts {
             writeln!(out, "    Pubkey *{};", acc.name).unwrap();
+        }
+        for acc in &override_accounts {
+            writeln!(out, "    Pubkey *{}; /* optional override */", acc.name).unwrap();
         }
         for seed in &account_field_seeds {
             let name = account_field_seed_input_name(seed.path, seed.field);
             writeln!(out, "    const uint8_t *{name};").unwrap();
             writeln!(out, "    uint64_t {name}_len;").unwrap();
         }
-        if user_accounts.is_empty() && account_field_seeds.is_empty() {
+        if user_accounts.is_empty()
+            && override_accounts.is_empty()
+            && account_field_seeds.is_empty()
+        {
             writeln!(out, "    uint8_t _pad;").unwrap();
         }
         writeln!(out, "}} {prefix}_{ix_snake}_accounts_t;\n").unwrap();
@@ -395,7 +402,7 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
         let pda_count = ix
             .accounts
             .iter()
-            .filter(|a| !a.optional && resolver_is_derived(&a.resolver))
+            .filter(|a| !a.optional && account_source(a).is_ok_and(|s| s.is_derived()))
             .count();
         let pda_key_params = if pda_count > 0 {
             "    Pubkey *pda_key_buf,\n    uint64_t pda_key_buf_capacity,\n    "
@@ -425,7 +432,10 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
             .unwrap();
         }
 
-        if user_accounts.is_empty() && account_field_seeds.is_empty() {
+        if user_accounts.is_empty()
+            && override_accounts.is_empty()
+            && account_field_seeds.is_empty()
+        {
             writeln!(out, "    (void)accounts;").unwrap();
         }
         if !has_args {
@@ -498,7 +508,7 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
         {
             let mut idx = 0usize;
             for acc in &ix.accounts {
-                if !acc.optional && resolver_is_derived(&acc.resolver) {
+                if !acc.optional && account_source(acc).is_ok_and(|s| s.is_derived()) {
                     pda_name_to_idx.insert(acc.name.as_str(), idx);
                     idx += 1;
                 }
@@ -544,17 +554,25 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
                     "accounts->{n} ? accounts->{n} : (Pubkey *)&{upper}_PROGRAM_ID",
                     n = acc.name
                 )
-            } else if resolver_is_derived(&acc.resolver) {
-                let expr = format!("&pda_key_buf[{pda_idx}]");
-                pda_idx += 1;
-                expr
-            } else if matches!(acc.resolver, IdlResolver::Const { .. }) {
-                format!(
-                    "(Pubkey *)&{}",
-                    fixed_account_id_name(prefix, &ix.name, &acc.name)
-                )
             } else {
-                format!("accounts->{}", acc.name)
+                let computed = match account_source(acc).expect("validated account resolver") {
+                    AccountSource::Derived => {
+                        let expr = format!("&pda_key_buf[{pda_idx}]");
+                        pda_idx += 1;
+                        expr
+                    }
+                    AccountSource::Constant(_) => format!(
+                        "(Pubkey *)&{}",
+                        fixed_account_id_name(prefix, &ix.name, &acc.name)
+                    ),
+                    AccountSource::Arg(path) => format!("&args->{path}"),
+                    AccountSource::Input => format!("accounts->{}", acc.name),
+                };
+                if account_source(acc).is_ok_and(|s| s.is_input()) {
+                    computed
+                } else {
+                    format!("accounts->{n} ? accounts->{n} : {computed}", n = acc.name)
+                }
             };
 
             let helper = meta_helper(acc.writable.is_true(), acc.signer.is_true());
@@ -719,7 +737,9 @@ fn c_account_seed_expr(
     }
 
     let account = ix.accounts.iter().find(|account| account.name == path);
-    if account.is_some_and(|account| matches!(account.resolver, IdlResolver::Const { .. })) {
+    if account
+        .is_some_and(|account| matches!(account_source(account), Ok(AccountSource::Constant(_))))
+    {
         return format!("{}.bytes", fixed_account_id_name(prefix, &ix.name, path));
     }
     if account.is_some_and(|account| account.optional) {
@@ -820,7 +840,9 @@ fn c_account_address_expr(
     }
 
     let account = ix.accounts.iter().find(|account| account.name == path);
-    if account.is_some_and(|account| matches!(account.resolver, IdlResolver::Const { .. })) {
+    if account
+        .is_some_and(|account| matches!(account_source(account), Ok(AccountSource::Constant(_))))
+    {
         return format!(
             "(Pubkey *)&{}",
             fixed_account_id_name(prefix, &ix.name, path)
