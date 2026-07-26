@@ -57,3 +57,51 @@ delegate_fixture!(
     AssociatedTokenAccount,
     Program<'_>,
 );
+
+/// Closures are fixtures: the dependency mechanism for worlds where later
+/// fixtures need earlier handles, mirroring Parallax. The closure receives
+/// quasar-test's [`Test`], so it can also use [`Test::write`],
+/// [`Test::derive_pda`], and register invariants while building.
+impl<O, F: FnOnce(&mut Test) -> O> Fixture for F {
+    type Output = O;
+
+    fn install(self, test: &mut Test) -> O {
+        self(test)
+    }
+}
+
+macro_rules! impl_fixture_for_tuple {
+    ($($name:ident),+) => {
+        /// Tuples are fixtures: one `add` installs a heterogeneous world, in
+        /// order, and destructures its handles.
+        impl<$($name: Fixture),+> Fixture for ($($name,)+) {
+            type Output = ($($name::Output,)+);
+
+            fn install(self, test: &mut Test) -> Self::Output {
+                #[allow(non_snake_case)]
+                let ($($name,)+) = self;
+                ($($name.install(test),)+)
+            }
+        }
+    };
+}
+
+impl_fixture_for_tuple!(A, B);
+impl_fixture_for_tuple!(A, B, C);
+impl_fixture_for_tuple!(A, B, C, D);
+impl_fixture_for_tuple!(A, B, C, D, E);
+
+/// Delegate Parallax's const-generic plural fixtures.
+macro_rules! delegate_plural_fixture {
+    ($($ty:ident),+ $(,)?) => {$(
+        impl<const N: usize> Fixture for parallax_svm::fixture::$ty<N> {
+            type Output = [Pubkey; N];
+
+            fn install(self, test: &mut Test) -> Self::Output {
+                parallax_svm::fixture::Fixture::install(self, &mut test.0)
+            }
+        }
+    )+};
+}
+
+delegate_plural_fixture!(Mints, Wallets, TokenAccounts);
