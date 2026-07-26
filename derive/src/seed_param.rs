@@ -12,6 +12,10 @@ pub(crate) enum SeedType {
     U16,
     U32,
     U64,
+    I8,
+    I16,
+    I32,
+    I64,
     Bytes(usize),
 }
 
@@ -25,6 +29,10 @@ impl SeedType {
             SeedType::U16 => quote! { [u8; 2] },
             SeedType::U32 => quote! { [u8; 4] },
             SeedType::U64 => quote! { [u8; 8] },
+            SeedType::I8 => quote! { [u8; 1] },
+            SeedType::I16 => quote! { [u8; 2] },
+            SeedType::I32 => quote! { [u8; 4] },
+            SeedType::I64 => quote! { [u8; 8] },
             SeedType::Bytes(len) => quote! { [u8; #len] },
         }
     }
@@ -38,6 +46,10 @@ impl SeedType {
             SeedType::U16 => quote! { u16 },
             SeedType::U32 => quote! { u32 },
             SeedType::U64 => quote! { u64 },
+            SeedType::I8 => quote! { i8 },
+            SeedType::I16 => quote! { i16 },
+            SeedType::I32 => quote! { i32 },
+            SeedType::I64 => quote! { i64 },
             SeedType::Bytes(len) => quote! { [u8; #len] },
         }
     }
@@ -52,6 +64,10 @@ impl SeedType {
             SeedType::U16 => quote! { u16 },
             SeedType::U32 => quote! { u32 },
             SeedType::U64 => quote! { u64 },
+            SeedType::I8 => quote! { i8 },
+            SeedType::I16 => quote! { i16 },
+            SeedType::I32 => quote! { i32 },
+            SeedType::I64 => quote! { i64 },
             SeedType::Bytes(len) => quote! { [u8; #len] },
         }
     }
@@ -69,7 +85,13 @@ impl SeedType {
         match self {
             SeedType::Address | SeedType::Bytes(_) => quote! { #param },
             SeedType::U8 => quote! { [#param] },
-            SeedType::U16 | SeedType::U32 | SeedType::U64 => quote! { #param.to_le_bytes() },
+            SeedType::U16
+            | SeedType::U32
+            | SeedType::U64
+            | SeedType::I8
+            | SeedType::I16
+            | SeedType::I32
+            | SeedType::I64 => quote! { #param.to_le_bytes() },
         }
     }
 
@@ -82,7 +104,15 @@ impl SeedType {
         };
         match self {
             SeedType::Address => quote! { #access.as_ref() },
-            SeedType::U8 | SeedType::U16 | SeedType::U32 | SeedType::U64 | SeedType::Bytes(_) => {
+            SeedType::U8
+            | SeedType::U16
+            | SeedType::U32
+            | SeedType::U64
+            | SeedType::I8
+            | SeedType::I16
+            | SeedType::I32
+            | SeedType::I64
+            | SeedType::Bytes(_) => {
                 quote! { &#access }
             }
         }
@@ -98,11 +128,15 @@ pub(crate) fn parse_seed_type(ty: Type) -> Result<SeedType> {
                 "u16" => Ok(SeedType::U16),
                 "u32" => Ok(SeedType::U32),
                 "u64" => Ok(SeedType::U64),
+                "i8" => Ok(SeedType::I8),
+                "i16" => Ok(SeedType::I16),
+                "i32" => Ok(SeedType::I32),
+                "i64" => Ok(SeedType::I64),
                 _ => Err(Error::new(
                     ident.span(),
                     format!(
-                        "unsupported seed type; expected Address, u8, u16, u32, u64, or [u8; N] \
-                         where N <= {MAX_SEED_LEN}"
+                        "unsupported seed type; expected Address, u8, u16, u32, u64, i8, i16, i32, i64, or \
+                         [u8; N] where N <= {MAX_SEED_LEN}"
                     ),
                 )),
             };
