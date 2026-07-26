@@ -85,7 +85,7 @@ fn create_initializes_dynamic_config(test: &mut Test) {
         remaining_accounts: co_signers(&[SIGNER1, SIGNER2, SIGNER3]),
     });
 
-    outcome.succeeds().check(CuBudget::le(MAX_CREATE_CU));
+    outcome.succeeds().check(Cu::spent().le(MAX_CREATE_CU));
     let ProgramAccount::MultisigConfig(state) = outcome.account_as(config, decode_account).unwrap();
     assert_eq!(state.creator, CREATOR);
     assert_eq!(state.threshold, 2);
@@ -117,8 +117,8 @@ fn deposit_funds_the_multisig_vault(test: &mut Test) {
     })
     .succeeds()
     .check([
-        CuBudget::le(MAX_DEPOSIT_CU),
-        Lamports::eq(vault, 1_000_000_000),
+        Cu::spent().le(MAX_DEPOSIT_CU),
+        Account::lamports(vault).eq(1_000_000_000),
     ]);
 }
 
@@ -133,7 +133,7 @@ fn set_label_updates_dynamic_state(test: &mut Test) {
         label: DynString::<u8>::new("Treasury"),
     });
 
-    outcome.succeeds().check(CuBudget::le(MAX_SET_LABEL_CU));
+    outcome.succeeds().check(Cu::spent().le(MAX_SET_LABEL_CU));
     let ProgramAccount::MultisigConfig(state) = outcome.account_as(config, decode_account).unwrap();
     assert_eq!(state.label.as_bytes(), b"Treasury");
 }
@@ -169,9 +169,9 @@ fn execute_transfer_accepts_the_threshold(test: &mut Test) {
     test.send(transfer_instruction(&[SIGNER1, SIGNER2]))
         .succeeds()
         .check([
-            CuBudget::le(MAX_EXECUTE_TRANSFER_CU),
-            Lamports::eq(vault, 4_000_000_000),
-            Lamports::eq(RECIPIENT, 1_000_000_000),
+            Cu::spent().le(MAX_EXECUTE_TRANSFER_CU),
+            Account::lamports(vault).eq(4_000_000_000),
+            Account::lamports(RECIPIENT).eq(1_000_000_000),
         ]);
 }
 

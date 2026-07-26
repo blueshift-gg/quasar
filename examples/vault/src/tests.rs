@@ -28,9 +28,9 @@ fn deposit_creates_and_funds_the_vault(test: &mut Test) {
     });
 
     outcome.succeeds().check([
-        CuBudget::le(MAX_DEPOSIT_CU),
-        Lamports::eq(vault, deposit),
-        Lamports::eq(USER, DEFAULT_WALLET_LAMPORTS - deposit),
+        Cu::spent().le(MAX_DEPOSIT_CU),
+        Account::lamports(vault).eq(deposit),
+        Account::lamports(USER).eq(DEFAULT_WALLET_LAMPORTS - deposit),
     ]);
     assert!(
         outcome
@@ -89,9 +89,9 @@ fn withdraw_moves_lamports_out_of_program_state(test: &mut Test) {
     })
     .succeeds()
     .check([
-        CuBudget::le(MAX_WITHDRAW_CU),
-        Lamports::eq(USER, DEFAULT_WALLET_LAMPORTS + withdrawal),
-        Lamports::eq(vault, vault_lamports - withdrawal),
+        Cu::spent().le(MAX_WITHDRAW_CU),
+        Account::lamports(USER).eq(DEFAULT_WALLET_LAMPORTS + withdrawal),
+        Account::lamports(vault).eq(vault_lamports - withdrawal),
     ]);
     assert_eq!(test.lamports(USER), DEFAULT_WALLET_LAMPORTS);
     assert_eq!(test.lamports(vault), vault_lamports);
@@ -102,8 +102,8 @@ fn withdraw_moves_lamports_out_of_program_state(test: &mut Test) {
     })
     .succeeds()
     .check([
-        CuBudget::le(MAX_WITHDRAW_CU),
-        Lamports::eq(USER, DEFAULT_WALLET_LAMPORTS + withdrawal),
-        Lamports::eq(vault, vault_lamports - withdrawal),
+        Cu::spent().le(MAX_WITHDRAW_CU),
+        Account::lamports(USER).eq(DEFAULT_WALLET_LAMPORTS + withdrawal),
+        Account::lamports(vault).eq(vault_lamports - withdrawal),
     ]);
 }
