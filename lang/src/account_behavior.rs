@@ -311,3 +311,61 @@ where
 {
     Bhv::uses_arg::<PHASE, KEY>()
 }
+
+/// [`behavior_arg_key_hash`] under a name short enough to sit inside a const
+/// generic without wrapping.
+///
+/// Generated argument sites spell this once per declared argument, inside
+/// `uses_arg`'s `{ .. }` const block. At the longer name the formatter breaks
+/// that block across five lines, which is most of what an argument site costs
+/// to read.
+#[doc(hidden)]
+pub const fn key(name: &str) -> u64 {
+    behavior_arg_key_hash(name)
+}
+
+/// Per-phase [`uses_arg`] guards.
+///
+/// The phase is fixed at each generated site, so naming it in the function
+/// rather than passing `{ ARG_PHASE_* }` drops a const-generic argument from
+/// every argument site without changing what is evaluated: each still folds to
+/// the same `Bhv::uses_arg::<PHASE, KEY>()`.
+macro_rules! phase_guard {
+    ($(#[$meta:meta])* $name:ident, $phase:expr) => {
+        $(#[$meta])*
+        #[doc(hidden)]
+        #[inline(always)]
+        pub fn $name<Bhv, Acct, const KEY: u64>() -> bool
+        where
+            Bhv: AccountBehavior<Acct>,
+        {
+            Bhv::uses_arg::<{ $phase }, KEY>()
+        }
+    };
+}
+
+phase_guard!(
+    /// `set_init_param`-phase argument guard.
+    uses_set_init_param_arg,
+    ARG_PHASE_SET_INIT_PARAM
+);
+phase_guard!(
+    /// `after_init`-phase argument guard.
+    uses_after_init_arg,
+    ARG_PHASE_AFTER_INIT
+);
+phase_guard!(
+    /// `check`-phase argument guard.
+    uses_check_arg,
+    ARG_PHASE_CHECK
+);
+phase_guard!(
+    /// `update`-phase argument guard.
+    uses_update_arg,
+    ARG_PHASE_UPDATE
+);
+phase_guard!(
+    /// `exit`-phase argument guard.
+    uses_exit_arg,
+    ARG_PHASE_EXIT
+);

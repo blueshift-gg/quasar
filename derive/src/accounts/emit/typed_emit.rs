@@ -296,7 +296,7 @@ fn emit_behavior_args_builder(
     let exit_context = matches!(phase, BehaviorPhase::Exit);
     let path = &call.path;
     let bhv = quote! { <#path::Behavior as #krate::account_behavior::AccountBehavior<#field_ty>> };
-    let phase_const = emit_arg_phase_const(phase);
+    let phase_guard = emit_arg_phase_guard(phase);
     let inferred_accounts = inferable_accounts.iter().map(|account| {
         let key = account.to_string();
         quote! {
@@ -316,11 +316,8 @@ fn emit_behavior_args_builder(
             let key_lit = key.to_string();
             let val = emit_lowered_value(&arg.lowered, exit_context);
             quote! {
-                let __bhv_builder = if #krate::account_behavior::uses_arg::<
-                    #path::Behavior,
-                    #field_ty,
-                    { #phase_const },
-                    { #krate::account_behavior::behavior_arg_key_hash(#key_lit) },
+                let __bhv_builder = if #krate::account_behavior::#phase_guard::<
+                    __QuasarBhv, __QuasarBhvAcct, { #krate::account_behavior::key(#key_lit) },
                 >() {
                     __bhv_builder.#key(#val)
                 } else {
@@ -349,7 +346,22 @@ fn emit_behavior_args_builder(
         }
     };
 
+    // Every argument site in this block guards on the same behavior and the
+    // same account type. Naming the pair once keeps each site to one line and
+    // reports an unresolved behavior module here rather than once per argument.
+    // These stay concrete types, so the guard keeps the inference behaviour its
+    // `if` position exists to preserve.
+    let aliases = if call.args.is_empty() {
+        quote! {}
+    } else {
+        quote! {
+            type __QuasarBhv = #path::Behavior;
+            type __QuasarBhvAcct = #field_ty;
+        }
+    };
+
     quote! {
+        #aliases
         let __bhv_builder = #path::Args::builder();
         #(#setters)*
         // Bound check: the builder must implement the stable BehaviorArgsBuilder
@@ -360,19 +372,19 @@ fn emit_behavior_args_builder(
     }
 }
 
-fn emit_arg_phase_const(phase: BehaviorPhase) -> proc_macro2::TokenStream {
-    let krate = crate::krate::lang_path();
-    match phase {
-        BehaviorPhase::SetInitParam => {
-            quote! { #krate::account_behavior::ARG_PHASE_SET_INIT_PARAM }
-        }
-        BehaviorPhase::AfterInit => {
-            quote! { #krate::account_behavior::ARG_PHASE_AFTER_INIT }
-        }
-        BehaviorPhase::Check => quote! { #krate::account_behavior::ARG_PHASE_CHECK },
-        BehaviorPhase::Update => quote! { #krate::account_behavior::ARG_PHASE_UPDATE },
-        BehaviorPhase::Exit => quote! { #krate::account_behavior::ARG_PHASE_EXIT },
-    }
+/// The per-phase `uses_*_arg` guard for an argument site.
+///
+/// The phase is fixed when the site is emitted, so it rides in the function
+/// name instead of a `{ ARG_PHASE_* }` const-generic argument.
+fn emit_arg_phase_guard(phase: BehaviorPhase) -> syn::Ident {
+    let name = match phase {
+        BehaviorPhase::SetInitParam => "uses_set_init_param_arg",
+        BehaviorPhase::AfterInit => "uses_after_init_arg",
+        BehaviorPhase::Check => "uses_check_arg",
+        BehaviorPhase::Update => "uses_update_arg",
+        BehaviorPhase::Exit => "uses_exit_arg",
+    };
+    format_ident!("{}", name)
 }
 
 /// Emit a lowered behavior-arg value. `on_self` selects the receiver:
