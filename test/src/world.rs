@@ -97,6 +97,30 @@ impl Test {
         }
     }
 
+    /// Read a fixed-size Quasar account whose typed state starts at `offset`
+    /// within the account data (after the discriminator), with the same
+    /// ownership, discriminator, and zero-copy validation as [`Self::read`].
+    ///
+    /// The schema-only wincode pair stays reachable through deref as
+    /// `(*test).read(..)` / `(*test).write(..)`.
+    pub fn read_at<T>(&self, address: Pubkey, offset: usize) -> Snapshot<T>
+    where
+        T: Discriminator + Owner + Deref,
+        T::Target: ZcElem + ZcValidate + Copy,
+    {
+        let name = core::any::type_name::<T>();
+        let account = self
+            .0
+            .account(address)
+            .unwrap_or_else(|| panic!("read_at {name}: no account at {address}"));
+        let state = validate_typed_at::<T>("read_at", &account, offset);
+        Snapshot {
+            address,
+            lamports: account.lamports,
+            state,
+        }
+    }
+
     /// Install a rent-exempt fixed-size Quasar account.
     pub fn write<D>(&mut self, address: Pubkey, state: D) -> Pubkey
     where
@@ -199,6 +223,36 @@ impl TestBuilder {
         self
     }
 
+    /// RPC endpoint that `Dump` fixtures fetch from on a store miss. Code-only
+    /// and set once; unset, it defaults to the public mainnet-beta RPC.
+    pub fn rpc(mut self, url: impl Into<String>) -> Self {
+        self.inner = self.inner.rpc(url);
+        self
+    }
+
+    /// Project directory whose committed `.parallax/` store dumps read and
+    /// write, when the default manifest walk-up is not wanted.
+    pub fn project_dir(mut self, dir: impl Into<String>) -> Self {
+        self.inner = self.inner.project_dir(dir);
+        self
+    }
+
+    /// Load the primary program from in-memory ELF bytes, skipping artifact
+    /// discovery. Empty bytes are equivalent to [`Self::no_program`].
+    pub fn program_bytes(mut self, elf: impl Into<Vec<u8>>) -> Self {
+        self.inner = self.inner.program_bytes(elf);
+        self.program_path_set = true;
+        self
+    }
+
+    /// Build a world with no primary program, loading only the runtime's
+    /// built-in programs.
+    pub fn no_program(mut self) -> Self {
+        self.inner = self.inner.no_program();
+        self.program_path_set = true;
+        self
+    }
+
     /// Load an explicit program artifact instead of discovering one.
     pub fn program_path(mut self, path: impl Into<PathBuf>) -> Self {
         self.inner = self.inner.program_path(path);
@@ -242,6 +296,16 @@ where
     T: Discriminator + Owner + Deref,
     T::Target: ZcElem + ZcValidate + Copy,
 {
+    validate_typed_at::<T>(context, account, 0)
+}
+
+/// [`validate_typed`] with the typed state starting `offset` bytes past the
+/// discriminator; backs [`Test::read_at`].
+pub(crate) fn validate_typed_at<T>(context: &str, account: &Account, offset: usize) -> T::Target
+where
+    T: Discriminator + Owner + Deref,
+    T::Target: ZcElem + ZcValidate + Copy,
+{
     let name = core::any::type_name::<T>();
     let address = account.address;
     if account.owner != T::OWNER {
@@ -252,7 +316,8 @@ where
         );
     }
     let discriminator = T::DISCRIMINATOR;
-    let expected_len = discriminator.len() + core::mem::size_of::<T::Target>();
+    let start = discriminator.len() + offset;
+    let expected_len = start + core::mem::size_of::<T::Target>();
     if account.data.len() < expected_len {
         panic!(
             "{context} {name}: account {address} holds {} bytes, expected at least {expected_len}",
@@ -267,7 +332,7 @@ where
     }
     // SAFETY: `T::Target` is `ZcElem` (alignment one and no padding), and the
     // length check above proves the target bytes are in bounds.
-    let state = unsafe { &*(account.data[discriminator.len()..].as_ptr() as *const T::Target) };
+    let state = unsafe { &*(account.data[start..].as_ptr() as *const T::Target) };
     if let Err(error) = <T::Target as ZcValidate>::validate_ref(state) {
         panic!("{context} {name}: account {address} holds invalid data: {error:?}");
     }

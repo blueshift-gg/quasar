@@ -9,16 +9,20 @@
 use crate::{Account, Pubkey, Test};
 
 pub use parallax_svm::fixture::{
-    AssociatedTokenAccount, Mint, Program, TokenAccount, TokenProgram, Wallet,
+    AssociatedTokenAccount, Dump, DumpAccounts, DumpProgram, DumpRefresh, Load, LoadAccounts,
+    LoadProgram, Mint, Program, TokenAccount, TokenProgram, Wallet,
 };
 
 /// State that can install itself into a test world.
 ///
-/// Applications can implement this trait for protocol-level fixtures and
-/// compose the built-in account fixtures inside [`Fixture::install`]. Arrays of
-/// one fixture type are fixtures too, so repeated setup can be installed with
-/// `test.add((Wallet::account(), Wallet::account()))`. Each fixture returns the address it placed,
-/// so tests thread those handles instead of pinning addresses up front.
+/// Applications can implement this trait for protocol-level fixtures, but the
+/// composition algebra usually suffices: tuples install heterogeneous worlds
+/// in one `add` (`test.add((Wallet::account(), Mint::account()))`), arrays
+/// repeat one fixture type, and closures receiving `&mut Test` are fixtures
+/// whose return value is the output — the dependency mechanism for worlds
+/// where later fixtures need earlier handles. Each fixture returns the
+/// address(es) it placed, so tests thread those handles instead of pinning
+/// addresses up front.
 pub trait Fixture {
     /// Handle or state returned after installation.
     type Output;
@@ -56,7 +60,24 @@ delegate_fixture!(
     TokenAccount,
     AssociatedTokenAccount,
     Program<'_>,
+    DumpProgram,
+    LoadProgram,
 );
+
+/// Delegate Parallax fixtures whose output is the full installed address list.
+macro_rules! delegate_addresses_fixture {
+    ($($ty:ty),+ $(,)?) => {$(
+        impl Fixture for $ty {
+            type Output = Vec<Pubkey>;
+
+            fn install(self, test: &mut Test) -> Self::Output {
+                parallax_svm::fixture::Fixture::install(self, &mut test.0)
+            }
+        }
+    )+};
+}
+
+delegate_addresses_fixture!(DumpRefresh, LoadAccounts);
 
 /// Closures are fixtures: the dependency mechanism for worlds where later
 /// fixtures need earlier handles, mirroring Parallax. The closure receives
@@ -104,4 +125,4 @@ macro_rules! delegate_plural_fixture {
     )+};
 }
 
-delegate_plural_fixture!(Mints, Wallets, TokenAccounts);
+delegate_plural_fixture!(DumpAccounts, Mints, Wallets, TokenAccounts);
