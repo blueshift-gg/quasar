@@ -22,7 +22,7 @@ fn deposit_creates_and_funds_the_vault(test: &mut Test) {
     let vault = find_vault_address(&USER, &crate::ID).0;
     let deposit = 1_000_000_000;
 
-    let outcome = test.send(DepositInstruction {
+    let outcome = test.execute(DepositInstruction {
         user: USER,
         amount: deposit,
     });
@@ -40,7 +40,7 @@ fn failed_init_does_not_leave_a_placeholder(test: &mut Test) {
     test.add(Wallet::account().at(USER));
     let wrong_vault = Pubkey::new_from_array([99; 32]);
 
-    let outcome = test.send(DepositInstructionRaw {
+    let outcome = test.execute(DepositInstructionRaw {
         user: USER,
         vault: wrong_vault,
         amount: 1,
@@ -60,7 +60,7 @@ fn compute_exhaustion_has_the_same_stable_error_as_typescript() {
         .unwrap();
     test.add(Wallet::account().at(USER));
 
-    test.send(DepositInstruction {
+    test.execute(DepositInstruction {
         user: USER,
         amount: 1,
     })
@@ -90,7 +90,7 @@ fn withdraw_moves_lamports_out_of_program_state(test: &mut Test) {
     assert_eq!(test.lamports(USER), DEFAULT_WALLET_LAMPORTS);
     assert_eq!(test.lamports(vault), vault_lamports);
 
-    test.send(WithdrawInstruction {
+    test.execute(WithdrawInstruction {
         user: USER,
         amount: withdrawal,
     })

@@ -74,7 +74,7 @@ fn test_make_cu(test: &mut Test) {
     );
     let (escrow, bump) = test.derive_pda_with_bump(Escrow::seeds(&MAKER));
 
-    let result = test.send(MakeInstruction {
+    let result = test.execute(MakeInstruction {
         maker: MAKER,
         mint_a,
         mint_b,
@@ -103,7 +103,7 @@ fn test_take_cu(test: &mut Test) {
             .with_amount(10_000),
     );
 
-    let result = test.send(TakeInstruction {
+    let result = test.execute(TakeInstruction {
         taker: TAKER,
         maker: MAKER,
         mint_a,
@@ -121,7 +121,7 @@ fn test_refund_cu(test: &mut Test) {
     let (mint_a, mint_b) = base_world(test);
     live_escrow(test, mint_a, mint_b);
 
-    let result = test.send(RefundInstruction {
+    let result = test.execute(RefundInstruction {
         maker: MAKER,
         mint_a,
         maker_ta_a: MAKER_TA_A,
@@ -142,7 +142,7 @@ fn test_make_existing_token_accounts(test: &mut Test) {
     test.add(TokenAccount::account(mint_b, MAKER).at(MAKER_TA_B));
     test.add(TokenAccount::account(mint_a, escrow).at(VAULT_TA_A));
 
-    test.send(MakeInstruction {
+    test.execute(MakeInstruction {
         maker: MAKER,
         mint_a,
         mint_b,
@@ -167,7 +167,7 @@ fn test_make_existing_maker_ta_b_wrong_mint(test: &mut Test) {
     test.add(TokenAccount::account(mint_a, MAKER).at(MAKER_TA_B)); // wrong mint
     test.add(TokenAccount::account(mint_a, escrow).at(VAULT_TA_A));
 
-    let result = test.send(MakeInstruction {
+    let result = test.execute(MakeInstruction {
         maker: MAKER,
         mint_a,
         mint_b,
@@ -195,7 +195,7 @@ fn test_make_existing_maker_ta_b_wrong_owner(test: &mut Test) {
     test.add(TokenAccount::account(mint_b, WRONG_OWNER).at(MAKER_TA_B)); // wrong owner
     test.add(TokenAccount::account(mint_a, escrow).at(VAULT_TA_A));
 
-    let result = test.send(MakeInstruction {
+    let result = test.execute(MakeInstruction {
         maker: MAKER,
         mint_a,
         mint_b,
@@ -228,7 +228,7 @@ fn test_take_existing_token_accounts(test: &mut Test) {
             .with_amount(500),
     );
 
-    test.send(TakeInstruction {
+    test.execute(TakeInstruction {
         taker: TAKER,
         maker: MAKER,
         mint_a,
@@ -251,7 +251,7 @@ fn test_refund_existing_maker_ta_a(test: &mut Test) {
     );
     live_escrow(test, mint_a, mint_b);
 
-    test.send(RefundInstruction {
+    test.execute(RefundInstruction {
         maker: MAKER,
         mint_a,
         maker_ta_a: MAKER_TA_A,

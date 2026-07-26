@@ -80,7 +80,7 @@ fn create_initializes_dynamic_config(test: &mut Test) {
     let config = find_config_address(&CREATOR, &crate::ID).0;
 
     let outcome = test
-        .send(CreateInstruction {
+        .execute(CreateInstruction {
             creator: CREATOR,
             threshold: 2,
             remaining_accounts: co_signers(&[SIGNER1, SIGNER2, SIGNER3]),
@@ -112,7 +112,7 @@ fn deposit_funds_the_multisig_vault(test: &mut Test) {
         &[SIGNER1, SIGNER2],
     ));
 
-    test.send(DepositInstruction {
+    test.execute(DepositInstruction {
         depositor: DEPOSITOR,
         config,
         amount: 1_000_000_000,
@@ -131,7 +131,7 @@ fn set_label_updates_dynamic_state(test: &mut Test) {
     test.add(config_fixture(config, CREATOR, 1, bump, "", &[SIGNER1]));
 
     let outcome = test
-        .send(SetLabelInstruction {
+        .execute(SetLabelInstruction {
             creator: CREATOR,
             label: DynString::<u8>::new("Treasury"),
         })
@@ -170,7 +170,7 @@ fn transfer_instruction(signers: &[Pubkey]) -> ExecuteTransferInstruction {
 fn execute_transfer_accepts_the_threshold(test: &mut Test) {
     let (_, vault) = transfer_world(test);
 
-    test.send(transfer_instruction(&[SIGNER1, SIGNER2]))
+    test.execute(transfer_instruction(&[SIGNER1, SIGNER2]))
         .succeeds()
         .checks([
             Cu::spent(|cu| cu <= MAX_EXECUTE_TRANSFER_CU),
@@ -183,7 +183,7 @@ fn execute_transfer_accepts_the_threshold(test: &mut Test) {
 fn execute_transfer_rejects_too_few_signers(test: &mut Test) {
     transfer_world(test);
 
-    test.send(transfer_instruction(&[SIGNER1]))
+    test.execute(transfer_instruction(&[SIGNER1]))
         .fails(ProgramError::MissingRequiredSignature);
 }
 
@@ -191,6 +191,6 @@ fn execute_transfer_rejects_too_few_signers(test: &mut Test) {
 fn execute_transfer_counts_a_duplicate_once(test: &mut Test) {
     transfer_world(test);
 
-    test.send(transfer_instruction(&[SIGNER1, SIGNER1]))
+    test.execute(transfer_instruction(&[SIGNER1, SIGNER1]))
         .fails(ProgramError::MissingRequiredSignature);
 }

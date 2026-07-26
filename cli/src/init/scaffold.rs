@@ -260,7 +260,7 @@ fn generate_tests_rs() -> &'static str {
 #[quasar_test]
 fn initialize(test: &mut Test) {
     let payer = test.add(Wallet::account());
-    test.send(InitializeInstruction { payer }).succeeds();
+    test.execute(InitializeInstruction { payer }).succeeds();
 }
 "#
 }

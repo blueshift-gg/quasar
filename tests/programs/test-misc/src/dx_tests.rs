@@ -17,7 +17,7 @@ fn initialize_stores_typed_state(test: &mut Test) {
     let payer = test.add(Wallet::account());
     let (account, bump) = test.derive_pda_with_bump(SimpleAccount::seeds(&payer));
 
-    test.send(InitializeInstruction { payer, value: 42 })
+    test.execute(InitializeInstruction { payer, value: 42 })
         .succeeds();
 
     let state = test.read::<SimpleAccount>(account);
@@ -39,7 +39,7 @@ fn close_returns_the_account_to_the_system(test: &mut Test) {
         },
     );
 
-    test.send(CloseAccountInstruction { authority })
+    test.execute(CloseAccountInstruction { authority })
         .succeeds()
         .check(Account::closed(account));
 }
@@ -72,5 +72,6 @@ fn close_rejects_a_foreign_authority(test: &mut Test) {
         .expect("generated account")
         .pubkey = account;
 
-    test.send(instruction).fails_with(QuasarError::InvalidPda);
+    test.execute(instruction)
+        .fails_with(QuasarError::InvalidPda);
 }

@@ -6,7 +6,7 @@
 //! precedence during method resolution.
 
 use {
-    crate::{fixture::Fixture, Account, Instruction, Outcome, Pubkey, SetupError},
+    crate::{fixture::Fixture, Account, Outcome, Pubkey, SetupError},
     quasar_lang::{
         __zeropod::{ZcElem, ZcValidate},
         traits::{AccountData, Discriminator, Owner, SeedSlices},
@@ -27,7 +27,7 @@ pub const PROGRAM_PATH_ENV: &str = "QUASAR_PROGRAM_PATH";
 
 /// An isolated Solana program test world.
 ///
-/// Wraps [`parallax_svm::Test`]; its whole surface — `add`, `send`, `account`,
+/// Wraps [`parallax_svm::Test`]; its whole surface — `add`, `execute`, `account`,
 /// `warp_to_timestamp`, and the rest — is available directly, plus the
 /// quasar-test extras below.
 pub struct Test(pub(crate) parallax_svm::Test);
@@ -121,32 +121,34 @@ impl Test {
         address
     }
 
-    /// Execute and commit one instruction.
-    pub fn send(&mut self, instruction: impl Into<Instruction>) -> Outcome {
-        Outcome::new(self.0.send(instruction))
+    /// Execute and commit one transaction: a single instruction, or a chain
+    /// as a tuple, array, or `Vec`.
+    pub fn execute<M>(&mut self, instructions: impl parallax_svm::IntoInstructions<M>) -> Outcome {
+        Outcome::new(self.0.execute(instructions))
     }
 
-    /// Execute and commit an atomic instruction sequence.
-    pub fn send_all<I, T>(&mut self, instructions: I) -> Outcome
-    where
-        I: IntoIterator<Item = T>,
-        T: Into<Instruction>,
-    {
-        Outcome::new(self.0.send_all(instructions))
-    }
-
-    /// Execute and commit one instruction with raw transaction-input accounts.
-    pub fn send_with(
+    /// Execute and commit with raw transaction-input accounts seeding or
+    /// overriding world state.
+    pub fn execute_with<M>(
         &mut self,
-        instruction: impl Into<Instruction>,
+        instructions: impl parallax_svm::IntoInstructions<M>,
         accounts: impl IntoIterator<Item = Account>,
     ) -> Outcome {
-        Outcome::new(self.0.send_with(instruction, accounts))
+        Outcome::new(self.0.execute_with(instructions, accounts))
     }
 
-    /// Execute an instruction without committing its changes.
-    pub fn simulate(&mut self, instruction: impl Into<Instruction>) -> Outcome {
-        Outcome::new(self.0.simulate(instruction))
+    /// Execute one transaction without committing its changes.
+    pub fn simulate<M>(&mut self, instructions: impl parallax_svm::IntoInstructions<M>) -> Outcome {
+        Outcome::new(self.0.simulate(instructions))
+    }
+
+    /// Simulate with raw transaction-input accounts, committing nothing.
+    pub fn simulate_with<M>(
+        &mut self,
+        instructions: impl parallax_svm::IntoInstructions<M>,
+        accounts: impl IntoIterator<Item = Account>,
+    ) -> Outcome {
+        Outcome::new(self.0.simulate_with(instructions, accounts))
     }
 }
 
