@@ -76,6 +76,15 @@ pub enum ClientTarget {
 }
 
 impl ClientTarget {
+    /// Whether the target is supported or still a preview backend.
+    ///
+    /// Supported targets carry cross-target parity tests and executed
+    /// conformance checks; preview targets are generated on request and are
+    /// held only to the rules every backend must follow.
+    pub fn is_preview(self) -> bool {
+        matches!(self, Self::Python | Self::Go | Self::C)
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Rust => "rust",
