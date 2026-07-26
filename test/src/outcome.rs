@@ -48,7 +48,7 @@ impl Outcome {
     }
 
     /// Run check values against this outcome — built-in Parallax facts
-    /// (`Cu`, `Account::lamports`, `Changes`, ...), quasar-test's strict
+    /// (`Cu`, `Account::lamports`, `Account::created`, ...), quasar-test's strict
     /// [`State`], closures, and arrays or tuples of any of them. Chainable.
     pub fn check(&self, check: impl parallax_svm::Check) -> &Self {
         self.0.check(check);

@@ -31,14 +31,8 @@ fn deposit_creates_and_funds_the_vault(test: &mut Test) {
         Cu::spent().le(MAX_DEPOSIT_CU),
         Account::lamports(vault).eq(deposit),
         Account::lamports(USER).eq(DEFAULT_WALLET_LAMPORTS - deposit),
+        Account::created(vault),
     ]);
-    assert!(
-        outcome
-            .account_changes()
-            .iter()
-            .any(|change| change.address() == vault && change.was_created()),
-        "the outcome should identify the initialized vault"
-    );
 }
 
 #[quasar_test]

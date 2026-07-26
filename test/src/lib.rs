@@ -45,7 +45,7 @@ pub use {
 // before: the account/error types, the instruction and address types, program
 // discovery errors, the co-signer helper, and the SPL program constants.
 pub use parallax_svm::{
-    co_signers, system_program, Account, AccountChange, AccountMeta, Assert, Changes, Check, Cu,
+    co_signers, system_program, Account, AccountChange, AccountMeta, Assert, Check, Cu,
     Instruction, Measure, ProgramError, Pubkey, ReturnData, SetupError, DEFAULT_WALLET_LAMPORTS,
     SPL_ASSOCIATED_TOKEN_PROGRAM_ID, SPL_TOKEN_2022_PROGRAM_ID, SPL_TOKEN_PROGRAM_ID,
 };
@@ -57,8 +57,8 @@ pub mod prelude {
         fixture::{
             AssociatedTokenAccount, Fixture, Mint, Program, TokenAccount, TokenProgram, Wallet,
         },
-        quasar_test, system_program, Account, AccountChange, AccountMeta, Assert, Changes, Check,
-        Cu, Instruction, Outcome, ProgramError, Pubkey, ReturnData, Snapshot, State, Test,
+        quasar_test, system_program, Account, AccountChange, AccountMeta, Assert, Check, Cu,
+        Instruction, Outcome, ProgramError, Pubkey, ReturnData, Snapshot, State, Test,
         DEFAULT_WALLET_LAMPORTS, SPL_ASSOCIATED_TOKEN_PROGRAM_ID, SPL_TOKEN_2022_PROGRAM_ID,
         SPL_TOKEN_PROGRAM_ID,
     };
