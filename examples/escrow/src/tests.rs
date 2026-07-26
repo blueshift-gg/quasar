@@ -84,7 +84,7 @@ fn test_make_cu(test: &mut Test) {
         deposit: 1337,
         receive: 1337,
     });
-    result.succeeds().cu_at_most(MAX_MAKE_CU);
+    result.succeeds().check(CuBudget::le(MAX_MAKE_CU));
 
     let state = test.read::<Escrow>(escrow);
     assert_eq!(state.maker, MAKER);
@@ -113,7 +113,7 @@ fn test_take_cu(test: &mut Test) {
         maker_ta_b: MAKER_TA_B,
         vault_ta_a: VAULT_TA_A,
     });
-    result.succeeds().cu_at_most(MAX_TAKE_CU);
+    result.succeeds().check(CuBudget::le(MAX_TAKE_CU));
 }
 
 #[quasar_test]
@@ -127,7 +127,7 @@ fn test_refund_cu(test: &mut Test) {
         maker_ta_a: MAKER_TA_A,
         vault_ta_a: VAULT_TA_A,
     });
-    result.succeeds().cu_at_most(MAX_REFUND_CU);
+    result.succeeds().check(CuBudget::le(MAX_REFUND_CU));
 }
 
 #[quasar_test]

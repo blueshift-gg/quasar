@@ -26,7 +26,7 @@
 //! Parallax and are re-exported here unchanged. quasar-test adds the
 //! Quasar-specific sugar on top: quasar-lang `SeedSlices` PDA derivation
 //! ([`Test::derive_pda`]), the strict, discriminator- and owner-checked typed
-//! state API ([`Test::read`]/[`Test::write`]/[`Outcome::has_state`]), the
+//! state API ([`Test::read`]/[`Test::write`]/the strict [`State`] checks), the
 //! `#[quasar_test]` attribute, and the `QUASAR_PROGRAM_PATH` bridge.
 
 #![warn(missing_docs)]
@@ -36,7 +36,7 @@ mod outcome;
 mod world;
 
 pub use {
-    outcome::Outcome,
+    outcome::{Outcome, State},
     quasar_test_derive::quasar_test,
     world::{Snapshot, Test, TestBuilder, PROGRAM_PATH_ENV},
 };
@@ -45,8 +45,9 @@ pub use {
 // before: the account/error types, the instruction and address types, program
 // discovery errors, the co-signer helper, and the SPL program constants.
 pub use parallax_svm::{
-    co_signers, system_program, Account, AccountChange, AccountMeta, Instruction, ProgramError,
-    Pubkey, SetupError, DEFAULT_WALLET_LAMPORTS, SPL_ASSOCIATED_TOKEN_PROGRAM_ID,
+    co_signers, system_program, Account, AccountChange, AccountMeta, Assert, Changes, Check,
+    CuBudget, Data, Instruction, Lamports, Owner, ProgramError, Pubkey, ReturnData, SetupError,
+    Supply, Tokens, DEFAULT_WALLET_LAMPORTS, SPL_ASSOCIATED_TOKEN_PROGRAM_ID,
     SPL_TOKEN_2022_PROGRAM_ID, SPL_TOKEN_PROGRAM_ID,
 };
 
@@ -57,8 +58,9 @@ pub mod prelude {
         fixture::{
             AssociatedTokenAccount, Fixture, Mint, Program, TokenAccount, TokenProgram, Wallet,
         },
-        quasar_test, system_program, Account, AccountChange, AccountMeta, Instruction, Outcome,
-        ProgramError, Pubkey, Snapshot, Test, DEFAULT_WALLET_LAMPORTS,
+        quasar_test, system_program, Account, AccountChange, AccountMeta, Assert, Changes, Check,
+        CuBudget, Data, Instruction, Lamports, Outcome, Owner, ProgramError, Pubkey, ReturnData,
+        Snapshot, State, Supply, Test, Tokens, DEFAULT_WALLET_LAMPORTS,
         SPL_ASSOCIATED_TOKEN_PROGRAM_ID, SPL_TOKEN_2022_PROGRAM_ID, SPL_TOKEN_PROGRAM_ID,
     };
 }

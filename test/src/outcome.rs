@@ -2,12 +2,14 @@
 //!
 //! `Outcome` is a newtype over [`parallax_svm::Outcome`]. Reporting accessors
 //! (`logs`, `account`, `events`, ...) are reached through [`Deref`]; the
-//! chainable assertions are re-declared so a chain stays in quasar-test's
-//! `Outcome`, which is what keeps the strict, quasar-lang-typed [`Self::has_state`]
-//! reachable after any other assertion.
+//! verdict and `check` are re-declared so a chain stays in quasar-test's
+//! `Outcome`. The [`State`] facts here validate the quasar way — ownership,
+//! discriminator, length, and zero-copy validation — replacing Parallax's
+//! schema-only `State` in this crate's prelude.
 
 use {
     crate::{ProgramError, Pubkey},
+    parallax_svm::Assert,
     quasar_lang::{
         __zeropod::{ZcElem, ZcValidate},
         traits::{Discriminator, Owner},
@@ -45,62 +47,11 @@ impl Outcome {
         self
     }
 
-    /// Assert an inclusive compute-unit ceiling.
-    pub fn cu_at_most(&self, limit: u64) -> &Self {
-        self.0.cu_at_most(limit);
-        self
-    }
-
-    /// Assert a resulting lamport balance.
-    pub fn has_lamports(&self, address: Pubkey, expected: u64) -> &Self {
-        self.0.has_lamports(address, expected);
-        self
-    }
-
-    /// Assert a resulting Token or Token-2022 account balance.
-    pub fn has_tokens(&self, address: Pubkey, expected: u64) -> &Self {
-        self.0.has_tokens(address, expected);
-        self
-    }
-
-    /// Assert a resulting Token or Token-2022 mint supply.
-    pub fn has_supply(&self, address: Pubkey, expected: u64) -> &Self {
-        self.0.has_supply(address, expected);
-        self
-    }
-
-    /// Assert a resulting account is owned by `program`.
-    pub fn owned_by(&self, address: Pubkey, program: Pubkey) -> &Self {
-        self.0.owned_by(address, program);
-        self
-    }
-
-    /// Assert Solana's closed-account state. A runtime may remove the account
-    /// entirely or retain its empty system-owned representation.
-    pub fn is_closed(&self, address: Pubkey) -> &Self {
-        self.0.is_closed(address);
-        self
-    }
-
-    /// Assert typed post-state at `address`, passing the decoded data to
-    /// `check` for user assertions.
-    ///
-    /// The resulting account is read through `T`'s on-chain wrapper with the
-    /// same ownership, discriminator, length, and zero-copy validation as
-    /// [`Test::read`](crate::Test::read). Panics with the address and the
-    /// specific failure when the account is absent or malformed. Chainable, so
-    /// several accounts can be asserted in one expression.
-    pub fn has_state<T>(&self, address: Pubkey, check: impl FnOnce(&T::Target)) -> &Self
-    where
-        T: Discriminator + Owner + Deref,
-        T::Target: ZcElem + ZcValidate + Copy,
-    {
-        let name = core::any::type_name::<T>();
-        let account = self.0.account(address).unwrap_or_else(|| {
-            panic!("has_state {name}: outcome does not contain account {address}")
-        });
-        let state = crate::world::validate_typed::<T>("has_state", account);
-        check(&state);
+    /// Run check values against this outcome — built-in Parallax facts
+    /// (`CuBudget`, `Lamports`, `Changes`, ...), quasar-test's [`State`],
+    /// closures, and arrays or tuples of any of them. Chainable.
+    pub fn check(&self, check: impl parallax_svm::Check) -> &Self {
+        self.0.check(check);
         self
     }
 }
@@ -110,5 +61,44 @@ impl Deref for Outcome {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+/// Typed account-state facts, validated the quasar way.
+///
+/// The resulting account is read through `T`'s on-chain wrapper with the same
+/// ownership, discriminator, length, and zero-copy validation as
+/// [`Test::read`](crate::Test::read) — quasar-test's strict replacement for
+/// Parallax's schema-only `State`. Constructors return Parallax's [`Assert`],
+/// so these facts group in the same `check([..])` arrays as the built-ins.
+pub struct State;
+
+impl State {
+    /// Assert the account at `address` decodes and validates to exactly
+    /// `expected`.
+    pub fn eq<T>(address: Pubkey, expected: T::Target) -> Assert
+    where
+        T: Discriminator + Owner + Deref + 'static,
+        T::Target: ZcElem + ZcValidate + Copy + PartialEq + core::fmt::Debug,
+    {
+        Self::with::<T>(address, move |state| {
+            assert_eq!(*state, expected, "unexpected state for {address}")
+        })
+    }
+
+    /// Assert on the decoded, validated state with a closure, for partial or
+    /// computed facts.
+    pub fn with<T>(address: Pubkey, check: impl Fn(&T::Target) + 'static) -> Assert
+    where
+        T: Discriminator + Owner + Deref + 'static,
+        T::Target: ZcElem + ZcValidate + Copy,
+    {
+        Assert::from_fn(move |outcome| {
+            let name = core::any::type_name::<T>();
+            let account = outcome.account(address).unwrap_or_else(|| {
+                panic!("State {name}: outcome does not contain account {address}")
+            });
+            check(&crate::world::validate_typed::<T>("State", account));
+        })
     }
 }

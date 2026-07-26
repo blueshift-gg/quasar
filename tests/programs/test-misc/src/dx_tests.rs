@@ -41,7 +41,7 @@ fn close_returns_the_account_to_the_system(test: &mut Test) {
 
     test.send(CloseAccountInstruction { authority })
         .succeeds()
-        .is_closed(account);
+        .check(Changes::closed(account));
 }
 
 #[quasar_test]

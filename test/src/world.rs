@@ -232,8 +232,8 @@ impl TestBuilder {
 
 /// Validate `account` as a fixed-size Quasar account of type `T` and return a
 /// copy of its typed state. `context` names the calling operation so panics stay
-/// actionable (`read`, `has_state`, ...). Shared by [`Test::read`] and
-/// [`crate::Outcome::has_state`] so both apply identical ownership,
+/// actionable (`read`, `State`, ...). Shared by [`Test::read`] and
+/// [`crate::State`] so both apply identical ownership,
 /// discriminator, length, and zero-copy checks.
 pub(crate) fn validate_typed<T>(context: &str, account: &Account) -> T::Target
 where
