@@ -79,13 +79,15 @@ fn create_initializes_dynamic_config(test: &mut Test) {
     test.add(Wallet::account().at(CREATOR));
     let config = find_config_address(&CREATOR, &crate::ID).0;
 
-    let outcome = test.send(CreateInstruction {
-        creator: CREATOR,
-        threshold: 2,
-        remaining_accounts: co_signers(&[SIGNER1, SIGNER2, SIGNER3]),
-    });
+    let outcome = test
+        .send(CreateInstruction {
+            creator: CREATOR,
+            threshold: 2,
+            remaining_accounts: co_signers(&[SIGNER1, SIGNER2, SIGNER3]),
+        })
+        .succeeds();
 
-    outcome.succeeds().check(Cu::spent().le(MAX_CREATE_CU));
+    outcome.check(Cu::spent(|cu| cu <= MAX_CREATE_CU));
     let ProgramAccount::MultisigConfig(state) = outcome.account_as(config, decode_account).unwrap();
     assert_eq!(state.creator, CREATOR);
     assert_eq!(state.threshold, 2);
@@ -116,9 +118,9 @@ fn deposit_funds_the_multisig_vault(test: &mut Test) {
         amount: 1_000_000_000,
     })
     .succeeds()
-    .check([
-        Cu::spent().le(MAX_DEPOSIT_CU),
-        Account::lamports(vault).eq(1_000_000_000),
+    .checks([
+        Cu::spent(|cu| cu <= MAX_DEPOSIT_CU),
+        Account::lamports(vault, 1_000_000_000),
     ]);
 }
 
@@ -128,12 +130,14 @@ fn set_label_updates_dynamic_state(test: &mut Test) {
     let (config, bump) = find_config_address(&CREATOR, &crate::ID);
     test.add(config_fixture(config, CREATOR, 1, bump, "", &[SIGNER1]));
 
-    let outcome = test.send(SetLabelInstruction {
-        creator: CREATOR,
-        label: DynString::<u8>::new("Treasury"),
-    });
+    let outcome = test
+        .send(SetLabelInstruction {
+            creator: CREATOR,
+            label: DynString::<u8>::new("Treasury"),
+        })
+        .succeeds();
 
-    outcome.succeeds().check(Cu::spent().le(MAX_SET_LABEL_CU));
+    outcome.check(Cu::spent(|cu| cu <= MAX_SET_LABEL_CU));
     let ProgramAccount::MultisigConfig(state) = outcome.account_as(config, decode_account).unwrap();
     assert_eq!(state.label.as_bytes(), b"Treasury");
 }
@@ -168,10 +172,10 @@ fn execute_transfer_accepts_the_threshold(test: &mut Test) {
 
     test.send(transfer_instruction(&[SIGNER1, SIGNER2]))
         .succeeds()
-        .check([
-            Cu::spent().le(MAX_EXECUTE_TRANSFER_CU),
-            Account::lamports(vault).eq(4_000_000_000),
-            Account::lamports(RECIPIENT).eq(1_000_000_000),
+        .checks([
+            Cu::spent(|cu| cu <= MAX_EXECUTE_TRANSFER_CU),
+            Account::lamports(vault, 4_000_000_000),
+            Account::lamports(RECIPIENT, 1_000_000_000),
         ]);
 }
 

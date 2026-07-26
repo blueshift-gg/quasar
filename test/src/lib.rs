@@ -36,31 +36,34 @@ mod outcome;
 mod world;
 
 pub use {
-    outcome::{Outcome, State},
+    outcome::{Outcome, State, SucceededTransaction},
     quasar_test_derive::quasar_test,
     world::{Snapshot, Test, TestBuilder, PROGRAM_PATH_ENV},
 };
 
 // Re-exported unchanged from Parallax so existing imports resolve exactly as
-// before: the account/error types, the instruction and address types, program
-// discovery errors, the co-signer helper, and the SPL program constants.
+// before: the account/error types, the instruction and address types, the
+// check grammar (`CheckFn`, `bundle`, `Cu`, the failed-transaction witness),
+// program discovery errors, the co-signer helper, and the SPL program
+// constants.
 pub use parallax_svm::{
-    co_signers, system_program, Account, AccountChange, AccountMeta, Assert, Check, Cu,
-    Instruction, Measure, ProgramError, Pubkey, ReturnData, SetupError, DEFAULT_WALLET_LAMPORTS,
-    SPL_ASSOCIATED_TOKEN_PROGRAM_ID, SPL_TOKEN_2022_PROGRAM_ID, SPL_TOKEN_PROGRAM_ID,
+    bundle, co_signers, system_program, Account, AccountChange, AccountMeta, CheckFn, Cu,
+    FailedTransaction, Instruction, ProgramError, Pubkey, ReturnData, SetupError,
+    DEFAULT_WALLET_LAMPORTS, SPL_ASSOCIATED_TOKEN_PROGRAM_ID, SPL_TOKEN_2022_PROGRAM_ID,
+    SPL_TOKEN_PROGRAM_ID,
 };
 
 /// Imports used by most program tests.
 pub mod prelude {
     pub use crate::{
-        co_signers,
+        bundle, co_signers,
         fixture::{
             AssociatedTokenAccount, Fixture, Mint, Program, TokenAccount, TokenProgram, Wallet,
         },
-        quasar_test, system_program, Account, AccountChange, AccountMeta, Assert, Check, Cu,
-        Instruction, Outcome, ProgramError, Pubkey, ReturnData, Snapshot, State, Test,
-        DEFAULT_WALLET_LAMPORTS, SPL_ASSOCIATED_TOKEN_PROGRAM_ID, SPL_TOKEN_2022_PROGRAM_ID,
-        SPL_TOKEN_PROGRAM_ID,
+        quasar_test, system_program, Account, AccountChange, AccountMeta, CheckFn, Cu,
+        FailedTransaction, Instruction, Outcome, ProgramError, Pubkey, ReturnData, Snapshot, State,
+        SucceededTransaction, Test, DEFAULT_WALLET_LAMPORTS, SPL_ASSOCIATED_TOKEN_PROGRAM_ID,
+        SPL_TOKEN_2022_PROGRAM_ID, SPL_TOKEN_PROGRAM_ID,
     };
 }
 

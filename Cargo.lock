@@ -2352,7 +2352,7 @@ dependencies = [
 [[package]]
 name = "parallax-svm"
 version = "0.1.0"
-source = "git+https://github.com/blueshift-gg/parallax?rev=3e2d387#3e2d3879962e6232641831b6453d5ebdc675ee1e"
+source = "git+https://github.com/blueshift-gg/parallax?rev=09b5282#09b528296b376216c0690f411e69c83703ab3538"
 dependencies = [
  "base64 0.22.1",
  "litesvm",
@@ -2379,7 +2379,7 @@ dependencies = [
 [[package]]
 name = "parallax-svm-derive"
 version = "0.1.0"
-source = "git+https://github.com/blueshift-gg/parallax?rev=3e2d387#3e2d3879962e6232641831b6453d5ebdc675ee1e"
+source = "git+https://github.com/blueshift-gg/parallax?rev=09b5282#09b528296b376216c0690f411e69c83703ab3538"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",

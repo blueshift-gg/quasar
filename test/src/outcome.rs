@@ -2,14 +2,20 @@
 //!
 //! `Outcome` is a newtype over [`parallax_svm::Outcome`]. Reporting accessors
 //! (`logs`, `account`, `events`, ...) are reached through [`Deref`]; the
-//! verdict and `check` are re-declared so a chain stays in quasar-test's
-//! `Outcome`. The [`State`] facts here validate the quasar way — ownership,
-//! discriminator, length, and zero-copy validation — replacing Parallax's
-//! schema-only `State` in this crate's prelude.
+//! verdicts are re-declared so a chain stays in quasar-test's types. Success
+//! yields a quasar-test [`SucceededTransaction`] — a newtype over Parallax's
+//! witness that [`Deref`]s to it and delegates `check`/`checks` — so the strict
+//! [`State`] facts below group in the same `checks([..])` arrays as the
+//! built-ins. The failure verdicts hand back Parallax's [`FailedTransaction`]
+//! directly, since a failed transaction commits nothing to check.
+//!
+//! The [`State`] facts here validate the quasar way — ownership, discriminator,
+//! length, and zero-copy validation — replacing Parallax's schema-only `data`
+//! predicate in this crate's prelude.
 
 use {
     crate::{ProgramError, Pubkey},
-    parallax_svm::Assert,
+    parallax_svm::{CheckFn, FailedTransaction},
     quasar_lang::{
         __zeropod::{ZcElem, ZcValidate},
         traits::{Discriminator, Owner},
@@ -26,33 +32,25 @@ impl Outcome {
         Self(inner)
     }
 
-    /// Assert success and keep the outcome available for chained assertions.
-    pub fn succeeds(&self) -> &Self {
-        self.0.succeeds();
-        self
+    /// Assert success, yielding the [`SucceededTransaction`] witness that
+    /// checks run against.
+    pub fn succeeds(self) -> SucceededTransaction {
+        SucceededTransaction(self.0.succeeds())
     }
 
-    /// Assert a typed custom program error.
-    pub fn fails_with<E>(&self, expected: E) -> &Self
+    /// Assert a typed custom program error, yielding the failed-transaction
+    /// witness for follow-up reads.
+    pub fn fails_with<E>(self, expected: E) -> FailedTransaction
     where
         E: Into<u32>,
     {
-        self.0.fails_with(expected);
-        self
+        self.0.fails_with(expected)
     }
 
-    /// Assert a runtime or non-custom program error.
-    pub fn fails(&self, expected: ProgramError) -> &Self {
-        self.0.fails(expected);
-        self
-    }
-
-    /// Run check values against this outcome — built-in Parallax facts
-    /// (`Cu`, `Account::lamports`, `Account::created`, ...), quasar-test's strict
-    /// [`State`], closures, and arrays or tuples of any of them. Chainable.
-    pub fn check(&self, check: impl parallax_svm::Check) -> &Self {
-        self.0.check(check);
-        self
+    /// Assert a runtime or non-custom program error, yielding the
+    /// failed-transaction witness for follow-up reads.
+    pub fn fails(self, expected: ProgramError) -> FailedTransaction {
+        self.0.fails(expected)
     }
 }
 
@@ -64,52 +62,65 @@ impl Deref for Outcome {
     }
 }
 
-/// Typed account-state facts, validated the quasar way.
+/// A transaction proven successful by [`Outcome::succeeds`] — the context every
+/// [`CheckFn`] runs against.
 ///
-/// `State::of(address)` binds the account; `.eq(expected)` and
-/// `.with::<T>(closure)` finish the fact. The account is read through `T`'s
-/// on-chain wrapper with the same ownership, discriminator, length, and
-/// zero-copy validation as [`Test::read`](crate::Test::read) — quasar-test's
-/// strict sibling of Parallax's schema-only `Account::state`. Constructors
-/// return Parallax's [`Assert`], so these facts group in the same
-/// `check([..])` arrays as the built-ins.
-pub struct State;
+/// A newtype over [`parallax_svm::SucceededTransaction`] so quasar-test owns
+/// the chain: `check`/`checks` delegate to Parallax and stay chainable, while
+/// all outcome reads remain available through [`Deref`].
+pub struct SucceededTransaction(parallax_svm::SucceededTransaction);
 
-impl State {
-    /// Bind the account at `address` for a strict typed-state fact.
-    pub fn of(address: Pubkey) -> StateMeasure {
-        StateMeasure(address)
+impl SucceededTransaction {
+    /// Run one check or one [`bundle`](parallax_svm::bundle) — built-in
+    /// Parallax facts (`Cu`, `Account::lamports`, `Account::created`, ...),
+    /// quasar-test's strict [`State`], closures, and bundles of any of them.
+    /// Chainable.
+    pub fn check(&self, check: CheckFn) -> &Self {
+        self.0.check(check);
+        self
+    }
+
+    /// Run several checks and/or bundles. Chainable.
+    pub fn checks(&self, checks: impl IntoIterator<Item = CheckFn>) -> &Self {
+        self.0.checks(checks);
+        self
     }
 }
 
-/// A bound strict typed-state fact awaiting its expected value or closure.
-pub struct StateMeasure(Pubkey);
+impl Deref for SucceededTransaction {
+    type Target = parallax_svm::SucceededTransaction;
 
-impl StateMeasure {
-    /// Assert the account decodes and validates to exactly `expected`.
-    pub fn eq<T>(self, expected: T::Target) -> Assert
-    where
-        T: Discriminator + Owner + Deref + 'static,
-        T::Target: ZcElem + ZcValidate + Copy + PartialEq + core::fmt::Debug,
-    {
-        let address = self.0;
-        self.with::<T>(move |state| assert_eq!(*state, expected, "unexpected state for {address}"))
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
+}
 
-    /// Assert on the decoded, validated state with a closure, for partial or
-    /// computed facts.
-    pub fn with<T>(self, check: impl Fn(&T::Target) + 'static) -> Assert
+/// Typed account-state facts, validated the quasar way.
+///
+/// `State::of(address, predicate)` reads the account at `address` through `T`'s
+/// on-chain wrapper with the same ownership, discriminator, length, and
+/// zero-copy validation as [`Test::read`](crate::Test::read) — quasar-test's
+/// strict sibling of Parallax's schema-only `Account::data`. It returns a
+/// [`CheckFn`], so these facts group in the same `checks([..])` arrays as the
+/// built-ins.
+pub struct State;
+
+impl State {
+    /// Assert `predicate` holds for the decoded, validated state of the account
+    /// at `address`. The account is read through `T`'s on-chain wrapper with
+    /// full ownership, discriminator, length, and zero-copy validation.
+    pub fn of<T>(address: Pubkey, predicate: impl Fn(&T::Target) -> bool + 'static) -> CheckFn
     where
         T: Discriminator + Owner + Deref + 'static,
         T::Target: ZcElem + ZcValidate + Copy,
     {
-        let address = self.0;
-        Assert::from_fn(move |outcome| {
+        CheckFn::new(move |tx| {
             let name = core::any::type_name::<T>();
-            let account = outcome.account(address).unwrap_or_else(|| {
-                panic!("State {name}: outcome does not contain account {address}")
+            let account = tx.account(address).unwrap_or_else(|| {
+                panic!("State {name}: transaction does not contain account {address}")
             });
-            check(&crate::world::validate_typed::<T>("State", account));
+            let state = crate::world::validate_typed::<T>("State", account);
+            assert!(predicate(&state), "State predicate failed for {address}");
         })
     }
 }

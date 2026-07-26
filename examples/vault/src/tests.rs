@@ -27,10 +27,10 @@ fn deposit_creates_and_funds_the_vault(test: &mut Test) {
         amount: deposit,
     });
 
-    outcome.succeeds().check([
-        Cu::spent().le(MAX_DEPOSIT_CU),
-        Account::lamports(vault).eq(deposit),
-        Account::lamports(USER).eq(DEFAULT_WALLET_LAMPORTS - deposit),
+    outcome.succeeds().checks([
+        Cu::spent(|cu| cu <= MAX_DEPOSIT_CU),
+        Account::lamports(vault, deposit),
+        Account::lamports(USER, DEFAULT_WALLET_LAMPORTS - deposit),
         Account::created(vault),
     ]);
 }
@@ -46,7 +46,7 @@ fn failed_init_does_not_leave_a_placeholder(test: &mut Test) {
         amount: 1,
     });
 
-    outcome.fails_with(QuasarVaultError::InvalidPda);
+    let outcome = outcome.fails_with(QuasarVaultError::InvalidPda);
     assert!(test.account(wrong_vault).is_none());
     assert!(outcome.account_changes().is_empty());
 }
@@ -82,10 +82,10 @@ fn withdraw_moves_lamports_out_of_program_state(test: &mut Test) {
         amount: withdrawal,
     })
     .succeeds()
-    .check([
-        Cu::spent().le(MAX_WITHDRAW_CU),
-        Account::lamports(USER).eq(DEFAULT_WALLET_LAMPORTS + withdrawal),
-        Account::lamports(vault).eq(vault_lamports - withdrawal),
+    .checks([
+        Cu::spent(|cu| cu <= MAX_WITHDRAW_CU),
+        Account::lamports(USER, DEFAULT_WALLET_LAMPORTS + withdrawal),
+        Account::lamports(vault, vault_lamports - withdrawal),
     ]);
     assert_eq!(test.lamports(USER), DEFAULT_WALLET_LAMPORTS);
     assert_eq!(test.lamports(vault), vault_lamports);
@@ -95,9 +95,9 @@ fn withdraw_moves_lamports_out_of_program_state(test: &mut Test) {
         amount: withdrawal,
     })
     .succeeds()
-    .check([
-        Cu::spent().le(MAX_WITHDRAW_CU),
-        Account::lamports(USER).eq(DEFAULT_WALLET_LAMPORTS + withdrawal),
-        Account::lamports(vault).eq(vault_lamports - withdrawal),
+    .checks([
+        Cu::spent(|cu| cu <= MAX_WITHDRAW_CU),
+        Account::lamports(USER, DEFAULT_WALLET_LAMPORTS + withdrawal),
+        Account::lamports(vault, vault_lamports - withdrawal),
     ]);
 }
