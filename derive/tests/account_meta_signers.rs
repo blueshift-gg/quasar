@@ -58,8 +58,18 @@ mod cpi {
     // No `use super::*`: these fixtures have no stored-data seed inputs, which
     // are the only thing the generated struct names unqualified.
 
-    __init_associated_token_instruction!(InitAssociatedTokenInstruction, [0], {});
-    __init_token_account_instruction!(InitTokenAccountInstruction, [1], {});
+    __init_associated_token_instruction!(
+        InitAssociatedTokenInstruction,
+        InitAssociatedTokenInstructionRaw,
+        [0],
+        {}
+    );
+    __init_token_account_instruction!(
+        InitTokenAccountInstruction,
+        InitTokenAccountInstructionRaw,
+        [1],
+        {}
+    );
 }
 use cpi::*;
 

@@ -950,6 +950,13 @@ pub(crate) fn docs_tokens_from_lines(lines: &[String]) -> proc_macro2::TokenStre
     }
 }
 
+/// The same doc lines re-emitted as `#[doc]` attributes, so a generated item
+/// carries the documentation the source field declared.
+pub(crate) fn docs_tokens_as_attrs(lines: &[String]) -> proc_macro2::TokenStream {
+    let attrs = lines.iter().map(|line| quote! { #[doc = #line] });
+    quote! { #(#attrs)* }
+}
+
 /// Tokens constructing an IDL `docs` vec from an item's `///` comments.
 pub(crate) fn docs_tokens(attrs: &[syn::Attribute]) -> proc_macro2::TokenStream {
     docs_tokens_from_lines(&extract_doc_lines(attrs))
