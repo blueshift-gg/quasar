@@ -56,6 +56,129 @@
           "type": "bool"
         }
       ]
+    },
+    {
+      "name": "sync",
+      "discriminator": [
+        1
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": false,
+          "signer": true,
+          "resolver": {
+            "kind": "input"
+          }
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "signer": false,
+          "resolver": {
+            "kind": "pda",
+            "program": {
+              "kind": "programId"
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "accountField",
+                "path": "pool",
+                "account": "Pool",
+                "field": "seed"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "settle",
+      "discriminator": [
+        2
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true,
+          "resolver": {
+            "kind": "input"
+          }
+        },
+        {
+          "name": "mint",
+          "writable": false,
+          "signer": false,
+          "resolver": {
+            "kind": "input"
+          }
+        },
+        {
+          "name": "tokenProgram",
+          "writable": false,
+          "signer": false,
+          "resolver": {
+            "kind": "knownProgram",
+            "name": "token"
+          }
+        },
+        {
+          "name": "recipient",
+          "writable": false,
+          "signer": false,
+          "resolver": {
+            "kind": "arg",
+            "path": "target"
+          }
+        },
+        {
+          "name": "payerTokens",
+          "writable": true,
+          "signer": false,
+          "resolver": {
+            "kind": "associatedToken",
+            "mint": "mint",
+            "owner": "payer",
+            "tokenProgram": "tokenProgram"
+          }
+        },
+        {
+          "name": "maybeRefund",
+          "writable": false,
+          "signer": false,
+          "optional": true,
+          "resolver": {
+            "kind": "input"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "target",
+          "type": "pubkey"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "bonus",
+          "type": {
+            "option": "u64"
+          }
+        }
+      ]
     }
   ],
   "accounts": [
@@ -63,6 +186,12 @@
       "name": "Vault",
       "discriminator": [
         42
+      ]
+    },
+    {
+      "name": "Pool",
+      "discriminator": [
+        43
       ]
     }
   ],
@@ -99,6 +228,20 @@
         }
       ],
       "repr": "u8"
+    },
+    {
+      "name": "Pool",
+      "kind": "struct",
+      "fields": [
+        {
+          "name": "seed",
+          "type": "u64"
+        },
+        {
+          "name": "authority",
+          "type": "pubkey"
+        }
+      ]
     }
   ],
   "events": [

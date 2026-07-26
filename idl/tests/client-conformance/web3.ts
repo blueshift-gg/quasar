@@ -1,4 +1,5 @@
 import { Address } from "@solana/web3.js";
+import { getU64Codec } from "@solana/codecs";
 import {
   GoldenDemoClient,
   PROGRAM_ERRORS,
@@ -59,6 +60,24 @@ async function main() {
     "unknown event discriminator was accepted",
   );
   assert(PROGRAM_ERRORS[6000]?.name === "Unauthorized", "error map changed");
+
+  // A PDA seeded by a field of that same account: the seed value is a plain
+  // input, so the builder derives the address with no RPC and no resolver.
+  const poolSeed = 42n;
+  const sync = await client.createSyncInstruction({ authority, poolSeed });
+  const [expectedPool] = await Address.findProgramAddress(
+    [
+      new Uint8Array([112, 111, 111, 108]),
+      getU64Codec().encode(poolSeed),
+    ],
+    GoldenDemoClient.programId,
+  );
+  assert(sync.keys.length === 2, "sync account count changed");
+  assert(
+    sync.keys[1].pubkey.toString() === expectedPool.toString(),
+    "account-field seed PDA changed",
+  );
+  assert(sync.keys[1].isWritable, "sync pool role changed");
 }
 
 void main();

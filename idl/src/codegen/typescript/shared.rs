@@ -9,11 +9,14 @@ pub use package::{client_dependency_version, generate_package_json};
 use {codec::*, pda::*};
 
 use {
-    super::super::model::{resolved_account_order, CodegenResult, ProgramModel},
+    super::super::accounts::account_source,
+    super::super::model::{
+        account_field_definition, account_field_seed_inputs, CodegenResult, ProgramModel,
+    },
     crate::codegen::naming::{
         snake_to_pascal, to_camel_case, to_screaming_snake as pascal_to_screaming_snake,
     },
-    crate::types::{AccountFlag, Idl, IdlAccountDef, IdlInstruction, IdlPdaProgram, IdlResolver},
+    crate::types::{AccountFlag, Idl, IdlAccountDef, IdlInstruction, IdlResolver},
     std::{
         collections::{HashMap, HashSet},
         fmt::Write,
@@ -56,7 +59,6 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
     let has_public_key = used.contains("pubkey");
     let has_pdas = model.features.has_pdas;
     let has_pda_account_seeds = model.features.has_pda_account_seeds;
-    let has_pda_account_field_seeds = has_account_field_pda_seeds(idl);
     let plugin_accounts = kit::eligible_plugin_accounts(idl);
     let plugin_instructions = kit::eligible_plugin_instructions(idl);
     let emit_plugin =
@@ -140,7 +142,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
         codec_imports.push("getBooleanCodec");
     }
     if used.contains("option") {
-        codec_imports.push("getOptionCodec");
+        codec_imports.push("getNullableCodec");
     }
     // For Web3.js v3, a custom codec is needed to handle its Address type
     if target == TsTarget::Web3js && has_public_key {
@@ -172,12 +174,6 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
         .expect("write to String");
     }
     out.push('\n');
-
-    if has_pda_account_field_seeds {
-        out.push_str("export interface AccountDataResolver {\n");
-        out.push_str("  getAccountData(address: Address): Promise<Uint8Array | null>;\n");
-        out.push_str("}\n\n");
-    }
 
     if target == TsTarget::Web3js && has_public_key {
         out.push_str(WEB3JS_ADDRESS_CODEC_HELPER);
@@ -254,8 +250,10 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
     for type_def in &idl.types {
         let name = &type_def.name;
         let fields = &type_def.fields;
+        crate::codegen::docs::jsdoc(&mut out, &type_def.docs, "");
         writeln!(out, "export interface {} {{", name).expect("write to String");
         for field in fields {
+            crate::codegen::docs::jsdoc(&mut out, &field.docs, "  ");
             writeln!(out, "  {}: {};", field.name, ts_type(&field.ty)).expect("write to String");
         }
         out.push_str("}\n\n");
@@ -280,15 +278,20 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
         let user_accs: Vec<_> = ix
             .accounts
             .iter()
-            .filter(|a| a.optional || matches!(a.resolver, IdlResolver::Input {}))
+            .filter(|a| {
+                account_source(a)
+                    .expect("validated account resolver")
+                    .is_input()
+            })
             .collect();
 
-        if user_accs.is_empty() && ix.args.is_empty() && !has_remaining {
+        if !instruction_has_input(ix) {
             continue;
         }
 
         let pascal = snake_to_pascal(&ix.name);
 
+        crate::codegen::docs::jsdoc(&mut out, &ix.docs, "");
         writeln!(out, "export interface {pascal}InstructionInput {{").expect("write to String");
 
         if !user_accs.is_empty() {
@@ -298,6 +301,21 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
                 let opt = if acc.optional { "?" } else { "" };
                 writeln!(out, "  {}{}: Address;", acc.name, opt).expect("write to String");
             }
+        }
+        // A seed stored in an account's own data cannot be fetched while
+        // deriving that account's address, so the value is a caller input —
+        // the same contract every other generator follows.
+        for seed in account_field_seed_inputs(ix) {
+            let Some(field) = account_field_definition(idl, seed.account, seed.field) else {
+                continue;
+            };
+            writeln!(
+                out,
+                "  {}: {};",
+                account_field_seed_input_name(seed.path, seed.field),
+                ts_type(&field.ty)
+            )
+            .expect("write to String");
         }
         if !ix.args.is_empty() {
             for arg in &ix.args {

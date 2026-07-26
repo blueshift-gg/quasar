@@ -870,7 +870,10 @@ pub(super) fn ts_type(ty: &IdlType) -> String {
 pub(super) fn ts_codec(ty: &IdlType, target: TsTarget) -> String {
     match ty {
         IdlType::Primitive(p) => primitive_ts_codec(p, target),
-        IdlType::Option { option } => format!("getOptionCodec({})", ts_codec(option, target)),
+        // `ts_type` declares `T | null`, so the codec must decode to that.
+        // `getOptionCodec` yields `{ __option: 'Some' | 'None' }` instead, which
+        // no consumer following the declared type can use. Same bytes either way.
+        IdlType::Option { option } => format!("getNullableCodec({})", ts_codec(option, target)),
         IdlType::Defined { defined } => builtin_defined_primitive(&defined.name)
             .map(|primitive| primitive_ts_codec(primitive, target))
             .unwrap_or_else(|| format!("{}Codec", defined.name)),

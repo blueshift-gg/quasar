@@ -32,18 +32,36 @@ pub fn generate_package_json(idl: &Idl, target: TsTarget) -> CodegenResult<Strin
         TsTarget::Web3js => ("web3", "@solana/web3.js", client_dependency_version(target)),
     };
 
+    // Publishable by default: `private` made every generated client
+    // unshareable, and without `types`/`files` a consumer got no editor types
+    // and an unbounded tarball. The package ships TypeScript source, so
+    // `types` and the default export both point at it.
     Ok(format!(
         r#"{{
   "name": "{package_name}-{target_name}",
   "version": "{version}",
-  "private": true,
-  "exports": "./client.ts",
+  "description": "Generated Solana client for the {program_name} program.",
+  "license": "Apache-2.0 OR MIT",
+  "type": "module",
+  "types": "./client.ts",
+  "exports": {{
+    ".": {{
+      "types": "./client.ts",
+      "default": "./client.ts"
+    }}
+  }},
+  "files": [
+    "client.ts",
+    "README.md"
+  ],
+  "sideEffects": false,
   "dependencies": {{{codecs_dep}
     "{dependency}": "{dependency_version}"
   }}
 }}
 "#,
         package_name = model.identity.typescript_package,
+        program_name = model.identity.program_name,
         version = idl.version,
     ))
 }

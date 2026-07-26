@@ -795,7 +795,24 @@ pub fn validate_codegen_idl(idl: &Idl) -> CodegenResult<()> {
     validate_codegen_structure(idl)
 }
 
+/// Reject an address a backend would paste into five languages unchecked. The
+/// C backend used to base58-decode with `unwrap_or_default`, turning a typo
+/// into an all-zero address in the generated header.
+fn validate_address(context: &str, value: &str) -> CodegenResult<()> {
+    let decoded = bs58::decode(value)
+        .into_vec()
+        .map_err(|_| CodegenError::new(format!("{context} `{value}` is not valid base58")))?;
+    if decoded.len() != 32 {
+        return Err(CodegenError::new(format!(
+            "{context} `{value}` decodes to {} bytes, not 32",
+            decoded.len()
+        )));
+    }
+    Ok(())
+}
+
 fn validate_codegen_structure(idl: &Idl) -> CodegenResult<()> {
+    validate_address("program address", &idl.address)?;
     for ix in &idl.instructions {
         validate_identifier(&format!("instruction `{}`", ix.name), &ix.name)?;
         for arg in &ix.args {
@@ -811,10 +828,27 @@ fn validate_codegen_structure(idl: &Idl) -> CodegenResult<()> {
         InstructionPlan::from_instruction(ix).map_err(CodegenError::new)?;
         resolved_account_order(ix)?;
         for account in &ix.accounts {
-            validate_identifier(
-                &format!("instruction `{}` account `{}`", ix.name, account.name),
-                &account.name,
-            )?;
+            let context = format!("instruction `{}` account `{}`", ix.name, account.name);
+            validate_identifier(&context, &account.name)?;
+            // Classify every account up front so an unlowerable resolver fails
+            // the IDL instead of reaching a backend that cannot express it.
+            match crate::codegen::accounts::account_source(account)
+                .map_err(|error| CodegenError::new(format!("{context}: {error}")))?
+            {
+                crate::codegen::accounts::AccountSource::Constant(address) => {
+                    validate_address(&format!("{context} address"), address)?;
+                }
+                crate::codegen::accounts::AccountSource::Arg(path) => {
+                    if !ix.args.iter().any(|arg| arg.name == path) {
+                        return Err(CodegenError::new(format!(
+                            "{context} resolves from arg `{path}`, which the instruction does not \
+                             declare"
+                        )));
+                    }
+                }
+                crate::codegen::accounts::AccountSource::Input
+                | crate::codegen::accounts::AccountSource::Derived => {}
+            }
         }
     }
     for account in &idl.accounts {

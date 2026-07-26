@@ -1,6 +1,6 @@
 import { type Address, address, AccountRole, type Instruction, getProgramDerivedAddress, getAddressCodec, type ClientWithRpc, type GetAccountInfoApi, type GetMultipleAccountsApi, type ClientWithPayer, type ClientWithTransactionPlanning, type ClientWithTransactionSending } from "@solana/kit";
 import { addSelfFetchFunctions, addSelfPlanAndSendFunctions } from "@solana/kit/program-client-core";
-import { getBooleanCodec, getStructCodec, getU64Codec, getU8Codec } from "@solana/codecs";
+import { getBooleanCodec, getNullableCodec, getStructCodec, getU64Codec, getU8Codec } from "@solana/codecs";
 
 function matchDisc(data: Uint8Array, disc: Uint8Array): boolean {
   if (data.length < disc.length) return false;
@@ -79,8 +79,11 @@ function assertFinished(data: Uint8Array, offset: number): void {
 /* Constants */
 export const PROGRAM_ADDRESS = address("11111111111111111111111111111111");
 export const VAULT_DISCRIMINATOR = new Uint8Array([42]);
+export const POOL_DISCRIMINATOR = new Uint8Array([43]);
 export const VAULT_MADE_DISCRIMINATOR = new Uint8Array([7]);
 export const MAKE_INSTRUCTION_DISCRIMINATOR = new Uint8Array([0]);
+export const SYNC_INSTRUCTION_DISCRIMINATOR = new Uint8Array([1]);
+export const SETTLE_INSTRUCTION_DISCRIMINATOR = new Uint8Array([2]);
 
 /* Interfaces */
 export interface Vault {
@@ -92,9 +95,20 @@ export interface Vault {
 export interface Mode {
 }
 
+export interface Pool {
+  seed: bigint;
+  authority: Address;
+}
+
 export interface MakeInstructionArgs {
   amount: bigint;
   flag: boolean;
+}
+
+export interface SettleInstructionArgs {
+  target: Address;
+  amount: bigint;
+  bonus: bigint | null;
 }
 
 export interface MakeInstructionInput {
@@ -103,9 +117,37 @@ export interface MakeInstructionInput {
   flag: boolean;
 }
 
+export interface SyncInstructionInput {
+  authority: Address;
+  poolSeed: bigint;
+}
+
+export interface SettleInstructionInput {
+  payer: Address;
+  mint: Address;
+  maybeRefund?: Address;
+  target: Address;
+  amount: bigint;
+  bonus: bigint | null;
+}
+
 export interface MakeInstructionAccountOverrides {
   authority?: Address;
   vault?: Address;
+}
+
+export interface SyncInstructionAccountOverrides {
+  authority?: Address;
+  pool?: Address;
+}
+
+export interface SettleInstructionAccountOverrides {
+  payer?: Address;
+  mint?: Address;
+  tokenProgram?: Address;
+  recipient?: Address;
+  payerTokens?: Address;
+  maybeRefund?: Address;
 }
 
 /* Codecs */
@@ -126,6 +168,15 @@ export const ModeCodec = {
   decode(data: Parameters<typeof ModeStructCodec.decode>[0], offset = 0): Mode { return decodeExact<Mode>(ModeStructCodec, Uint8Array.from(data).slice(offset)); },
 };
 
+const PoolStructCodec = getStructCodec([
+  ["seed", getU64Codec()],
+  ["authority", getAddressCodec()],
+]);
+export const PoolCodec = {
+  ...PoolStructCodec,
+  decode(data: Parameters<typeof PoolStructCodec.decode>[0], offset = 0): Pool { return decodeExact<Pool>(PoolStructCodec, Uint8Array.from(data).slice(offset)); },
+};
+
 /* Enums */
 export const ProgramEvent = {
   VaultMade: "VaultMade",
@@ -139,13 +190,17 @@ export type DecodedEvent =
 
 export const ProgramInstruction = {
   Make: "Make",
+  Sync: "Sync",
+  Settle: "Settle",
 } as const;
 
 export type ProgramInstruction =
   (typeof ProgramInstruction)[keyof typeof ProgramInstruction];
 
 export type DecodedInstruction =
-  | { type: typeof ProgramInstruction.Make; args: MakeInstructionArgs };
+  | { type: typeof ProgramInstruction.Make; args: MakeInstructionArgs }
+  | { type: typeof ProgramInstruction.Sync }
+  | { type: typeof ProgramInstruction.Settle; args: SettleInstructionArgs };
 
 /* Client */
 export class GoldenDemoClient {
@@ -154,6 +209,12 @@ export class GoldenDemoClient {
     const data = Uint8Array.from(input);
     if (!matchDisc(data, VAULT_DISCRIMINATOR)) throw new Error("Invalid Vault discriminator");
     return decodeExact<Vault>(VaultCodec, data.slice(VAULT_DISCRIMINATOR.length));
+  }
+
+  decodePool(input: ArrayLike<number>): Pool {
+    const data = Uint8Array.from(input);
+    if (!matchDisc(data, POOL_DISCRIMINATOR)) throw new Error("Invalid Pool discriminator");
+    return decodeExact<Pool>(PoolCodec, data.slice(POOL_DISCRIMINATOR.length));
   }
 
   decodeEvent(input: ArrayLike<number>): DecodedEvent | null {
@@ -174,16 +235,27 @@ export class GoldenDemoClient {
       ]);
       return { type: ProgramInstruction.Make, args: decodeExact<MakeInstructionArgs>(argsCodec, data.slice(MAKE_INSTRUCTION_DISCRIMINATOR.length)) };
     }
+    if (matchDisc(data, SYNC_INSTRUCTION_DISCRIMINATOR)) {
+      if (data.length !== SYNC_INSTRUCTION_DISCRIMINATOR.length) throw new Error("trailing bytes");
+      return { type: ProgramInstruction.Sync };
+    }
+    if (matchDisc(data, SETTLE_INSTRUCTION_DISCRIMINATOR)) {
+      const argsCodec = getStructCodec([
+        ["target", getAddressCodec()],
+        ["amount", getU64Codec()],
+        ["bonus", getNullableCodec(getU64Codec())],
+      ]);
+      return { type: ProgramInstruction.Settle, args: decodeExact<SettleInstructionArgs>(argsCodec, data.slice(SETTLE_INSTRUCTION_DISCRIMINATOR.length)) };
+    }
     return null;
   }
 
   async createMakeInstruction(input: MakeInstructionInput): Promise<Instruction> {
-    return this.createMakeInstructionUnchecked(input, {});
+    return this.createMakeInstructionRaw(input, {});
   }
 
-  async createMakeInstructionUnchecked(input: MakeInstructionInput, accountOverrides: MakeInstructionAccountOverrides): Promise<Instruction> {
-    const accountsMap: Record<string, Address> = {};
-    accountsMap["vault"] = await findVaultAddress((accountOverrides.authority ?? input.authority));
+  async createMakeInstructionRaw(input: MakeInstructionInput, accountOverrides: MakeInstructionAccountOverrides): Promise<Instruction> {
+    const __vault: Address = await findVaultAddress((accountOverrides.authority ?? input.authority));
     const argsCodec = getStructCodec([
       ["amount", getU64Codec()],
       ["flag", getBooleanCodec()],
@@ -193,7 +265,61 @@ export class GoldenDemoClient {
       programAddress: PROGRAM_ADDRESS,
       accounts: [
         { address: (accountOverrides.authority ?? input.authority), role: AccountRole.READONLY_SIGNER },
-        { address: (accountOverrides.vault ?? accountsMap["vault"]), role: AccountRole.WRITABLE },
+        { address: (accountOverrides.vault ?? __vault), role: AccountRole.WRITABLE },
+      ],
+      data,
+    };
+  }
+
+  async createSyncInstruction(input: SyncInstructionInput): Promise<Instruction> {
+    return this.createSyncInstructionRaw(input, {});
+  }
+
+  async createSyncInstructionRaw(input: SyncInstructionInput, accountOverrides: SyncInstructionAccountOverrides): Promise<Instruction> {
+    const __pool: Address = (await getProgramDerivedAddress({
+      programAddress: PROGRAM_ADDRESS,
+      seeds: [
+        new Uint8Array([112, 111, 111, 108]),
+        getU64Codec().encode(input.poolSeed),
+      ],
+    }))[0];
+    const data = Uint8Array.from([1]);
+    return {
+      programAddress: PROGRAM_ADDRESS,
+      accounts: [
+        { address: (accountOverrides.authority ?? input.authority), role: AccountRole.READONLY_SIGNER },
+        { address: (accountOverrides.pool ?? __pool), role: AccountRole.WRITABLE },
+      ],
+      data,
+    };
+  }
+
+  async createSettleInstruction(input: SettleInstructionInput): Promise<Instruction> {
+    return this.createSettleInstructionRaw(input, {});
+  }
+
+  async createSettleInstructionRaw(input: SettleInstructionInput, accountOverrides: SettleInstructionAccountOverrides): Promise<Instruction> {
+    const __tokenProgram: Address = address("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+    const __recipient: Address = input.target;
+    const __payerTokens: Address = (await getProgramDerivedAddress({
+      programAddress: address("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"),
+      seeds: [getAddressCodec().encode((accountOverrides.payer ?? input.payer)), getAddressCodec().encode((accountOverrides.tokenProgram ?? __tokenProgram)), getAddressCodec().encode((accountOverrides.mint ?? input.mint))],
+    }))[0];
+    const argsCodec = getStructCodec([
+      ["target", getAddressCodec()],
+      ["amount", getU64Codec()],
+      ["bonus", getNullableCodec(getU64Codec())],
+    ]);
+    const data = Uint8Array.from([2, ...argsCodec.encode({ target: input.target, amount: input.amount, bonus: input.bonus })]);
+    return {
+      programAddress: PROGRAM_ADDRESS,
+      accounts: [
+        { address: (accountOverrides.payer ?? input.payer), role: AccountRole.WRITABLE_SIGNER },
+        { address: (accountOverrides.mint ?? input.mint), role: AccountRole.READONLY },
+        { address: (accountOverrides.tokenProgram ?? __tokenProgram), role: AccountRole.READONLY },
+        { address: (accountOverrides.recipient ?? __recipient), role: AccountRole.READONLY },
+        { address: (accountOverrides.payerTokens ?? __payerTokens), role: AccountRole.WRITABLE },
+        { address: (accountOverrides.maybeRefund ?? input.maybeRefund ?? PROGRAM_ADDRESS), role: AccountRole.READONLY },
       ],
       data,
     };
@@ -213,9 +339,12 @@ export function goldenDemoProgram() {
     goldenDemo: {
       accounts: {
         vault: addSelfFetchFunctions(client, VaultCodec),
+        pool: addSelfFetchFunctions(client, PoolCodec),
       },
       instructions: {
         make: (input: MakeInstructionInput) => addSelfPlanAndSendFunctions(client, __client.createMakeInstruction(input)),
+        sync: (input: SyncInstructionInput) => addSelfPlanAndSendFunctions(client, __client.createSyncInstruction(input)),
+        settle: (input: SettleInstructionInput) => addSelfPlanAndSendFunctions(client, __client.createSettleInstruction(input)),
       },
     },
   });

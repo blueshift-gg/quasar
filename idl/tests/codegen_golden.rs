@@ -58,8 +58,14 @@ fn write_rust_client(idl: &Idl, root: &Path) {
         .parent()
         .unwrap()
         .to_path_buf();
+    // Only clients that reference the runtime carry the dependency; point that
+    // one at the workspace copy so the check does not need a published release.
+    let quasar_version = env!("CARGO_PKG_VERSION");
+    let major_minor = quasar_version
+        .rsplit_once('.')
+        .map_or(quasar_version, |(prefix, _)| prefix);
     let manifest = codegen::rust::generate_cargo_toml_for_program(&model).replace(
-        &format!("quasar-lang = \"={}\"", env!("CARGO_PKG_VERSION")),
+        &format!("quasar-lang = \"{major_minor}\""),
         &format!("quasar-lang = {{ path = {:?} }}", workspace.join("lang")),
     );
     fs::write(
@@ -97,7 +103,60 @@ fn web3_client_matches_golden() {
 fn kit_client_matches_golden() {
     let idl = representative_idl();
     let out = codegen::typescript::generate_ts_client_kit(&idl).expect("ts kit client");
+    assert_eq!(
+        out,
+        codegen::typescript::generate_ts_client_kit(&idl).expect("ts kit client"),
+        "generator must be deterministic"
+    );
     expect_file![golden("golden_demo.kit.ts.golden")].assert_eq(&out);
+}
+
+/// A seed read out of an account's own data cannot be fetched while deriving
+/// that account's address: the address is what the fetch would need. Every
+/// generator therefore takes the value as a caller input. The TypeScript
+/// builders used to fetch it through a caller-supplied resolver, reading the
+/// `accountsMap` entry for the very account being derived — always `undefined`,
+/// so the builder could never run without an account override.
+#[test]
+fn account_field_seeds_are_client_inputs_not_fetches() {
+    let idl = representative_idl();
+    for (target, client) in [
+        (
+            "kit",
+            codegen::typescript::generate_ts_client_kit(&idl).expect("ts kit client"),
+        ),
+        (
+            "web3",
+            codegen::typescript::generate_ts_client(&idl).expect("ts client"),
+        ),
+    ] {
+        assert!(
+            client.contains("  poolSeed: bigint;"),
+            "{target}: account-field seed must be an input field"
+        );
+        assert!(
+            client.contains("getU64Codec().encode(input.poolSeed)"),
+            "{target}: derivation must read the seed from the input"
+        );
+        assert!(
+            !client.contains("getAccountData"),
+            "{target}: builders must not fetch account data to derive an address"
+        );
+        assert!(
+            !client.contains("AccountDataResolver"),
+            "{target}: builders must not require a caller-supplied resolver"
+        );
+        // Addresses the client computes are typed local bindings, so a read
+        // before the binding exists cannot type-check — and cannot be laundered
+        // by an index signature the way `Record<string, Address>` did.
+        let declaration = client
+            .find("const __pool: Address =")
+            .unwrap_or_else(|| panic!("{target}: pool must be bound as a typed const"));
+        assert!(
+            !client[..declaration].contains("__pool"),
+            "{target}: pool is read before it is derived"
+        );
+    }
 }
 
 #[test]

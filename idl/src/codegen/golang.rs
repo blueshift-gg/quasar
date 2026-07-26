@@ -1,8 +1,9 @@
 use {
     super::model::{
         account_field_definition, account_field_seed_inputs, go_field_path, reject_generics,
-        resolved_account_order, resolver_is_derived, CodegenResult, ProgramModel,
+        resolved_account_order, CodegenResult, ProgramModel,
     },
+    crate::codegen::accounts::{account_source, AccountSource},
     crate::codegen::naming::{snake_to_pascal, to_camel_case},
     crate::types::{
         Idl, IdlAccountNode, IdlArg, IdlCodec, IdlFieldDef, IdlPdaProgram, IdlPdaSeed, IdlResolver,
@@ -223,16 +224,12 @@ pub fn generate_go_client(idl: &Idl) -> CodegenResult<String> {
         let pascal_name = snake_to_pascal(&ix.name);
 
         // Input struct
+        crate::codegen::docs::line_comments(&mut out, &ix.docs, "", "//");
         writeln!(out, "type {}Input struct {{", pascal_name).unwrap();
         for acc in &ix.accounts {
-            if !acc.optional
-                && matches!(
-                    acc.resolver,
-                    IdlResolver::Const { .. }
-                        | IdlResolver::Pda { .. }
-                        | IdlResolver::AssociatedToken { .. }
-                )
-            {
+            // Constants, argument-carried addresses, and derived accounts
+            // are filled in by the client; only true inputs reach the caller.
+            if !acc.optional && !account_source(acc)?.is_input() {
                 continue;
             }
             // Optional accounts are pointer inputs; a nil pointer is encoded as
@@ -264,11 +261,25 @@ pub fn generate_go_client(idl: &Idl) -> CodegenResult<String> {
         }
         out.push_str("}\n\n");
 
+        // Every account can be overridden, including the derived ones: a
+        // client that infers an address must still let the caller correct it.
+        writeln!(out, "type {}Overrides struct {{", pascal_name).unwrap();
+        for acc in &ix.accounts {
+            writeln!(out, "\t{} *solana.PublicKey", snake_to_pascal(&acc.name)).unwrap();
+        }
+        out.push_str("}\n\n");
+
         // Builder function
         writeln!(
             out,
-            "func New{}Instruction(input *{}Input) *solana.GenericInstruction {{",
-            pascal_name, pascal_name,
+            "func New{}Instruction(input *{}Input, overrides *{}Overrides)              *solana.GenericInstruction {{",
+            pascal_name, pascal_name, pascal_name,
+        )
+        .unwrap();
+        writeln!(
+            out,
+            "\tif overrides == nil {{ overrides = &{}Overrides{{}} }}",
+            pascal_name
         )
         .unwrap();
 
@@ -280,14 +291,12 @@ pub fn generate_go_client(idl: &Idl) -> CodegenResult<String> {
         for acc in ix
             .accounts
             .iter()
-            .filter(|acc| acc.optional || !resolver_is_derived(&acc.resolver))
+            .filter(|acc| acc.optional || !account_source(acc).is_ok_and(|s| s.is_derived()))
         {
-            let key_expr = go_account_key_expr(acc, idl);
-            writeln!(out, "\taccountsMap[\"{}\"] = {}", acc.name, key_expr).unwrap();
+            write_go_account_binding(&mut out, acc, idl);
         }
         for acc in resolved_account_order(ix)? {
-            let key_expr = go_account_key_expr(acc, idl);
-            writeln!(out, "\taccountsMap[\"{}\"] = {}", acc.name, key_expr).unwrap();
+            write_go_account_binding(&mut out, acc, idl);
         }
         for acc in &ix.accounts {
             let meta_expr = account_meta_expr(
@@ -602,6 +611,19 @@ pub fn generate_go_client(idl: &Idl) -> CodegenResult<String> {
     Ok(out)
 }
 
+/// Bind one account, letting an explicit override win over the computed value.
+fn write_go_account_binding(out: &mut String, account: &IdlAccountNode, idl: &Idl) {
+    let field = snake_to_pascal(&account.name);
+    let computed = go_account_key_expr(account, idl);
+    writeln!(
+        out,
+        "\tif overrides.{field} != nil {{ accountsMap[\"{name}\"] = *overrides.{field} }} else {{ \
+         accountsMap[\"{name}\"] = {computed} }}",
+        name = account.name
+    )
+    .unwrap();
+}
+
 fn go_account_key_expr(account: &IdlAccountNode, idl: &Idl) -> String {
     if account.optional {
         let name = snake_to_pascal(&account.name);
@@ -611,10 +633,15 @@ fn go_account_key_expr(account: &IdlAccountNode, idl: &Idl) -> String {
         );
     }
 
-    match &account.resolver {
-        IdlResolver::Const { address } => {
-            format!("solana.MustPublicKeyFromBase58(\"{address}\")")
+    match account_source(account).expect("validated account resolver") {
+        AccountSource::Constant(address) => {
+            return format!("solana.MustPublicKeyFromBase58(\"{address}\")")
         }
+        AccountSource::Arg(path) => return format!("input.{}", snake_to_pascal(path)),
+        AccountSource::Input | AccountSource::Derived => {}
+    }
+
+    match &account.resolver {
         IdlResolver::Pda { program, seeds } => {
             let seed_exprs = seeds
                 .iter()
