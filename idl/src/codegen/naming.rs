@@ -20,10 +20,6 @@ pub(super) fn to_screaming_snake(value: &str) -> String {
     value.to_shouty_snake_case()
 }
 
-pub(super) fn camel_to_pascal(value: &str) -> String {
-    value.to_upper_camel_case()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -35,6 +31,5 @@ mod tests {
         assert_eq!(to_camel_case("two_words"), "twoWords");
         assert_eq!(camel_to_snake("twoWords"), "two_words");
         assert_eq!(to_screaming_snake("TwoWords"), "TWO_WORDS");
-        assert_eq!(camel_to_pascal("twoWords"), "TwoWords");
     }
 }

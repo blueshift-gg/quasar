@@ -1,5 +1,5 @@
 use {
-    crate::codegen::naming::{camel_to_pascal, camel_to_snake, snake_to_pascal},
+    crate::codegen::naming::{camel_to_snake, snake_to_pascal},
     crate::types::{
         AccountFlag, Idl, IdlAccountNode, IdlArg, IdlCodec, IdlGenericArg, IdlInstruction,
         IdlLayout, IdlPdaProgram, IdlPdaSeed, IdlResolver, IdlType,
@@ -1013,13 +1013,7 @@ pub fn python_field_path(path: &str) -> String {
 
 pub fn go_field_path(path: &str) -> String {
     path.split('.')
-        .map(|segment| {
-            if segment.contains('_') {
-                snake_to_pascal(segment)
-            } else {
-                camel_to_pascal(segment)
-            }
-        })
+        .map(snake_to_pascal)
         .collect::<Vec<_>>()
         .join(".")
 }

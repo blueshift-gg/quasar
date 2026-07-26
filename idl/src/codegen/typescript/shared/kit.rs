@@ -273,7 +273,8 @@ pub(super) fn emit_instruction_builders(
                         &account.name,
                         seeds,
                         idl,
-                        InlinePdaTarget::Kit {
+                        InlinePdaTarget {
+                            target: TsTarget::Kit,
                             program_expr: &program_expr,
                         },
                         &arg_types,
