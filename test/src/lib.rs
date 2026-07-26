@@ -10,12 +10,12 @@
 //!
 //! #[quasar_test]
 //! fn initializes(test: &mut Test) {
-//!     let authority = test.add(Wallet::new());
+//!     let authority = test.add(Wallet::account());
 //!     test.send(InitializeInstruction { authority }).succeeds();
 //! }
 //! ```
 //!
-//! [`fixture::Wallet::new`] funds an actor with the default balance;
+//! [`fixture::Wallet::account`] funds an actor with the default balance;
 //! [`fixture::Wallet::fund`] sets an exact one. Any signer a transaction names
 //! but never installs is auto-funded on send, so co-signers cost nothing extra.
 //!

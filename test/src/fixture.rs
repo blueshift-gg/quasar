@@ -17,7 +17,7 @@ pub use parallax_svm::fixture::{
 /// Applications can implement this trait for protocol-level fixtures and
 /// compose the built-in account fixtures inside [`Fixture::install`]. Arrays of
 /// one fixture type are fixtures too, so repeated setup can be installed with
-/// `test.add([Wallet::new(); 3])`. Each fixture returns the address it placed,
+/// `test.add([Wallet::account(); 3])`. Each fixture returns the address it placed,
 /// so tests thread those handles instead of pinning addresses up front.
 pub trait Fixture {
     /// Handle or state returned after installation.

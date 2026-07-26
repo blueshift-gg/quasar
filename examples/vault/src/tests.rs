@@ -18,7 +18,7 @@ fn elf_size_stays_within_budget() {
 
 #[quasar_test]
 fn deposit_creates_and_funds_the_vault(test: &mut Test) {
-    test.add(Wallet::new().at(USER));
+    test.add(Wallet::account().at(USER));
     let vault = find_vault_address(&USER, &crate::ID).0;
     let deposit = 1_000_000_000;
 
@@ -43,7 +43,7 @@ fn deposit_creates_and_funds_the_vault(test: &mut Test) {
 
 #[quasar_test]
 fn failed_init_does_not_leave_a_placeholder(test: &mut Test) {
-    test.add(Wallet::new().at(USER));
+    test.add(Wallet::account().at(USER));
     let wrong_vault = Pubkey::new_from_array([99; 32]);
 
     let outcome = test.send(DepositInstructionRaw {
@@ -64,7 +64,7 @@ fn compute_exhaustion_has_the_same_stable_error_as_typescript() {
         .compute_unit_limit(1)
         .build()
         .unwrap();
-    test.add(Wallet::new().at(USER));
+    test.add(Wallet::account().at(USER));
 
     test.send(DepositInstruction {
         user: USER,
@@ -75,13 +75,13 @@ fn compute_exhaustion_has_the_same_stable_error_as_typescript() {
 
 #[quasar_test]
 fn withdraw_moves_lamports_out_of_program_state(test: &mut Test) {
-    test.add(Wallet::new().at(USER));
+    test.add(Wallet::account().at(USER));
     let vault = find_vault_address(&USER, &crate::ID).0;
     let vault_lamports = 1_000_000_000;
     let withdrawal = 500_000_000;
     // Deposit leaves the vault as a system-owned PDA holding lamports; the
     // withdraw CPI transfers out of it with the vault's seeds signing.
-    test.add(Wallet::new().at(vault).fund(vault_lamports));
+    test.add(Wallet::account().at(vault).fund(vault_lamports));
 
     test.simulate(WithdrawInstruction {
         user: USER,

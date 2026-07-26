@@ -14,7 +14,7 @@ use {
 
 #[quasar_test]
 fn initialize_stores_typed_state(test: &mut Test) {
-    let payer = test.add(Wallet::new());
+    let payer = test.add(Wallet::account());
     let (account, bump) = test.derive_pda_with_bump(SimpleAccount::seeds(&payer));
 
     test.send(InitializeInstruction { payer, value: 42 })
@@ -28,7 +28,7 @@ fn initialize_stores_typed_state(test: &mut Test) {
 
 #[quasar_test]
 fn close_returns_the_account_to_the_system(test: &mut Test) {
-    let authority = test.add(Wallet::new());
+    let authority = test.add(Wallet::account());
     let (account, bump) = test.derive_pda_with_bump(SimpleAccount::seeds(&authority));
     test.write(
         account,
@@ -46,8 +46,8 @@ fn close_returns_the_account_to_the_system(test: &mut Test) {
 
 #[quasar_test]
 fn close_rejects_a_foreign_authority(test: &mut Test) {
-    let owner = test.add(Wallet::new());
-    let intruder = test.add(Wallet::new());
+    let owner = test.add(Wallet::account());
+    let intruder = test.add(Wallet::account());
     let (account, bump) = test.derive_pda_with_bump(SimpleAccount::seeds(&owner));
     test.write(
         account,

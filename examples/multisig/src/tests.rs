@@ -76,7 +76,7 @@ fn config_fixture<'a>(
 
 #[quasar_test]
 fn create_initializes_dynamic_config(test: &mut Test) {
-    test.add(Wallet::new().at(CREATOR));
+    test.add(Wallet::account().at(CREATOR));
     let config = find_config_address(&CREATOR, &crate::ID).0;
 
     let outcome = test.send(CreateInstruction {
@@ -98,7 +98,7 @@ fn create_initializes_dynamic_config(test: &mut Test) {
 
 #[quasar_test]
 fn deposit_funds_the_multisig_vault(test: &mut Test) {
-    test.add(Wallet::new().at(DEPOSITOR));
+    test.add(Wallet::account().at(DEPOSITOR));
     let (config, bump) = find_config_address(&CREATOR, &crate::ID);
     let vault = find_vault_address(&config, &crate::ID).0;
     test.add(config_fixture(
@@ -122,7 +122,7 @@ fn deposit_funds_the_multisig_vault(test: &mut Test) {
 
 #[quasar_test]
 fn set_label_updates_dynamic_state(test: &mut Test) {
-    test.add(Wallet::new().at(CREATOR));
+    test.add(Wallet::account().at(CREATOR));
     let (config, bump) = find_config_address(&CREATOR, &crate::ID);
     test.add(config_fixture(config, CREATOR, 1, bump, "", &[SIGNER1]));
 
@@ -147,7 +147,7 @@ fn transfer_world(test: &mut Test) -> (Pubkey, Pubkey) {
         "",
         &[SIGNER1, SIGNER2, SIGNER3],
     ));
-    test.add(Wallet::new().at(vault).fund(5_000_000_000));
+    test.add(Wallet::account().at(vault).fund(5_000_000_000));
     (config, vault)
 }
 
