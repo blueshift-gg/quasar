@@ -25,6 +25,7 @@ pub(crate) fn emit_post_load_behavior(
     did_init_var: Option<&syn::Ident>,
 ) -> proc_macro2::TokenStream {
     let krate = crate::krate::lang_path();
+    let bhv_args = crate::helpers::internal_ident("__bhv_args");
     let path = &call.path;
     let bhv = quote! { <#path::Behavior as #krate::account_behavior::AccountBehavior<#field_ty>> };
     let args_block = emit_behavior_args_builder(call, field_ty, phase.as_behavior_phase(), &[]);
@@ -34,7 +35,7 @@ pub(crate) fn emit_post_load_behavior(
         PostLoadPhase::AfterInit => quote! {
             if #bhv::RUN_AFTER_INIT {
                 #args_block
-                #bhv::after_init(&mut #field_ident, &__bhv_args)?;
+                #bhv::after_init(&mut #field_ident, &#bhv_args)?;
             }
         },
         PostLoadPhase::Check => {
@@ -45,14 +46,14 @@ pub(crate) fn emit_post_load_behavior(
             quote! {
                 if #bhv::RUN_CHECK #fresh_init_guard {
                     #args_block
-                    #bhv::check(&#field_ident, &__bhv_args)?;
+                    #bhv::check(&#field_ident, &#bhv_args)?;
                 }
             }
         }
         PostLoadPhase::Update => quote! {
             if #bhv::RUN_UPDATE {
                 #args_block
-                #bhv::update(&mut #field_ident, &__bhv_args)?;
+                #bhv::update(&mut #field_ident, &#bhv_args)?;
             }
         },
     }
@@ -69,6 +70,7 @@ pub(crate) fn emit_epilogue_behavior(
     ix_arg_extraction: &proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
     let krate = crate::krate::lang_path();
+    let bhv_args = crate::helpers::internal_ident("__bhv_args");
     let path = &call.path;
     let bhv = quote! { <#path::Behavior as #krate::account_behavior::AccountBehavior<#field_ty>> };
     let args_block = emit_behavior_args_builder(call, field_ty, BehaviorPhase::Exit, &[]);
@@ -76,7 +78,7 @@ pub(crate) fn emit_epilogue_behavior(
     let unsigned_exit = quote! {
         if #bhv::RUN_EXIT {
             #args_block
-            #bhv::exit(&mut self.#field_ident, &__bhv_args)?;
+            #bhv::exit(&mut self.#field_ident, &#bhv_args)?;
         }
     };
 
@@ -86,7 +88,7 @@ pub(crate) fn emit_epilogue_behavior(
 
     let mut exit_call = quote! {
         #args_block
-        #bhv::exit(&mut self.#field_ident, &__bhv_args)?;
+        #bhv::exit(&mut self.#field_ident, &#bhv_args)?;
     };
 
     for candidate in signer_candidates.iter().rev() {
@@ -110,7 +112,7 @@ pub(crate) fn emit_epilogue_behavior(
                 #args_block
                 #bhv::exit_signed(
                     &mut self.#field_ident,
-                    &__bhv_args,
+                    &#bhv_args,
                     &__bhv_signer,
                 )?;
             } else {
@@ -137,6 +139,7 @@ pub(crate) fn emit_behavior_init(
     inferable_accounts: &[&syn::Ident],
 ) -> proc_macro2::TokenStream {
     let krate = crate::krate::lang_path();
+    let bhv_args = crate::helpers::internal_ident("__bhv_args");
     let payer_ident = &spec.payer.ident;
     let idempotent = spec.idempotent;
     let has_address = spec.verified_address.is_some();
@@ -157,7 +160,7 @@ pub(crate) fn emit_behavior_init(
                     #args_block
                     <#path::Behavior as #krate::account_behavior::AccountBehavior<#field_ty>>::set_init_param(
                         &mut __init_params,
-                        &__bhv_args,
+                        &#bhv_args,
                     )?;
                 }
             }
@@ -292,6 +295,8 @@ fn emit_behavior_args_builder(
     inferable_accounts: &[&syn::Ident],
 ) -> proc_macro2::TokenStream {
     let krate = crate::krate::lang_path();
+    let bhv_args = crate::helpers::internal_ident("__bhv_args");
+    let bhv_builder = crate::helpers::internal_ident("__bhv_builder");
     // Exit args reference `self.field`; every other phase uses local bindings.
     let exit_context = matches!(phase, BehaviorPhase::Exit);
     let path = &call.path;
@@ -303,7 +308,7 @@ fn emit_behavior_args_builder(
             #bhv::infer_init_account::<{
                 #krate::account_behavior::behavior_arg_key_hash(#key)
             }>(
-                &mut __bhv_args,
+                &mut #bhv_args,
                 #krate::traits::AsAccountView::to_account_view(&#account),
             );
         }
@@ -316,12 +321,12 @@ fn emit_behavior_args_builder(
             let key_lit = key.to_string();
             let val = emit_lowered_value(&arg.lowered, exit_context);
             quote! {
-                let __bhv_builder = if #krate::account_behavior::#phase_guard::<
+                let #bhv_builder = if #krate::account_behavior::#phase_guard::<
                     __QuasarBhv, __QuasarBhvAcct, { #krate::account_behavior::key(#key_lit) },
                 >() {
-                    __bhv_builder.#key(#val)
+                    #bhv_builder.#key(#val)
                 } else {
-                    __bhv_builder
+                    #bhv_builder
                 };
             }
         })
@@ -335,13 +340,13 @@ fn emit_behavior_args_builder(
 
     let args_binding = if inferable_accounts.is_empty() {
         quote! {
-            let __bhv_args =
-                #krate::account_behavior::BehaviorArgsBuilder::#build_method(__bhv_builder)?;
+            let #bhv_args =
+                #krate::account_behavior::BehaviorArgsBuilder::#build_method(#bhv_builder)?;
         }
     } else {
         quote! {
-            let mut __bhv_args =
-                #krate::account_behavior::BehaviorArgsBuilder::#build_method(__bhv_builder)?;
+            let mut #bhv_args =
+                #krate::account_behavior::BehaviorArgsBuilder::#build_method(#bhv_builder)?;
             #(#inferred_accounts)*
         }
     };
@@ -362,12 +367,12 @@ fn emit_behavior_args_builder(
 
     quote! {
         #aliases
-        let __bhv_builder = #path::Args::builder();
+        let #bhv_builder = #path::Args::builder();
         #(#setters)*
         // Bound check: the builder must implement the stable BehaviorArgsBuilder
         // contract. A plugin whose builder is missing a phase fails here with a
         // clear diagnostic instead of a "no method" error.
-        #krate::account_behavior::assert_builder(&__bhv_builder);
+        #krate::account_behavior::assert_builder(&#bhv_builder);
         #args_binding
     }
 }
