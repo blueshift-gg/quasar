@@ -11,10 +11,11 @@ PROGRAM_MSRV := 1.89.0
 PLATFORM_TOOLS := v1.52
 
 # Native test runners that consume freshly built SBF artifacts. Their
-# development dependency on quasar-test or quasar-svm is the owning manifest's
+# development dependency on a program-loading harness (quasar-test, or
+# mollusk-svm since the suite consolidated onto it) is the owning manifest's
 # declaration of that requirement; the Makefile keeps no parallel inventory.
 SBF_TEST_RUNNERS := $(shell cargo metadata --locked --no-deps --format-version 1 2>/dev/null | \
-	jq -r '.packages[] | select(any(.dependencies[]?; .kind == "dev" and (.name == "quasar-test" or .name == "quasar-svm"))) | .name')
+	jq -r '.packages[] | select(any(.dependencies[]?; .kind == "dev" and (.name == "quasar-test" or .name == "mollusk-svm"))) | .name')
 # Cargo owns the SBF program inventory. Each program manifest owns its default
 # build features, so adding a cdylib target needs no Makefile update.
 SBF_PROGRAM_PACKAGES := $(shell cargo metadata --locked --no-deps --format-version 1 2>/dev/null | \
