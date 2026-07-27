@@ -59,6 +59,7 @@ for CompositeWithPda {
         }?;
         let (__chunk, _) = unsafe { __accounts_rest.split_at_mut_unchecked(1) };
         let escrow = unsafe { __chunk.get_unchecked_mut(0) };
+        #[allow(clippy::assertions_on_constants)]
         const _: () = assert!(
             < Account < Escrow > as ::quasar_lang::account_init::AccountInit >
             ::DEFAULT_INIT_PARAMS_VALID,

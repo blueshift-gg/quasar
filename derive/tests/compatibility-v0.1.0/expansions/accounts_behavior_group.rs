@@ -23,6 +23,7 @@ for UseCustomBehavior {
             Account < MyData > >> ::REQUIRES_MUT,
             "behavior `min_value` requires `#[account(mut)]` on field `data`",
         );
+        #[allow(clippy::assertions_on_constants)]
         const _: () = assert!(
             ! < min_value::Behavior as ::quasar_lang::account_behavior::AccountBehavior <
             Account < MyData > >> ::VALIDATES_ACCOUNT_DATA || < min_value::Behavior as
@@ -30,6 +31,7 @@ for UseCustomBehavior {
             ::RUN_CHECK,
             "behavior `min_value` sets VALIDATES_ACCOUNT_DATA and must keep RUN_CHECK = true",
         );
+        #[allow(clippy::assertions_on_constants)]
         const _: () = assert!(
             ! < min_value::Behavior as ::quasar_lang::account_behavior::AccountBehavior <
             Account < MyData > >> ::RUN_AFTER_INIT,

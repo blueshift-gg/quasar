@@ -706,6 +706,7 @@ fn emit_behavior_assertions(field_plans: &[FieldPlan]) -> proc_macro2::TokenStre
                     || <#path::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::RUN_CHECK
             };
             asserts.push(quote_spanned! { at_field =>
+                #[allow(clippy::assertions_on_constants)]
                 const _: () = assert!(#cond, #validates_data_msg,);
             });
 
@@ -722,6 +723,7 @@ fn emit_behavior_assertions(field_plans: &[FieldPlan]) -> proc_macro2::TokenStre
                     !<#path::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::RUN_AFTER_INIT
                 };
                 asserts.push(quote_spanned! { at_field =>
+                    #[allow(clippy::assertions_on_constants)]
                     const _: () = assert!(#cond, #after_init_msg,);
                 });
             }
@@ -748,6 +750,7 @@ fn emit_behavior_assertions(field_plans: &[FieldPlan]) -> proc_macro2::TokenStre
                 );
                 let cond = quote! { #(#init_contributor_count)+* <= 1 };
                 asserts.push(quote_spanned! { at_field =>
+                    #[allow(clippy::assertions_on_constants)]
                     const _: () = assert!(#cond, #at_most_one_msg,);
                 });
             }
@@ -769,6 +772,7 @@ fn emit_behavior_assertions(field_plans: &[FieldPlan]) -> proc_macro2::TokenStre
                 }
             };
             asserts.push(quote_spanned! { at_field =>
+                #[allow(clippy::assertions_on_constants)]
                 const _: () = assert!(#condition, #required_msg,);
             });
         }
