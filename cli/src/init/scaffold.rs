@@ -220,7 +220,7 @@ quasar-test = {quasar_test}
 
 fn generate_lib_rs(module_name: &str, program_id: &str) -> String {
     format!(
-        r#"#![cfg_attr(not(test), no_std)]
+        r#"#![cfg_attr(not(ctx), no_std)]
 
 use quasar_lang::prelude::*;
 
@@ -258,9 +258,9 @@ fn generate_tests_rs() -> &'static str {
     r#"use {crate::cpi::InitializeInstruction, quasar_test::prelude::*};
 
 #[quasar_test]
-fn initialize(test: &mut Test) {
-    let payer = test.add(Wallet::account());
-    test.execute(InitializeInstruction { payer }).succeeds();
+fn initialize() {
+    let payer = ctx.add(Wallet::account());
+    ctx.execute(InitializeInstruction { payer }).check(Outcome::success());
 }
 "#
 }

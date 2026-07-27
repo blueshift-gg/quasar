@@ -1,6 +1,6 @@
 //! Fixture-first tests for Solana programs built with Quasar.
 //!
-//! [`quasar_test`] turns an ordinary Rust test into an isolated [`Test`] world
+//! [`quasar_test`] turns an ordinary Rust test into an isolated [`Ctx`] world
 //! loaded with the current program. [`fixture`] provides composable account
 //! setup, while [`Outcome`] keeps execution assertions structured and
 //! independent of the SVM that ran the transaction.
@@ -9,9 +9,9 @@
 //! use quasar_test::prelude::*;
 //!
 //! #[quasar_test]
-//! fn initializes(test: &mut Test) {
-//!     let authority = test.add(Wallet::account());
-//!     test.execute(InitializeInstruction { authority }).succeeds();
+//! fn initializes() {
+//!     let authority = ctx.add(Wallet::account());
+//!     ctx.execute(InitializeInstruction { authority }).check(Outcome::success());
 //! }
 //! ```
 //!
@@ -25,8 +25,8 @@
 //! world, fixtures, `Outcome` reporting, and program discovery all live in
 //! Parallax and are re-exported here unchanged. quasar-test adds the
 //! Quasar-specific sugar on top: quasar-lang `SeedSlices` PDA derivation
-//! ([`Test::derive_pda`]), the strict, discriminator- and owner-checked typed
-//! state API ([`Test::read`]/[`Test::write`]/the strict [`State`] checks), the
+//! ([`Ctx::derive_pda`]), the strict, discriminator- and owner-checked typed
+//! state API ([`Ctx::read`]/[`Ctx::write`]/the strict [`State`] checks), the
 //! `#[quasar_test]` attribute, and the `QUASAR_PROGRAM_PATH` bridge.
 
 #![warn(missing_docs)]
@@ -36,20 +36,20 @@ mod outcome;
 mod world;
 
 pub use {
-    outcome::{Outcome, State, SucceededTransaction},
+    outcome::{Outcome, State},
     quasar_test_derive::quasar_test,
-    world::{Snapshot, Test, TestBuilder, PROGRAM_PATH_ENV},
+    world::{Ctx, CtxBuilder, Snapshot, PROGRAM_PATH_ENV},
 };
 
 // Re-exported unchanged from Parallax so existing imports resolve exactly as
 // before: the account/error types, the instruction and address types, the
-// check grammar (`CheckFn`, `bundle`, `Cu`, the failed-transaction witness),
+// check grammar (`CheckFn`, `bundle`, `Cu`, the verdict-error trait),
 // program discovery errors, the co-signer helper, and the SPL program
 // constants.
 pub use parallax_svm::{
     bundle, co_signers, system_program, Account, AccountChange, AccountMeta, CheckFn, Cu,
-    DataExpected, Expected, ExpectedBytes, FailedTransaction, Instruction, IntoInstructions, Many,
-    One, ProgramError, Pubkey, Raw, ReturnData, SetupError, Typed, DEFAULT_WALLET_LAMPORTS,
+    DataExpected, Expected, ExpectedBytes, Instruction, IntoInstructions, IntoTransactionError,
+    Many, One, ProgramError, Pubkey, Raw, ReturnData, SetupError, Typed, DEFAULT_WALLET_LAMPORTS,
     SPL_ASSOCIATED_TOKEN_PROGRAM_ID, SPL_TOKEN_2022_PROGRAM_ID, SPL_TOKEN_PROGRAM_ID,
 };
 
@@ -65,10 +65,10 @@ pub mod prelude {
             AssociatedTokenAccount, Dump, Fixture, Load, Mint, Program, TokenAccount, TokenProgram,
             Wallet,
         },
-        quasar_test, system_program, Account, AccountChange, AccountMeta, CheckFn, Cu, Expected,
-        ExpectedBytes, FailedTransaction, Instruction, IntoInstructions, Outcome, ProgramError,
-        Pubkey, ReturnData, Snapshot, State, SucceededTransaction, Test, DEFAULT_WALLET_LAMPORTS,
-        SPL_ASSOCIATED_TOKEN_PROGRAM_ID, SPL_TOKEN_2022_PROGRAM_ID, SPL_TOKEN_PROGRAM_ID,
+        quasar_test, system_program, Account, AccountChange, AccountMeta, CheckFn, Ctx, Cu,
+        Expected, ExpectedBytes, Instruction, IntoInstructions, Outcome, ProgramError, Pubkey,
+        ReturnData, Snapshot, State, DEFAULT_WALLET_LAMPORTS, SPL_ASSOCIATED_TOKEN_PROGRAM_ID,
+        SPL_TOKEN_2022_PROGRAM_ID, SPL_TOKEN_PROGRAM_ID,
     };
 }
 
@@ -77,14 +77,14 @@ mod tests {
     use crate::{
         co_signers,
         fixture::{Dump, Load, Wallet},
-        AccountMeta, Instruction, Pubkey, Test,
+        AccountMeta, Ctx, Instruction, Pubkey,
     };
 
     /// Compile-level proof that the `Dump`/`Load` fixtures delegate through
     /// quasar-test's `Fixture` trait; network- and file-backed installs run in
     /// the example suites, not here.
     #[allow(dead_code)]
-    fn dump_and_load_fixtures_delegate(test: &mut Test) {
+    fn dump_and_load_fixtures_delegate(test: &mut Ctx) {
         let [_pool, _oracle] = test.add(Dump::accounts([
             Pubkey::new_from_array([1; 32]),
             Pubkey::new_from_array([2; 32]),
@@ -99,7 +99,7 @@ mod tests {
     // programs.
     #[test]
     fn builder_delegations_build_a_program_less_world() {
-        let mut test = Test::builder(Pubkey::new_from_array([42; 32]))
+        let mut test = Ctx::builder(Pubkey::new_from_array([42; 32]))
             .rpc("http://127.0.0.1:1")
             .no_program()
             .build()
@@ -118,8 +118,10 @@ mod tests {
             ],
             data,
         })
-        .succeeds()
-        .check(crate::Account::lamports(recipient, 1_000_000));
+        .checks([
+            crate::Outcome::success(),
+            crate::Account::lamports(recipient, 1_000_000),
+        ]);
     }
 
     #[test]

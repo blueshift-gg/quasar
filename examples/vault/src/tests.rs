@@ -17,17 +17,18 @@ fn elf_size_stays_within_budget() {
 }
 
 #[quasar_test]
-fn deposit_creates_and_funds_the_vault(test: &mut Test) {
-    test.add(Wallet::account().at(USER));
+fn deposit_creates_and_funds_the_vault() {
+    ctx.add(Wallet::account().at(USER));
     let vault = find_vault_address(&USER, &crate::ID).0;
     let deposit = 1_000_000_000;
 
-    let outcome = test.execute(DepositInstruction {
+    let outcome = ctx.execute(DepositInstruction {
         user: USER,
         amount: deposit,
     });
 
-    outcome.succeeds().checks([
+    outcome.checks([
+        Outcome::success(),
         Cu::spent(|cu| cu <= MAX_DEPOSIT_CU),
         Account::lamports(vault, deposit),
         Account::lamports(USER, DEFAULT_WALLET_LAMPORTS - deposit),
@@ -36,65 +37,67 @@ fn deposit_creates_and_funds_the_vault(test: &mut Test) {
 }
 
 #[quasar_test]
-fn failed_init_does_not_leave_a_placeholder(test: &mut Test) {
-    test.add(Wallet::account().at(USER));
+fn failed_init_does_not_leave_a_placeholder() {
+    ctx.add(Wallet::account().at(USER));
     let wrong_vault = Pubkey::new_from_array([99; 32]);
 
-    let outcome = test.execute(DepositInstructionRaw {
+    let outcome = ctx.execute(DepositInstructionRaw {
         user: USER,
         vault: wrong_vault,
         amount: 1,
     });
 
-    let outcome = outcome.fails_with(QuasarVaultError::InvalidPda);
-    assert!(test.account(wrong_vault).is_none());
+    let outcome = outcome.check(Outcome::error(QuasarVaultError::InvalidPda));
+    assert!(ctx.account(wrong_vault).is_none());
     assert!(outcome.account_changes().is_empty());
 }
 
 #[test]
 fn compute_exhaustion_has_the_same_stable_error_as_typescript() {
-    let mut test = Test::builder(crate::ID)
+    let mut ctx = Ctx::builder(crate::ID)
         .crate_name(env!("CARGO_PKG_NAME"))
         .compute_unit_limit(1)
         .build()
         .unwrap();
-    test.add(Wallet::account().at(USER));
+    ctx.add(Wallet::account().at(USER));
 
-    test.execute(DepositInstruction {
+    ctx.execute(DepositInstruction {
         user: USER,
         amount: 1,
     })
-    .fails(ProgramError::Runtime("ProgramFailedToComplete".into()));
+    .check(Outcome::error(ProgramError::Runtime(
+        "ProgramFailedToComplete".into(),
+    )));
 }
 
 #[quasar_test]
-fn withdraw_moves_lamports_out_of_program_state(test: &mut Test) {
-    test.add(Wallet::account().at(USER));
+fn withdraw_moves_lamports_out_of_program_state() {
+    ctx.add(Wallet::account().at(USER));
     let vault = find_vault_address(&USER, &crate::ID).0;
     let vault_lamports = 1_000_000_000;
     let withdrawal = 500_000_000;
     // Deposit leaves the vault as a system-owned PDA holding lamports; the
     // withdraw CPI transfers out of it with the vault's seeds signing.
-    test.add(Wallet::account().at(vault).fund(vault_lamports));
+    ctx.add(Wallet::account().at(vault).fund(vault_lamports));
 
-    test.simulate(WithdrawInstruction {
+    ctx.simulate(WithdrawInstruction {
         user: USER,
         amount: withdrawal,
     })
-    .succeeds()
+    .check(Outcome::success())
     .checks([
         Cu::spent(|cu| cu <= MAX_WITHDRAW_CU),
         Account::lamports(USER, DEFAULT_WALLET_LAMPORTS + withdrawal),
         Account::lamports(vault, vault_lamports - withdrawal),
     ]);
-    assert_eq!(test.lamports(USER), DEFAULT_WALLET_LAMPORTS);
-    assert_eq!(test.lamports(vault), vault_lamports);
+    assert_eq!(ctx.lamports(USER), DEFAULT_WALLET_LAMPORTS);
+    assert_eq!(ctx.lamports(vault), vault_lamports);
 
-    test.execute(WithdrawInstruction {
+    ctx.execute(WithdrawInstruction {
         user: USER,
         amount: withdrawal,
     })
-    .succeeds()
+    .check(Outcome::success())
     .checks([
         Cu::spent(|cu| cu <= MAX_WITHDRAW_CU),
         Account::lamports(USER, DEFAULT_WALLET_LAMPORTS + withdrawal),

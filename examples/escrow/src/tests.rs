@@ -35,17 +35,17 @@ fn elf_size_stays_within_budget() {
 
 /// Register the maker and both mints, returning the mint addresses the fixtures
 /// placed.
-fn base_world(test: &mut Test) -> (Pubkey, Pubkey) {
-    test.add(Wallet::account().at(MAKER));
-    let mint_a = test.add(Mint::account().with_supply(1_000_000_000).decimals(9));
-    let mint_b = test.add(Mint::account().with_supply(1_000_000_000).decimals(9));
+fn base_world(ctx: &mut Ctx) -> (Pubkey, Pubkey) {
+    ctx.add(Wallet::account().at(MAKER));
+    let mint_a = ctx.add(Mint::account().with_supply(1_000_000_000).decimals(9));
+    let mint_b = ctx.add(Mint::account().with_supply(1_000_000_000).decimals(9));
     (mint_a, mint_b)
 }
 
 /// Register a live escrow holding 1337 vault tokens, as `make` leaves it.
-fn live_escrow(test: &mut Test, mint_a: Pubkey, mint_b: Pubkey) -> Pubkey {
-    let (escrow, bump) = test.derive_pda_with_bump(Escrow::seeds(&MAKER));
-    test.write(
+fn live_escrow(ctx: &mut Ctx, mint_a: Pubkey, mint_b: Pubkey) -> Pubkey {
+    let (escrow, bump) = ctx.derive_pda_with_bump(Escrow::seeds(&MAKER));
+    ctx.write(
         escrow,
         EscrowData {
             maker: MAKER,
@@ -56,7 +56,7 @@ fn live_escrow(test: &mut Test, mint_a: Pubkey, mint_b: Pubkey) -> Pubkey {
             bump,
         },
     );
-    test.add(
+    ctx.add(
         TokenAccount::account(mint_a, escrow)
             .at(VAULT_TA_A)
             .with_amount(1337),
@@ -65,16 +65,16 @@ fn live_escrow(test: &mut Test, mint_a: Pubkey, mint_b: Pubkey) -> Pubkey {
 }
 
 #[quasar_test]
-fn test_make_cu(test: &mut Test) {
-    let (mint_a, mint_b) = base_world(test);
-    test.add(
+fn test_make_cu() {
+    let (mint_a, mint_b) = base_world(ctx);
+    ctx.add(
         TokenAccount::account(mint_a, MAKER)
             .at(MAKER_TA_A)
             .with_amount(1_000_000),
     );
-    let (escrow, bump) = test.derive_pda_with_bump(Escrow::seeds(&MAKER));
+    let (escrow, bump) = ctx.derive_pda_with_bump(Escrow::seeds(&MAKER));
 
-    let result = test.execute(MakeInstruction {
+    let result = ctx.execute(MakeInstruction {
         maker: MAKER,
         mint_a,
         mint_b,
@@ -84,26 +84,28 @@ fn test_make_cu(test: &mut Test) {
         deposit: 1337,
         receive: 1337,
     });
-    result.succeeds().check(Cu::spent(|cu| cu <= MAX_MAKE_CU));
+    result
+        .check(Outcome::success())
+        .check(Cu::spent(|cu| cu <= MAX_MAKE_CU));
 
-    let state = test.read::<Escrow>(escrow);
+    let state = ctx.read::<Escrow>(escrow);
     assert_eq!(state.maker, MAKER);
     assert_eq!(state.receive, 1337);
     assert_eq!(state.bump, bump);
 }
 
 #[quasar_test]
-fn test_take_cu(test: &mut Test) {
-    let (mint_a, mint_b) = base_world(test);
-    test.add(Wallet::account().at(TAKER));
-    live_escrow(test, mint_a, mint_b);
-    test.add(
+fn test_take_cu() {
+    let (mint_a, mint_b) = base_world(ctx);
+    ctx.add(Wallet::account().at(TAKER));
+    live_escrow(ctx, mint_a, mint_b);
+    ctx.add(
         TokenAccount::account(mint_b, TAKER)
             .at(TAKER_TA_B)
             .with_amount(10_000),
     );
 
-    let result = test.execute(TakeInstruction {
+    let result = ctx.execute(TakeInstruction {
         taker: TAKER,
         maker: MAKER,
         mint_a,
@@ -113,36 +115,40 @@ fn test_take_cu(test: &mut Test) {
         maker_ta_b: MAKER_TA_B,
         vault_ta_a: VAULT_TA_A,
     });
-    result.succeeds().check(Cu::spent(|cu| cu <= MAX_TAKE_CU));
+    result
+        .check(Outcome::success())
+        .check(Cu::spent(|cu| cu <= MAX_TAKE_CU));
 }
 
 #[quasar_test]
-fn test_refund_cu(test: &mut Test) {
-    let (mint_a, mint_b) = base_world(test);
-    live_escrow(test, mint_a, mint_b);
+fn test_refund_cu() {
+    let (mint_a, mint_b) = base_world(ctx);
+    live_escrow(ctx, mint_a, mint_b);
 
-    let result = test.execute(RefundInstruction {
+    let result = ctx.execute(RefundInstruction {
         maker: MAKER,
         mint_a,
         maker_ta_a: MAKER_TA_A,
         vault_ta_a: VAULT_TA_A,
     });
-    result.succeeds().check(Cu::spent(|cu| cu <= MAX_REFUND_CU));
+    result
+        .check(Outcome::success())
+        .check(Cu::spent(|cu| cu <= MAX_REFUND_CU));
 }
 
 #[quasar_test]
-fn test_make_existing_token_accounts(test: &mut Test) {
-    let (mint_a, mint_b) = base_world(test);
-    test.add(
+fn test_make_existing_token_accounts() {
+    let (mint_a, mint_b) = base_world(ctx);
+    ctx.add(
         TokenAccount::account(mint_a, MAKER)
             .at(MAKER_TA_A)
             .with_amount(1_000_000),
     );
-    let escrow = test.derive_pda(Escrow::seeds(&MAKER));
-    test.add(TokenAccount::account(mint_b, MAKER).at(MAKER_TA_B));
-    test.add(TokenAccount::account(mint_a, escrow).at(VAULT_TA_A));
+    let escrow = ctx.derive_pda(Escrow::seeds(&MAKER));
+    ctx.add(TokenAccount::account(mint_b, MAKER).at(MAKER_TA_B));
+    ctx.add(TokenAccount::account(mint_a, escrow).at(VAULT_TA_A));
 
-    test.execute(MakeInstruction {
+    ctx.execute(MakeInstruction {
         maker: MAKER,
         mint_a,
         mint_b,
@@ -152,22 +158,22 @@ fn test_make_existing_token_accounts(test: &mut Test) {
         deposit: 1337,
         receive: 1337,
     })
-    .succeeds();
+    .check(Outcome::success());
 }
 
 #[quasar_test]
-fn test_make_existing_maker_ta_b_wrong_mint(test: &mut Test) {
-    let (mint_a, mint_b) = base_world(test);
-    test.add(
+fn test_make_existing_maker_ta_b_wrong_mint() {
+    let (mint_a, mint_b) = base_world(ctx);
+    ctx.add(
         TokenAccount::account(mint_a, MAKER)
             .at(MAKER_TA_A)
             .with_amount(1_000_000),
     );
-    let escrow = test.derive_pda(Escrow::seeds(&MAKER));
-    test.add(TokenAccount::account(mint_a, MAKER).at(MAKER_TA_B)); // wrong mint
-    test.add(TokenAccount::account(mint_a, escrow).at(VAULT_TA_A));
+    let escrow = ctx.derive_pda(Escrow::seeds(&MAKER));
+    ctx.add(TokenAccount::account(mint_a, MAKER).at(MAKER_TA_B)); // wrong mint
+    ctx.add(TokenAccount::account(mint_a, escrow).at(VAULT_TA_A));
 
-    let result = test.execute(MakeInstruction {
+    let result = ctx.execute(MakeInstruction {
         maker: MAKER,
         mint_a,
         mint_b,
@@ -184,18 +190,18 @@ fn test_make_existing_maker_ta_b_wrong_mint(test: &mut Test) {
 }
 
 #[quasar_test]
-fn test_make_existing_maker_ta_b_wrong_owner(test: &mut Test) {
-    let (mint_a, mint_b) = base_world(test);
-    test.add(
+fn test_make_existing_maker_ta_b_wrong_owner() {
+    let (mint_a, mint_b) = base_world(ctx);
+    ctx.add(
         TokenAccount::account(mint_a, MAKER)
             .at(MAKER_TA_A)
             .with_amount(1_000_000),
     );
-    let escrow = test.derive_pda(Escrow::seeds(&MAKER));
-    test.add(TokenAccount::account(mint_b, WRONG_OWNER).at(MAKER_TA_B)); // wrong owner
-    test.add(TokenAccount::account(mint_a, escrow).at(VAULT_TA_A));
+    let escrow = ctx.derive_pda(Escrow::seeds(&MAKER));
+    ctx.add(TokenAccount::account(mint_b, WRONG_OWNER).at(MAKER_TA_B)); // wrong owner
+    ctx.add(TokenAccount::account(mint_a, escrow).at(VAULT_TA_A));
 
-    let result = test.execute(MakeInstruction {
+    let result = ctx.execute(MakeInstruction {
         maker: MAKER,
         mint_a,
         mint_b,
@@ -212,23 +218,23 @@ fn test_make_existing_maker_ta_b_wrong_owner(test: &mut Test) {
 }
 
 #[quasar_test]
-fn test_take_existing_token_accounts(test: &mut Test) {
-    let (mint_a, mint_b) = base_world(test);
-    test.add(Wallet::account().at(TAKER));
-    live_escrow(test, mint_a, mint_b);
-    test.add(TokenAccount::account(mint_a, TAKER).at(TAKER_TA_A));
-    test.add(
+fn test_take_existing_token_accounts() {
+    let (mint_a, mint_b) = base_world(ctx);
+    ctx.add(Wallet::account().at(TAKER));
+    live_escrow(ctx, mint_a, mint_b);
+    ctx.add(TokenAccount::account(mint_a, TAKER).at(TAKER_TA_A));
+    ctx.add(
         TokenAccount::account(mint_b, TAKER)
             .at(TAKER_TA_B)
             .with_amount(10_000),
     );
-    test.add(
+    ctx.add(
         TokenAccount::account(mint_b, MAKER)
             .at(MAKER_TA_B)
             .with_amount(500),
     );
 
-    test.execute(TakeInstruction {
+    ctx.execute(TakeInstruction {
         taker: TAKER,
         maker: MAKER,
         mint_a,
@@ -238,24 +244,24 @@ fn test_take_existing_token_accounts(test: &mut Test) {
         maker_ta_b: MAKER_TA_B,
         vault_ta_a: VAULT_TA_A,
     })
-    .succeeds();
+    .check(Outcome::success());
 }
 
 #[quasar_test]
-fn test_refund_existing_maker_ta_a(test: &mut Test) {
-    let (mint_a, mint_b) = base_world(test);
-    test.add(
+fn test_refund_existing_maker_ta_a() {
+    let (mint_a, mint_b) = base_world(ctx);
+    ctx.add(
         TokenAccount::account(mint_a, MAKER)
             .at(MAKER_TA_A)
             .with_amount(5_000),
     );
-    live_escrow(test, mint_a, mint_b);
+    live_escrow(ctx, mint_a, mint_b);
 
-    test.execute(RefundInstruction {
+    ctx.execute(RefundInstruction {
         maker: MAKER,
         mint_a,
         maker_ta_a: MAKER_TA_A,
         vault_ta_a: VAULT_TA_A,
     })
-    .succeeds();
+    .check(Outcome::success());
 }

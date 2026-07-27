@@ -1,6 +1,6 @@
-//! The [`Test`] world and its builder.
+//! The [`Ctx`] world and its builder.
 //!
-//! `Test` is a thin newtype over [`parallax_svm::Test`]: everything the Parallax
+//! `Ctx` is a thin newtype over [`parallax_svm::Ctx`]: everything the Parallax
 //! harness already provides is reached through [`Deref`], while quasar-test
 //! layers its own PDA and typed-state sugar on top as inherent methods that take
 //! precedence during method resolution.
@@ -20,19 +20,19 @@ use {
 
 /// Environment variable set by `quasar test` to the freshly built program.
 ///
-/// [`TestBuilder::build`] bridges it to Parallax's own
+/// [`CtxBuilder::build`] bridges it to Parallax's own
 /// [`PROGRAM_PATH_ENV`](parallax_svm::PROGRAM_PATH_ENV) so tests run through the
 /// `quasar` CLI keep loading the compiled artifact without a build step.
 pub const PROGRAM_PATH_ENV: &str = "QUASAR_PROGRAM_PATH";
 
 /// An isolated Solana program test world.
 ///
-/// Wraps [`parallax_svm::Test`]; its whole surface — `add`, `execute`, `account`,
+/// Wraps [`parallax_svm::Ctx`]; its whole surface — `add`, `execute`, `account`,
 /// `warp_to_timestamp`, and the rest — is available directly, plus the
 /// quasar-test extras below.
-pub struct Test(pub(crate) parallax_svm::Test);
+pub struct Ctx(pub(crate) parallax_svm::Ctx);
 
-impl Test {
+impl Ctx {
     /// Load the current project's compiled program.
     ///
     /// # Panics
@@ -51,14 +51,14 @@ impl Test {
     }
 
     /// Configure artifact discovery and runtime limits before loading a world.
-    pub fn builder(program_id: impl Into<Pubkey>) -> TestBuilder {
-        TestBuilder::new(program_id.into())
+    pub fn builder(program_id: impl Into<Pubkey>) -> CtxBuilder {
+        CtxBuilder::new(program_id.into())
     }
 
     /// Install a built-in or application-defined fixture.
     ///
     /// Uses quasar-test's [`Fixture`] trait, so an application fixture's
-    /// `install` receives this sugar-carrying `Test` and can call
+    /// `install` receives this sugar-carrying `Ctx` and can call
     /// [`Self::derive_pda`], [`Self::write`], and the rest.
     pub fn add<F: Fixture>(&mut self, fixture: F) -> F::Output {
         fixture.install(self)
@@ -176,15 +176,15 @@ impl Test {
     }
 }
 
-impl Deref for Test {
-    type Target = parallax_svm::Test;
+impl Deref for Ctx {
+    type Target = parallax_svm::Ctx;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl DerefMut for Test {
+impl DerefMut for Ctx {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -202,17 +202,17 @@ fn program_account(address: Pubkey, owner: Pubkey, data: Vec<u8>) -> Account {
 
 /// World setup: which program artifact to load and its runtime limits.
 ///
-/// Created by [`Test::builder`]. Wraps [`parallax_svm::TestBuilder`] and adds
+/// Created by [`Ctx::builder`]. Wraps [`parallax_svm::CtxBuilder`] and adds
 /// the [`PROGRAM_PATH_ENV`] bridge in [`Self::build`].
-pub struct TestBuilder {
-    inner: parallax_svm::TestBuilder,
+pub struct CtxBuilder {
+    inner: parallax_svm::CtxBuilder,
     program_path_set: bool,
 }
 
-impl TestBuilder {
+impl CtxBuilder {
     fn new(program_id: Pubkey) -> Self {
         Self {
-            inner: parallax_svm::Test::builder(program_id),
+            inner: parallax_svm::Ctx::builder(program_id),
             program_path_set: false,
         }
     }
@@ -269,7 +269,7 @@ impl TestBuilder {
     }
 
     /// Load the program and start the world.
-    pub fn build(mut self) -> Result<Test, SetupError> {
+    pub fn build(mut self) -> Result<Ctx, SetupError> {
         // Bridge the `quasar test` override to Parallax's own env var without
         // mutating process state (tests run on parallel threads). An explicit
         // `program_path`, or Parallax's env var, both take precedence.
@@ -282,13 +282,13 @@ impl TestBuilder {
                 self.inner = self.inner.program_path(path);
             }
         }
-        self.inner.build().map(Test)
+        self.inner.build().map(Ctx)
     }
 }
 
 /// Validate `account` as a fixed-size Quasar account of type `T` and return a
 /// copy of its typed state. `context` names the calling operation so panics stay
-/// actionable (`read`, `State`, ...). Shared by [`Test::read`] and
+/// actionable (`read`, `State`, ...). Shared by [`Ctx::read`] and
 /// [`crate::State`] so both apply identical ownership,
 /// discriminator, length, and zero-copy checks.
 pub(crate) fn validate_typed<T>(context: &str, account: &Account) -> T::Target
@@ -300,7 +300,7 @@ where
 }
 
 /// [`validate_typed`] with the typed state starting `offset` bytes past the
-/// discriminator; backs [`Test::read_at`].
+/// discriminator; backs [`Ctx::read_at`].
 pub(crate) fn validate_typed_at<T>(context: &str, account: &Account, offset: usize) -> T::Target
 where
     T: Discriminator + Owner + Deref,

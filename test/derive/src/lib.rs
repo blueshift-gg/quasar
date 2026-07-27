@@ -10,14 +10,16 @@ use {
 
 /// Run an ordinary Rust test in an isolated Quasar program world.
 ///
-/// The function takes `&mut Test` as its only parameter and may return any
-/// type supported by Rust's test harness, including `Result<(), E>`.
+/// A zero-argument function receives the world as an injected `ctx` binding;
+/// a function declaring one `&mut Ctx` parameter keeps its own name. Any
+/// return type Rust's test harness supports works, including `Result<(), E>`.
 ///
 /// ```rust,ignore
 /// #[quasar_test]
-/// fn initialize(test: &mut Test) -> Result<(), Box<dyn std::error::Error>> {
-///     test.send(InitializeInstruction { /* ... */ }).succeeds();
-///     Ok(())
+/// fn initialize() {
+///     let authority = ctx.add(Wallet::account());
+///     ctx.execute(InitializeInstruction { authority })
+///         .check(Outcome::success());
 /// }
 /// ```
 ///
@@ -46,17 +48,6 @@ pub fn quasar_test(attr: TokenStream, item: TokenStream) -> TokenStream {
     if let Some(error) = invalid_signature(&function) {
         return error.to_compile_error().into();
     }
-    let FnArg::Typed(parameter) = function
-        .sig
-        .inputs
-        .first()
-        .expect("signature validation requires one parameter")
-    else {
-        unreachable!("signature validation rejects receivers")
-    };
-    let Pat::Ident(world) = &*parameter.pat else {
-        unreachable!("signature validation requires an identifier pattern")
-    };
 
     let test_crate = match crate_name("quasar-test") {
         Ok(FoundCrate::Itself) => quote! { crate },
@@ -78,15 +69,30 @@ pub fn quasar_test(attr: TokenStream, item: TokenStream) -> TokenStream {
     let visibility = &function.vis;
     let name = &function.sig.ident;
     let output = &function.sig.output;
-    let world_type = &parameter.ty;
-    let world_name = &world.ident;
     let body = &function.block;
+
+    // A declared parameter keeps its name and type; a zero-argument function
+    // receives the conventional `ctx` binding (call-site hygiene, so the body
+    // resolves it).
+    let (world_name, world_type) = match function.sig.inputs.first() {
+        Some(FnArg::Typed(parameter)) => {
+            let Pat::Ident(world) = &*parameter.pat else {
+                unreachable!("signature validation requires an identifier pattern")
+            };
+            let ty = &parameter.ty;
+            (world.ident.clone(), quote! { #ty })
+        }
+        _ => (
+            syn::Ident::new("ctx", Span::call_site()),
+            quote! { &mut #test_crate::Ctx },
+        ),
+    };
 
     quote! {
         #(#attributes)*
         #[test]
         #visibility fn #name() #output {
-            let mut __quasar_test = #test_crate::Test::builder(#program_id)
+            let mut __quasar_test = #test_crate::Ctx::builder(#program_id)
                 .crate_name(env!("CARGO_PKG_NAME"))
                 .build()
                 .unwrap_or_else(|error| ::core::panic!("{error}"));
@@ -106,23 +112,21 @@ fn invalid_signature(function: &ItemFn) -> Option<syn::Error> {
         || signature.variadic.is_some()
         || !signature.generics.params.is_empty()
         || signature.generics.where_clause.is_some()
-        || signature.inputs.len() != 1
+        || signature.inputs.len() > 1
     {
         return Some(signature_error(signature));
     }
-    let Some(FnArg::Typed(parameter)) = signature.inputs.first() else {
-        return Some(signature_error(signature));
-    };
-    if !matches!(&*parameter.pat, Pat::Ident(_)) {
-        return Some(signature_error(signature));
+    match signature.inputs.first() {
+        None => None,
+        Some(FnArg::Typed(parameter)) if matches!(&*parameter.pat, Pat::Ident(_)) => None,
+        Some(_) => Some(signature_error(signature)),
     }
-    None
 }
 
 fn signature_error(signature: &syn::Signature) -> syn::Error {
     syn::Error::new_spanned(
         signature,
-        "a #[quasar_test] function must be an ordinary function with one test-world parameter: \
-         `fn name(test: &mut Test)`",
+        "a #[quasar_test] function must be an ordinary function, either zero-argument (the \
+         world is injected as `ctx`) or taking one world parameter: `fn name(ctx: &mut Ctx)`",
     )
 }

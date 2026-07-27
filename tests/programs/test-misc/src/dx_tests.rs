@@ -13,24 +13,24 @@ use {
 };
 
 #[quasar_test]
-fn initialize_stores_typed_state(test: &mut Test) {
-    let payer = test.add(Wallet::account());
-    let (account, bump) = test.derive_pda_with_bump(SimpleAccount::seeds(&payer));
+fn initialize_stores_typed_state() {
+    let payer = ctx.add(Wallet::account());
+    let (account, bump) = ctx.derive_pda_with_bump(SimpleAccount::seeds(&payer));
 
-    test.execute(InitializeInstruction { payer, value: 42 })
-        .succeeds();
+    ctx.execute(InitializeInstruction { payer, value: 42 })
+        .check(Outcome::success());
 
-    let state = test.read::<SimpleAccount>(account);
+    let state = ctx.read::<SimpleAccount>(account);
     assert_eq!(state.authority, payer);
     assert_eq!(state.value, 42);
     assert_eq!(state.bump, bump);
 }
 
 #[quasar_test]
-fn close_returns_the_account_to_the_system(test: &mut Test) {
-    let authority = test.add(Wallet::account());
-    let (account, bump) = test.derive_pda_with_bump(SimpleAccount::seeds(&authority));
-    test.write(
+fn close_returns_the_account_to_the_system() {
+    let authority = ctx.add(Wallet::account());
+    let (account, bump) = ctx.derive_pda_with_bump(SimpleAccount::seeds(&authority));
+    ctx.write(
         account,
         SimpleAccountData {
             authority,
@@ -39,17 +39,17 @@ fn close_returns_the_account_to_the_system(test: &mut Test) {
         },
     );
 
-    test.execute(CloseAccountInstruction { authority })
-        .succeeds()
+    ctx.execute(CloseAccountInstruction { authority })
+        .check(Outcome::success())
         .check(Account::closed(account));
 }
 
 #[quasar_test]
-fn close_rejects_a_foreign_authority(test: &mut Test) {
-    let owner = test.add(Wallet::account());
-    let intruder = test.add(Wallet::account());
-    let (account, bump) = test.derive_pda_with_bump(SimpleAccount::seeds(&owner));
-    test.write(
+fn close_rejects_a_foreign_authority() {
+    let owner = ctx.add(Wallet::account());
+    let intruder = ctx.add(Wallet::account());
+    let (account, bump) = ctx.derive_pda_with_bump(SimpleAccount::seeds(&owner));
+    ctx.write(
         account,
         SimpleAccountData {
             authority: owner,
@@ -60,7 +60,7 @@ fn close_rejects_a_foreign_authority(test: &mut Test) {
 
     // The in-crate client infers this account, so the negative test makes its
     // one adversarial mutation explicit.
-    let intruder_pda = test.derive_pda(SimpleAccount::seeds(&intruder));
+    let intruder_pda = ctx.derive_pda(SimpleAccount::seeds(&intruder));
     let mut instruction: Instruction = CloseAccountInstruction {
         authority: intruder,
     }
@@ -72,6 +72,6 @@ fn close_rejects_a_foreign_authority(test: &mut Test) {
         .expect("generated account")
         .pubkey = account;
 
-    test.execute(instruction)
-        .fails_with(QuasarError::InvalidPda);
+    ctx.execute(instruction)
+        .check(Outcome::error(QuasarError::InvalidPda));
 }

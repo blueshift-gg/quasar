@@ -1,21 +1,20 @@
 //! The [`Outcome`] of executing a transaction.
 //!
 //! `Outcome` is a newtype over [`parallax_svm::Outcome`]. Reporting accessors
-//! (`logs`, `account`, `events`, ...) are reached through [`Deref`]; the
-//! verdicts are re-declared so a chain stays in quasar-test's types. Success
-//! yields a quasar-test [`SucceededTransaction`] — a newtype over Parallax's
-//! witness that [`Deref`]s to it and delegates `check`/`checks` — so the strict
-//! [`State`] facts below group in the same `checks([..])` arrays as the
-//! built-ins. The failure verdicts hand back Parallax's [`FailedTransaction`]
-//! directly, since a failed transaction commits nothing to check.
+//! (`logs`, `account`, `events`, ...) are reached through [`Deref`];
+//! `check`/`checks` are re-declared so a chain stays in quasar-test's type,
+//! and the verdict facts — [`Outcome::success`] / [`Outcome::error`] — are
+//! re-declared so the prelude's `Outcome` names them exactly as Parallax's
+//! does. Facts self-diagnose: evaluated against a failed transaction they
+//! panic with the transaction's error and logs.
 //!
-//! The [`State`] facts here validate the quasar way — ownership, discriminator,
-//! length, and zero-copy validation — replacing Parallax's schema-only `data`
-//! predicate in this crate's prelude.
+//! The [`State`] facts here validate the quasar way — ownership,
+//! discriminator, length, and zero-copy validation — replacing Parallax's
+//! schema-only `Account::data` predicate in this crate's prelude.
 
 use {
-    crate::{ProgramError, Pubkey},
-    parallax_svm::{CheckFn, FailedTransaction},
+    crate::Pubkey,
+    parallax_svm::{CheckFn, IntoTransactionError},
     quasar_lang::{
         __zeropod::{ZcElem, ZcValidate},
         traits::{Discriminator, Owner},
@@ -24,7 +23,7 @@ use {
 };
 
 /// The structured result of executing one transaction.
-#[must_use = "assert the outcome with succeeds, fails, or fails_with"]
+#[must_use = "check the outcome (Outcome::success(), Outcome::error(..), or any fact)"]
 pub struct Outcome(parallax_svm::Outcome);
 
 impl Outcome {
@@ -32,45 +31,6 @@ impl Outcome {
         Self(inner)
     }
 
-    /// Assert success, yielding the [`SucceededTransaction`] witness that
-    /// checks run against.
-    pub fn succeeds(self) -> SucceededTransaction {
-        SucceededTransaction(self.0.succeeds())
-    }
-
-    /// Assert a typed custom program error, yielding the failed-transaction
-    /// witness for follow-up reads.
-    pub fn fails_with<E>(self, expected: E) -> FailedTransaction
-    where
-        E: Into<u32>,
-    {
-        self.0.fails_with(expected)
-    }
-
-    /// Assert a runtime or non-custom program error, yielding the
-    /// failed-transaction witness for follow-up reads.
-    pub fn fails(self, expected: ProgramError) -> FailedTransaction {
-        self.0.fails(expected)
-    }
-}
-
-impl Deref for Outcome {
-    type Target = parallax_svm::Outcome;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-/// A transaction proven successful by [`Outcome::succeeds`] — the context every
-/// [`CheckFn`] runs against.
-///
-/// A newtype over [`parallax_svm::SucceededTransaction`] so quasar-test owns
-/// the chain: `check`/`checks` delegate to Parallax and stay chainable, while
-/// all outcome reads remain available through [`Deref`].
-pub struct SucceededTransaction(parallax_svm::SucceededTransaction);
-
-impl SucceededTransaction {
     /// Run one check or one [`bundle`](parallax_svm::bundle) — built-in
     /// Parallax facts (`Cu`, `Account::lamports`, `Account::created`, ...),
     /// quasar-test's strict [`State`], closures, and bundles of any of them.
@@ -85,10 +45,23 @@ impl SucceededTransaction {
         self.0.checks(checks);
         self
     }
+
+    /// Assert the transaction succeeded. Optional before other facts (they
+    /// self-diagnose on a failed transaction), and useful to state intent.
+    pub fn success() -> CheckFn {
+        parallax_svm::Outcome::success()
+    }
+
+    /// Assert the transaction failed with exactly this error — a
+    /// [`ProgramError`](crate::ProgramError), or a program's typed error
+    /// (anything `Into<u32>`).
+    pub fn error(expected: impl IntoTransactionError + 'static) -> CheckFn {
+        parallax_svm::Outcome::error(expected)
+    }
 }
 
-impl Deref for SucceededTransaction {
-    type Target = parallax_svm::SucceededTransaction;
+impl Deref for Outcome {
+    type Target = parallax_svm::Outcome;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -99,22 +72,30 @@ impl Deref for SucceededTransaction {
 ///
 /// `State::of(address, predicate)` reads the account at `address` through `T`'s
 /// on-chain wrapper with the same ownership, discriminator, length, and
-/// zero-copy validation as [`Test::read`](crate::Test::read) — quasar-test's
+/// zero-copy validation as [`Ctx::read`](crate::Ctx::read) — quasar-test's
 /// strict sibling of Parallax's schema-only `Account::data`. It returns a
 /// [`CheckFn`], so these facts group in the same `checks([..])` arrays as the
-/// built-ins.
+/// built-ins, and it self-diagnoses like every fact.
 pub struct State;
 
 impl State {
     /// Assert `predicate` holds for the decoded, validated state of the account
-    /// at `address`. The account is read through `T`'s on-chain wrapper with
-    /// full ownership, discriminator, length, and zero-copy validation.
+    /// at `address`.
     pub fn of<T>(address: Pubkey, predicate: impl Fn(&T::Target) -> bool + 'static) -> CheckFn
     where
         T: Discriminator + Owner + Deref + 'static,
         T::Target: ZcElem + ZcValidate + Copy,
     {
         CheckFn::new(move |tx| {
+            if let Some(error) = tx.failure() {
+                let logs = tx.logs();
+                let rendered = if logs.is_empty() {
+                    String::new()
+                } else {
+                    format!("\nprogram logs:\n  {}", logs.join("\n  "))
+                };
+                panic!("fact checked against a failed transaction: {error}{rendered}");
+            }
             let name = core::any::type_name::<T>();
             let account = tx.account(address).unwrap_or_else(|| {
                 panic!("State {name}: transaction does not contain account {address}")
