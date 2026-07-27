@@ -637,7 +637,11 @@ fn emit_single_instruction(
         out.push_str("use std::vec::Vec;\n");
     }
 
-    out.push_str("use solana_instruction::{AccountMeta, Instruction};\n");
+    if ix.accounts.is_empty() && !has_remaining {
+        out.push_str("use solana_instruction::Instruction;\n");
+    } else {
+        out.push_str("use solana_instruction::{AccountMeta, Instruction};\n");
+    }
     out.push_str("use crate::ID;\n");
 
     let args_need_address = ix.args.iter().any(|arg| field_needs_address(&arg.ty));
@@ -883,6 +887,7 @@ fn emit_resolved_instruction(
     let account_field_seeds = rust_account_field_seed_inputs(idl, ix);
 
     writeln!(out, "pub struct {instruction_name} {{").expect("write to String");
+    let fields_start = out.len();
 
     // Required caller-controlled accounts first. Optional accounts stay
     // caller-controlled even when their wrapped resolver is a PDA: `None`
@@ -937,6 +942,7 @@ fn emit_resolved_instruction(
     if ix.remaining_accounts.is_some() {
         out.push_str("    pub remaining_accounts: Vec<AccountMeta>,\n");
     }
+    let caller_struct_is_empty = out.len() == fields_start;
     out.push_str("}\n\n");
 
     writeln!(
@@ -949,6 +955,9 @@ fn emit_resolved_instruction(
         "    fn from(ix: {instruction_name}) -> {raw_instruction_name} {{"
     )
     .expect("write to String");
+    if caller_struct_is_empty {
+        out.push_str("        let _ = ix;\n");
+    }
 
     // Bind every caller-controlled account before deriving PDAs. A PDA may
     // appear before one of its input seed accounts in the IDL account list.
