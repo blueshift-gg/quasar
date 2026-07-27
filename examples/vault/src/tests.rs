@@ -22,12 +22,11 @@ fn deposit_creates_and_funds_the_vault() {
     let vault = find_vault_address(&USER, &crate::ID).0;
     let deposit = 1_000_000_000;
 
-    let outcome = ctx.execute(DepositInstruction {
+    ctx.execute(DepositInstruction {
         user: USER,
         amount: deposit,
-    });
-
-    outcome.checks([
+    })
+    .checks([
         Outcome::success(),
         Cu::spent(|cu| cu <= MAX_DEPOSIT_CU),
         Account::lamports(vault, deposit),
@@ -47,7 +46,7 @@ fn failed_init_does_not_leave_a_placeholder() {
         amount: 1,
     });
 
-    let outcome = outcome.check(Outcome::error(QuasarVaultError::InvalidPda));
+    outcome.check(Outcome::error(QuasarVaultError::InvalidPda));
     assert!(ctx.account(wrong_vault).is_none());
     assert!(outcome.account_changes().is_empty());
 }

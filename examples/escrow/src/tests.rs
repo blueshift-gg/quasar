@@ -74,7 +74,7 @@ fn test_make_cu() {
     );
     let (escrow, bump) = ctx.derive_pda_with_bump(Escrow::seeds(&MAKER));
 
-    let result = ctx.execute(MakeInstruction {
+    ctx.execute(MakeInstruction {
         maker: MAKER,
         mint_a,
         mint_b,
@@ -83,10 +83,8 @@ fn test_make_cu() {
         vault_ta_a: VAULT_TA_A,
         deposit: 1337,
         receive: 1337,
-    });
-    result
-        .check(Outcome::success())
-        .check(Cu::spent(|cu| cu <= MAX_MAKE_CU));
+    })
+    .checks([Outcome::success(), Cu::spent(|cu| cu <= MAX_MAKE_CU)]);
 
     let state = ctx.read::<Escrow>(escrow);
     assert_eq!(state.maker, MAKER);
@@ -105,7 +103,7 @@ fn test_take_cu() {
             .with_amount(10_000),
     );
 
-    let result = ctx.execute(TakeInstruction {
+    ctx.execute(TakeInstruction {
         taker: TAKER,
         maker: MAKER,
         mint_a,
@@ -114,10 +112,8 @@ fn test_take_cu() {
         taker_ta_b: TAKER_TA_B,
         maker_ta_b: MAKER_TA_B,
         vault_ta_a: VAULT_TA_A,
-    });
-    result
-        .check(Outcome::success())
-        .check(Cu::spent(|cu| cu <= MAX_TAKE_CU));
+    })
+    .checks([Outcome::success(), Cu::spent(|cu| cu <= MAX_TAKE_CU)]);
 }
 
 #[quasar_test]
@@ -125,15 +121,13 @@ fn test_refund_cu() {
     let (mint_a, mint_b) = base_world(ctx);
     live_escrow(ctx, mint_a, mint_b);
 
-    let result = ctx.execute(RefundInstruction {
+    ctx.execute(RefundInstruction {
         maker: MAKER,
         mint_a,
         maker_ta_a: MAKER_TA_A,
         vault_ta_a: VAULT_TA_A,
-    });
-    result
-        .check(Outcome::success())
-        .check(Cu::spent(|cu| cu <= MAX_REFUND_CU));
+    })
+    .checks([Outcome::success(), Cu::spent(|cu| cu <= MAX_REFUND_CU)]);
 }
 
 #[quasar_test]

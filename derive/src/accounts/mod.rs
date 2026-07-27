@@ -313,9 +313,7 @@ fn emit_pda_address_fns(
     };
     // `find_address` takes every seed by value, so the reference-ness flips
     // relative to `source_arg`: `&Address` fn parameters deref across
-    // (`Address` is `Copy`) and owned locals pass as-is. Keeping the two
-    // closures side by side is deliberate — each names its consumer's
-    // ownership contract.
+    // (`Address` is `Copy`) and owned locals pass as-is.
     let owned_source_arg = |source: &SeedSource| match source {
         SeedSource::PlainAccount(i) | SeedSource::ArgRef(i) => quote! { *#i },
         SeedSource::DerivedAccount(i) => quote! { #i },

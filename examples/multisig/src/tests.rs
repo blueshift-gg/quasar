@@ -84,15 +84,15 @@ fn create_initializes_dynamic_config() {
         threshold: 2,
         remaining_accounts: co_signers(&[SIGNER1, SIGNER2, SIGNER3]),
     });
-    outcome.checks([Outcome::success(), Cu::spent(|cu| cu <= MAX_CREATE_CU)]);
+    outcome.checks([
+        Outcome::success(),
+        Cu::spent(|cu| cu <= MAX_CREATE_CU),
+        Account::created(config),
+    ]);
     let ProgramAccount::MultisigConfig(state) = outcome.account_as(config, decode_account).unwrap();
     assert_eq!(state.creator, CREATOR);
     assert_eq!(state.threshold, 2);
     assert_eq!(state.signers.len(), 3);
-    assert!(outcome
-        .account_changes()
-        .iter()
-        .any(|change| change.address() == config && change.was_created()));
 }
 
 #[quasar_test]
@@ -114,8 +114,8 @@ fn deposit_funds_the_multisig_vault() {
         config,
         amount: 1_000_000_000,
     })
-    .check(Outcome::success())
     .checks([
+        Outcome::success(),
         Cu::spent(|cu| cu <= MAX_DEPOSIT_CU),
         Account::lamports(vault, 1_000_000_000),
     ]);

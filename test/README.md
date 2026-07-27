@@ -18,8 +18,8 @@ fn deposits_into_the_vault() {
         authority,
         amount: 1_000_000_000,
     })
-    .check(Outcome::success())
     .checks([
+        Outcome::success(),
         Cu::spent(|cu| cu <= 10_000),
         Account::lamports(authority, |x| x < DEFAULT_WALLET_LAMPORTS),
     ]);
@@ -55,7 +55,7 @@ struct Pool {
 }
 
 fn funded_pool() -> impl Fixture<Output = Pool> {
-    |test: &mut Ctx| {
+    |ctx: &mut Ctx| {
         let authority = ctx.add(Wallet::account());
         let mint = ctx.add(Mint::account().with_authority(authority).with_supply(1_000_000));
         let authority_tokens =
@@ -92,12 +92,13 @@ a chain as a tuple, array, or `Vec`, and return an `Outcome` that
 `Outcome::error(e)` — every fact takes its subject and one expectation (a
 plain value meaning equality, a closure predicate for anything), and facts
 self-diagnose: on a failed transaction they panic with the real error and
-logs. Assert unchanged state after an expected failure with `ctx` reads,
-not facts. Accounts a transaction
-names but the world has not installed are backfilled by role: a read-only
-signer (a payer or co-signer) enters as a funded system account; a writable
-non-signer enters as an empty init target, committed on success and leaving no
-placeholder after failure.
+logs. Assert unchanged state after an expected failure with `ctx` reads, not
+facts.
+
+Accounts a transaction names but the world has not installed are backfilled by
+role: a read-only signer (a payer or co-signer) enters as a funded system
+account; a writable non-signer enters as an empty init target, committed on
+success and leaving no placeholder after failure.
 
 Every sibling program in `target/deploy` with a matching `-keypair.json` is
 preloaded for CPI. `ctx.add(Program::new(id, elf))` is the explicit option for

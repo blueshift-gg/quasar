@@ -102,7 +102,7 @@ impl Ctx {
     /// ownership, discriminator, and zero-copy validation as [`Self::read`].
     ///
     /// The schema-only wincode pair stays reachable through deref as
-    /// `(*test).read(..)` / `(*test).write(..)`.
+    /// `(*ctx).read(..)` / `(*ctx).write(..)`.
     pub fn read_at<T>(&self, address: Pubkey, offset: usize) -> Snapshot<T>
     where
         T: Discriminator + Owner + Deref,

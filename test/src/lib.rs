@@ -54,7 +54,7 @@ pub use parallax_svm::{
 };
 
 /// Parallax's schema-only snapshot, distinct from quasar-test's strict
-/// [`Snapshot`]; returned by the deref-reachable `(*test).read(..)`.
+/// [`Snapshot`]; returned by the deref-reachable `(*ctx).read(..)`.
 pub use parallax_svm::Snapshot as SchemaSnapshot;
 
 /// Imports used by most program tests.
