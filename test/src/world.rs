@@ -277,7 +277,10 @@ impl CtxBuilder {
             if let Some(path) = std::env::var_os(PROGRAM_PATH_ENV) {
                 let path = PathBuf::from(path);
                 if !path.is_file() {
-                    return Err(SetupError::ConfiguredProgramMissing { path });
+                    return Err(SetupError::ConfiguredProgramMissing {
+                        env: PROGRAM_PATH_ENV,
+                        path,
+                    });
                 }
                 self.inner = self.inner.program_path(path);
             }

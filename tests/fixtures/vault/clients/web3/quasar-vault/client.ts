@@ -149,9 +149,8 @@ export class QuasarVaultClient {
   }
 
   async createDepositInstructionRaw(input: DepositInstructionInput, accountOverrides: DepositInstructionAccountOverrides): Promise<TransactionInstruction & { readonly vaultAddress: Address }> {
-    const accountsMap: Record<string, Address> = {};
-    accountsMap["systemProgram"] = new Address("11111111111111111111111111111111");
-    accountsMap["vault"] = await findVaultAddress((accountOverrides.user ?? input.user));
+    const __systemProgram: Address = new Address("11111111111111111111111111111111");
+    const __vault: Address = await findVaultAddress((accountOverrides.user ?? input.user));
     const argsCodec = getStructCodec([
       ["amount", getU64Codec()],
     ]);
@@ -160,13 +159,13 @@ export class QuasarVaultClient {
       programId: QuasarVaultClient.programId,
       keys: [
         { pubkey: (accountOverrides.user ?? input.user), isSigner: true, isWritable: true },
-        { pubkey: (accountOverrides.vault ?? accountsMap["vault"]), isSigner: false, isWritable: true },
-        { pubkey: (accountOverrides.systemProgram ?? accountsMap["systemProgram"]), isSigner: false, isWritable: false },
+        { pubkey: (accountOverrides.vault ?? __vault), isSigner: false, isWritable: true },
+        { pubkey: (accountOverrides.systemProgram ?? __systemProgram), isSigner: false, isWritable: false },
       ],
       data,
     });
     return Object.assign(instruction, {
-      vaultAddress: (accountOverrides.vault ?? accountsMap["vault"]),
+      vaultAddress: (accountOverrides.vault ?? __vault),
     });
   }
 
@@ -175,9 +174,8 @@ export class QuasarVaultClient {
   }
 
   async createWithdrawInstructionRaw(input: WithdrawInstructionInput, accountOverrides: WithdrawInstructionAccountOverrides): Promise<TransactionInstruction & { readonly vaultAddress: Address }> {
-    const accountsMap: Record<string, Address> = {};
-    accountsMap["systemProgram"] = new Address("11111111111111111111111111111111");
-    accountsMap["vault"] = await findVaultAddress((accountOverrides.user ?? input.user));
+    const __systemProgram: Address = new Address("11111111111111111111111111111111");
+    const __vault: Address = await findVaultAddress((accountOverrides.user ?? input.user));
     const argsCodec = getStructCodec([
       ["amount", getU64Codec()],
     ]);
@@ -186,13 +184,13 @@ export class QuasarVaultClient {
       programId: QuasarVaultClient.programId,
       keys: [
         { pubkey: (accountOverrides.user ?? input.user), isSigner: true, isWritable: true },
-        { pubkey: (accountOverrides.vault ?? accountsMap["vault"]), isSigner: false, isWritable: true },
-        { pubkey: (accountOverrides.systemProgram ?? accountsMap["systemProgram"]), isSigner: false, isWritable: false },
+        { pubkey: (accountOverrides.vault ?? __vault), isSigner: false, isWritable: true },
+        { pubkey: (accountOverrides.systemProgram ?? __systemProgram), isSigner: false, isWritable: false },
       ],
       data,
     });
     return Object.assign(instruction, {
-      vaultAddress: (accountOverrides.vault ?? accountsMap["vault"]),
+      vaultAddress: (accountOverrides.vault ?? __vault),
     });
   }
 }

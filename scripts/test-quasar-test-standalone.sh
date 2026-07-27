@@ -80,11 +80,11 @@ mod tests {
     }
 
     #[quasar_test(program_id = Pubkey::from_str(PROGRAM_ID).expect("valid fixture program id"))]
-    fn external_consumer_executes_a_real_program(q: &mut Test) -> Result<(), Box<dyn std::error::Error>> {
+    fn external_consumer_executes_a_real_program(q: &mut Ctx) -> Result<(), Box<dyn std::error::Error>> {
         let program_id = Pubkey::from_str(PROGRAM_ID).unwrap();
         let user = Pubkey::new_from_array([1; 32]);
         let (vault, _) = Pubkey::find_program_address(&[b"vault", user.as_ref()], &program_id);
-        q.add(Wallet::new().at(user).fund(USER_LAMPORTS));
+        q.add(Wallet::account().at(user).fund(USER_LAMPORTS));
 
         if let Some(expected) = env::var_os(PROGRAM_PATH_ENV) {
             assert_eq!(
@@ -93,15 +93,16 @@ mod tests {
             );
         }
 
-        q.send(deposit_instruction(program_id, user, vault))
-            .succeeds()
-            .cu_at_most(5_000)
-            .has_lamports(vault, DEPOSIT)
-            .has_lamports(user, USER_LAMPORTS - DEPOSIT);
+        q.execute(deposit_instruction(program_id, user, vault)).checks([
+            Outcome::success(),
+            Cu::spent(|cu| cu <= 5_000),
+            Account::lamports(vault, DEPOSIT),
+            Account::lamports(user, USER_LAMPORTS - DEPOSIT),
+        ]);
 
         let wrong_vault = Pubkey::new_unique();
-        q.send(deposit_instruction(program_id, user, wrong_vault))
-            .fails_with(VaultError::InvalidPda);
+        q.execute(deposit_instruction(program_id, user, wrong_vault))
+            .check(Outcome::error(VaultError::InvalidPda));
         assert!(q.account(wrong_vault).is_none(), "failed init left a placeholder account");
         Ok(())
     }

@@ -15,7 +15,7 @@ note: erroneous constant encountered
    |                           ^^^^^^^^^^^^^^^^
 
 note: erroneous constant encountered
- --> tests/compile_fail/pod_string_n_exceeds_pfx.rs:6:15
+ --> tests/compile_fail_local/pod_string_n_exceeds_pfx.rs:6:15
   |
 6 | const _: () = PodString::<256, 1>::VALID;
   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^
