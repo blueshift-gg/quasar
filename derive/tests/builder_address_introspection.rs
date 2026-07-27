@@ -28,6 +28,14 @@ pub struct Vault;
 #[seeds(b"receipt", amount: u64)]
 pub struct Receipt;
 
+#[account(discriminator = 4)]
+#[seeds(b"deal", maker: Address, seed: u64)]
+pub struct Deal {
+    pub maker: Address,
+    pub seed: u64,
+    pub bump: u8,
+}
+
 #[derive(Accounts)]
 pub struct Claim {
     pub authority: Signer,
@@ -41,12 +49,23 @@ pub struct Claim {
     pub receipt: UncheckedAccount,
 }
 
+/// The escrow shape: one derivation mixing a caller account address with a
+/// stored-data seed. `find_address` (the composite path) must take the
+/// `&Address` root parameter by value — the exact splice this file regresses.
+#[derive(Accounts)]
+pub struct Settle {
+    pub maker: Signer,
+    #[account(address = Deal::seeds(maker.address(), deal.seed()))]
+    pub deal: Account<Deal>,
+}
+
 // The client macro expands inside the generated `cpi` module (a child of the
 // `#[program]` module); this mirror gives its `super::` paths the same shape.
 mod cpi {
     use super::*;
 
     __claim_instruction!(ClaimInstruction, ClaimInstructionRaw, [0], {});
+    __settle_instruction!(SettleInstruction, SettleInstructionRaw, [1], {});
 }
 use cpi::*;
 
@@ -74,4 +93,20 @@ fn builder_exposes_derived_addresses_without_rederiving() {
     let instruction: quasar_lang::client::Instruction = ix.into();
     assert_eq!(instruction.accounts[2].pubkey, vault);
     assert_eq!(instruction.accounts[3].pubkey, receipt);
+}
+
+#[test]
+fn composite_seed_builder_address_crosses_ownership_correctly() {
+    // A composite derivation (account address + stored-data seed) routes the
+    // builder accessor through `find_address`, which takes seeds by value.
+    let ix = SettleInstruction {
+        maker: address(3),
+        seed: 7,
+    };
+
+    let deal = ix.deal_address();
+    assert_eq!(deal, Deal::find_address(address(3), 7u64, &ID));
+
+    let instruction: quasar_lang::client::Instruction = ix.into();
+    assert_eq!(instruction.accounts[1].pubkey, deal);
 }
