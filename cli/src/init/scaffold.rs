@@ -220,7 +220,7 @@ quasar-test = {quasar_test}
 
 fn generate_lib_rs(module_name: &str, program_id: &str) -> String {
     format!(
-        r#"#![cfg_attr(not(ctx), no_std)]
+        r#"#![cfg_attr(not(test), no_std)]
 
 use quasar_lang::prelude::*;
 

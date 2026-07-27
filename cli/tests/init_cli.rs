@@ -41,6 +41,10 @@ fn canonical_init_is_non_interactive_and_has_no_global_side_effects() -> Result<
     assert!(!root.join(".git").exists());
     assert!(root.join("Cargo.lock").is_file());
     assert!(root.join("src/tests.rs").is_file());
+    // The template's cfg gating is load-bearing and has been corrupted by
+    // mechanical sweeps before: no_std must be test-gated, exactly.
+    let lib = std::fs::read_to_string(root.join("src/lib.rs")).unwrap();
+    assert!(lib.contains("#![cfg_attr(not(test), no_std)]"));
     assert!(!root.join("package.json").exists());
     assert!(!root.join("src/state.rs").exists());
     assert_eq!(
