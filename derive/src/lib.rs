@@ -29,6 +29,9 @@ mod plan_snapshots;
 #[cfg(test)]
 mod snapshot_tests;
 
+#[cfg(test)]
+mod client_parity_tests;
+
 /// Derive account parsing and validation from a struct.
 ///
 /// Field wrapper types (`Account<T>`, `Signer`, `Sysvar<Rent>`, …) are matched

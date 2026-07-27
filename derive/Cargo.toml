@@ -47,6 +47,10 @@ quasar-idl-schema = { version = "=0.1.0", path = "../idl/schema", optional = tru
 declare-program = ["dep:serde_json", "dep:quasar-idl-schema"]
 
 [dev-dependencies]
+# Test-only: pins the in-crate client's seed-naming rule and derived-account
+# gate against the standalone IDL clients' implementations. A dev-dependency
+# keeps the serde/sha2 stack out of every ordinary program build.
+quasar-idl = { path = "../idl", version = "=0.1.0" }
 trybuild = "1"
 expect-test = "1"
 prettyplease = "0.2"

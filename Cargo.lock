@@ -2593,6 +2593,7 @@ dependencies = [
  "proc-macro-crate",
  "proc-macro2",
  "quasar-derive",
+ "quasar-idl",
  "quasar-idl-schema",
  "quasar-lang",
  "quasar-spl",

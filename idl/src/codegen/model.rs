@@ -353,7 +353,7 @@ pub struct AccountPlan {
 /// their own field-name case; the collision decision is made once here in a
 /// case-normalized (snake) space so every backend agrees.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum SeedNameForm {
+pub enum SeedNameForm {
     Field,
     BaseField,
     BaseFieldSeed,
@@ -364,7 +364,7 @@ pub(super) enum SeedNameForm {
 /// The identity is `(path, field)`: backends may render the parameter name
 /// differently, but they must agree on which caller-supplied values exist and
 /// on the collision-avoidance `form` chosen for each.
-pub(super) struct AccountFieldSeedInput<'a> {
+pub struct AccountFieldSeedInput<'a> {
     pub path: &'a str,
     pub account: &'a str,
     pub field: &'a str,
@@ -381,7 +381,7 @@ fn seed_field_norm(field: &str) -> String {
         .join("_")
 }
 
-pub(super) fn account_field_seed_inputs(ix: &IdlInstruction) -> Vec<AccountFieldSeedInput<'_>> {
+pub fn account_field_seed_inputs(ix: &IdlInstruction) -> Vec<AccountFieldSeedInput<'_>> {
     // Names of every other instruction input a synthesized seed must not
     // collide with: caller-supplied (non-derived) accounts and args, compared
     // in case-normalized form so the chosen form is backend-independent.
@@ -450,11 +450,7 @@ pub(super) fn account_field_seed_inputs(ix: &IdlInstruction) -> Vec<AccountField
 /// The collision-avoidance form for the account-field seed `(path, field)` of
 /// `ix`. Derivation bodies that render a single seed (rather than iterating the
 /// whole input list) use this to spell the same name as the struct field.
-pub(super) fn account_field_seed_form(
-    ix: &IdlInstruction,
-    path: &str,
-    field: &str,
-) -> SeedNameForm {
+pub fn account_field_seed_form(ix: &IdlInstruction, path: &str, field: &str) -> SeedNameForm {
     account_field_seed_inputs(ix)
         .iter()
         .find(|seed| seed.path == path && seed.field == field)
