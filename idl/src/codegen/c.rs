@@ -212,7 +212,12 @@ fn fixed_account_id_name(prefix: &str, instruction: &str, account: &str) -> Stri
 }
 
 fn emit_pubkey_const(out: &mut String, name: &str, address: &str) {
-    let bytes = bs58::decode(address).into_vec().unwrap_or_default();
+    // `validate_codegen_idl` rejects a non-base58 or wrong-length address before
+    // any backend renders it. Decoding to an all-zero key on failure used to
+    // turn a typo into a silently wrong program id in the generated header.
+    let bytes = bs58::decode(address)
+        .into_vec()
+        .expect("address validated by validate_codegen_idl");
     write!(out, "static const Pubkey {name} = {{{{").unwrap();
     for (i, b) in bytes.iter().enumerate() {
         if i > 0 {

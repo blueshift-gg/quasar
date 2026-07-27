@@ -387,7 +387,7 @@ pub fn account_field_seed_inputs(ix: &IdlInstruction) -> Vec<AccountFieldSeedInp
     // in case-normalized form so the chosen form is backend-independent.
     let mut reserved: HashSet<String> = HashSet::new();
     for account in &ix.accounts {
-        if account.optional || !resolver_is_derived(&account.resolver) {
+        if !account_is_derived(account) {
             reserved.insert(camel_to_snake(&account.name));
         }
     }
@@ -580,14 +580,6 @@ impl InstructionPlan {
     }
 }
 
-/// Whether a required account address is derived by generated clients.
-pub fn resolver_is_derived(resolver: &IdlResolver) -> bool {
-    matches!(
-        resolver,
-        IdlResolver::Pda { .. } | IdlResolver::AssociatedToken { .. }
-    )
-}
-
 /// Account addresses that must be available before `account` can be derived.
 pub fn resolved_account_dependencies(account: &IdlAccountNode) -> Vec<&str> {
     match &account.resolver {
@@ -622,6 +614,15 @@ pub fn resolved_account_dependencies(account: &IdlAccountNode) -> Vec<&str> {
     }
 }
 
+/// Whether generated clients compute this account's address themselves.
+///
+/// Delegates to [`account_source`], which already folds in the rule that an
+/// optional account stays caller-controlled whatever it wraps — a rule every
+/// call site used to restate, and could forget.
+fn account_is_derived(account: &IdlAccountNode) -> bool {
+    crate::codegen::accounts::account_source(account).is_ok_and(|source| source.is_derived())
+}
+
 /// Required derived accounts in dependency order, independent of IDL field
 /// order. Optional accounts remain caller-controlled and are available as
 /// inputs even when their wrapped resolver is derived.
@@ -629,13 +630,13 @@ pub fn resolved_account_order(ix: &IdlInstruction) -> CodegenResult<Vec<&IdlAcco
     let mut available = ix
         .accounts
         .iter()
-        .filter(|account| account.optional || !resolver_is_derived(&account.resolver))
+        .filter(|account| !account_is_derived(account))
         .map(|account| account.name.as_str())
         .collect::<HashSet<_>>();
     let mut pending = ix
         .accounts
         .iter()
-        .filter(|account| !account.optional && resolver_is_derived(&account.resolver))
+        .filter(|account| account_is_derived(account))
         .collect::<Vec<_>>();
     let mut ordered = Vec::with_capacity(pending.len());
 

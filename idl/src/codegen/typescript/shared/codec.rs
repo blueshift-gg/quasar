@@ -837,7 +837,13 @@ pub(super) fn primitive_ts_codec(primitive: &str, target: TsTarget) -> String {
             TsTarget::Web3js => "getWeb3jsAddressCodec()".to_string(),
             TsTarget::Kit => "getAddressCodec()".to_string(),
         },
-        "string" => "addCodecSizePrefix(getUtf8Codec(), getU32Codec())".to_string(),
+        // A dynamic `string` carries its declared prefix width and is rendered
+        // by the WireType-aware path; reaching here would mean emitting a
+        // guessed u32 prefix, which is the divergence `WireType::resolve`
+        // exists to make unrepresentable.
+        "string" => {
+            unreachable!("dynamic `string` requires a size-prefix codec, rejected at IR-build time")
+        }
         other if other.starts_with('[') => {
             let size = crate::codegen::parse_fixed_array_size(other).unwrap_or(1);
             format!("fixCodecSize(getBytesCodec(), {})", size)
