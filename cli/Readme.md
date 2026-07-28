@@ -84,6 +84,10 @@ Measure compute-unit usage by statically walking the sBPF binary's call graph. I
 | `--diff PROGRAM` | Compare against an on-chain program (starts a blocking server) |
 | `--share` | Upload the profile as a public GitHub Gist |
 | `-w, --watch` | Watch `src/` for changes and re-profile automatically |
+| `--write-budget` | Record this run's ceilings in `quasar-budget.toml` |
+| `--check-budget` | Fail when any budgeted ceiling is exceeded |
+| `--budget PATH` | Budget file to read or write (default `quasar-budget.toml`) |
+| `--json` | Print the budget report as JSON (requires `--check-budget`) |
 
 The profiler tracks results between runs. On the first run, it shows the top 5 hottest functions. On subsequent runs, it shows the biggest regressions and improvements by magnitude:
 
@@ -96,6 +100,39 @@ The profiler tracks results between runs. On the first run, it shows the top 5 h
 ```
 
 A background HTTP server starts automatically to serve the interactive flamegraph viewer. The server shuts itself down after 30 seconds of inactivity.
+
+#### Budgets
+
+`quasar-budget.toml` is a checked-in performance contract. Bootstrap it from a build you are happy with, then enforce it in CI:
+
+```bash
+quasar profile --write-budget          # baseline the current program
+quasar profile --check-budget          # exits 1 on any regression
+quasar profile --check-budget --json   # same, machine-readable on stdout
+```
+
+```toml
+[programs.my_program]
+total_cu = 12345
+binary_size = 96544
+
+[programs.my_program.functions]
+"Initialize::verify" = 8000
+```
+
+Every ceiling is optional — delete a key to stop enforcing it, tighten one to ratchet down. `--write-budget` seeds per-function ceilings only for functions worth at least 1% of total CU, since smaller entries churn with every inlining decision; add the rest by hand if you want them. Running it again refreshes only the profiled program, so one file covers a whole workspace. Comments in the file are not preserved across a rewrite.
+
+A check reports **every** violated metric, not just the first:
+
+```
+  my_program  over budget (2 violations, quasar-budget.toml)
+    total CU  12,500 > 12,345 (+155)
+    function Initialize::verify  8,100 > 8,000 (+100)
+```
+
+A budgeted function the profiler no longer finds (inlined or renamed) is listed under `absentFunctions` rather than failing the check. A missing budget file, a malformed one, and a program with no `[programs.<name>]` section each fail with an explanatory message and exit 1.
+
+**Static CU is not transaction CU.** The profiler sums the cost of every instruction in the program image: it answers *how expensive is this code*. What a transaction actually burns depends on the branches that instruction takes at runtime, and is measured by your tests against the SVM. These budgets catch code-size and codegen regressions; they do not replace runtime CU assertions. Likewise `binary_size` is the size of the ELF that was profiled — when `quasar profile` builds for you, that is the debug-symbol artifact in `target/profile/`, not the stripped `target/deploy/` upload. Pass an explicit path to budget the deploy artifact.
 
 ### `quasar dump [elf] [--function SYMBOL] [--source]`
 

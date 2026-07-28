@@ -21,7 +21,7 @@ SBF_ALL := $(SBF_EXAMPLES) $(SBF_TEST_PROGRAMS)
 
 .PHONY: format format-fix clippy clippy-fix check-features check-workspace-lints \
 	check-runtime-panics check-workspace-invariants build build-sbf build-upstream test bench-cu \
-	bench-tracked compare-tracked test-miri test-miri-strict test-all nightly-version \
+	test-tooling bench-tracked compare-tracked test-miri test-miri-strict test-all nightly-version \
 	generated-client-smoke kani help-kani check-kani kani-lang kani-spl kani-metadata
 
 # Print the nightly toolchain version for CI
@@ -166,6 +166,13 @@ test:
 		-p quasar-vault -p quasar-escrow -p quasar-multisig \
 		-p quasar-test-suite \
 		--all-features
+	@$(MAKE) test-tooling
+
+# Profiler and CLI tests. Runs after build-sbf: the budget tests profile a
+# real program from target/deploy/.
+test-tooling:
+	@cargo test -p quasar-profile
+	@cargo test -p quasar-cli --lib --test budget_cli
 
 generated-client-smoke:
 	@cargo test -p quasar-cli --test generated_clients_smoke -- --nocapture

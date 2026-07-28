@@ -1,4 +1,5 @@
 mod aggregate;
+pub mod budget;
 mod dwarf;
 mod elf;
 mod output;
@@ -6,7 +7,7 @@ mod serve;
 mod walk;
 
 use {
-    crate::elf::DebugLevel,
+    crate::{budget::Measurement, elf::DebugLevel},
     memmap2::Mmap,
     sha2::{Digest, Sha256},
     std::{
@@ -27,15 +28,25 @@ pub struct ProfileCommand {
     pub diff_program: Option<String>,
     pub share: bool,
     pub expand: bool,
+    /// Path to the checked-in budget file.
+    pub budget_path: PathBuf,
+    /// Bootstrap or refresh the budget from this run.
+    pub write_budget: bool,
+    /// Assert against the budget; a violation fails the run.
+    pub check_budget: bool,
+    /// Emit the budget report as JSON instead of the human summary.
+    pub json: bool,
 }
 
-pub fn run(command: ProfileCommand) {
-    if let Some(program) = command.diff_program {
+/// Runs a profile. `Err` carries a message the caller reports as a failure;
+/// unrecoverable setup problems still exit the process directly.
+pub fn run(mut command: ProfileCommand) -> Result<(), String> {
+    if let Some(program) = command.diff_program.take() {
         run_diff(program);
-        return;
+        return Ok(());
     }
 
-    let elf_path = command.elf_path.unwrap_or_else(|| {
+    let elf_path = command.elf_path.take().unwrap_or_else(|| {
         eprintln!(
             "Error: missing ELF path. Put the program at target/deploy/<program>.so or pass \
              `quasar profile <PATH_TO_ELF_SO>`."
@@ -104,7 +115,15 @@ pub fn run(command: ProfileCommand) {
 
     let result = aggregate::profile(&mmap, &info, &resolver);
 
-    output::print_summary(&result, program_name, binary_size, expand);
+    if !command.json {
+        output::print_summary(&result, program_name, binary_size, expand);
+    }
+
+    // Budgets are the CI path: report them, then skip the interactive extras.
+    if command.write_budget || command.check_budget {
+        let measurement = Measurement::from_profile(program_name, binary_size, &result);
+        return run_budget(&command, &measurement);
+    }
 
     let binary_hash = sha256_file(&elf_path).unwrap_or_else(|e| {
         eprintln!("Error: failed to hash {}: {}", elf_path.display(), e);
@@ -131,7 +150,7 @@ pub fn run(command: ProfileCommand) {
         let desc = format!("{} CU profile v{}", program_name, version);
         let gist_url = create_gist(&local_output_path, &desc);
         println!("  {gist_url}");
-        return;
+        return Ok(());
     }
 
     // Start the flamegraph server in the background.
@@ -149,6 +168,46 @@ pub fn run(command: ProfileCommand) {
                 }
             }
         }
+    }
+
+    Ok(())
+}
+
+/// `--write-budget` refreshes the ceilings for this program; `--check-budget`
+/// asserts against them and fails on every violated metric.
+fn run_budget(command: &ProfileCommand, measurement: &Measurement) -> Result<(), String> {
+    let path = command.budget_path.as_path();
+
+    let run = budget::Run {
+        write: command.write_budget,
+        check: command.check_budget,
+    };
+
+    let report = budget::apply(path, run, measurement).map_err(|e| e.to_string())?;
+
+    if run.write && !command.json {
+        output::print_budget_written(&path.display().to_string(), &measurement.program);
+    }
+
+    let Some(report) = report else {
+        return Ok(());
+    };
+
+    if command.json {
+        let json = serde_json::to_string_pretty(&report)
+            .map_err(|e| format!("failed to serialize budget report: {e}"))?;
+        println!("{json}");
+    } else {
+        output::print_budget_report(&report);
+    }
+
+    if report.ok {
+        Ok(())
+    } else {
+        Err(format!(
+            "budget check failed: {} metric(s) over budget",
+            report.violations.len()
+        ))
     }
 }
 
