@@ -299,6 +299,30 @@ pub struct ProfileCommand {
     /// Watch src/ for changes and re-profile automatically
     #[arg(long, short, action = ArgAction::SetTrue)]
     pub watch: bool,
+
+    /// Budget file to read or write (default: quasar-budget.toml)
+    #[arg(long = "budget", value_name = "PATH")]
+    pub budget_path: Option<PathBuf>,
+
+    /// Record this run's CU and binary size as the budget baseline
+    #[arg(
+        long,
+        action = ArgAction::SetTrue,
+        conflicts_with_all = ["diff_program", "share", "watch"]
+    )]
+    pub write_budget: bool,
+
+    /// Fail when any budgeted CU or binary-size ceiling is exceeded
+    #[arg(
+        long,
+        action = ArgAction::SetTrue,
+        conflicts_with_all = ["diff_program", "share", "watch"]
+    )]
+    pub check_budget: bool,
+
+    /// Print the budget report as JSON instead of the terminal summary
+    #[arg(long, action = ArgAction::SetTrue, requires = "check_budget")]
+    pub json: bool,
 }
 
 #[derive(Args, Debug)]
@@ -409,8 +433,14 @@ pub fn run(cli: Cli) -> CliResult {
                 diff_program: cmd.diff_program,
                 share: cmd.share,
                 expand: cmd.expand,
-            });
-            Ok(())
+                budget_path: cmd
+                    .budget_path
+                    .unwrap_or_else(|| PathBuf::from(quasar_profile::budget::DEFAULT_BUDGET_FILE)),
+                write_budget: cmd.write_budget,
+                check_budget: cmd.check_budget,
+                json: cmd.json,
+            })
+            .map_err(|message| error::CliError::process_failure(message, 1))
         }
     }
 }
@@ -460,7 +490,7 @@ pub fn print_help() {
         "Generate client code from IDL",
     );
     print_cmd(
-        "profile [elf] [--expand] [--diff] [-w]",
+        "profile [elf] [--expand] [--diff] [-w] [--check-budget]",
         "Measure compute-unit usage",
     );
     print_cmd("keys    [list|sync|new]", "Manage program keypair");
@@ -489,7 +519,76 @@ fn profile_watch(expand: bool) -> CliResult {
             diff_program: None,
             share: false,
             expand,
-        });
-        Ok(())
+            budget_path: PathBuf::from(quasar_profile::budget::DEFAULT_BUDGET_FILE),
+            write_budget: false,
+            check_budget: false,
+            json: false,
+        })
+        .map_err(|message| error::CliError::process_failure(message, 1))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn profile_args(args: &[&str]) -> Result<ProfileCommand, clap::Error> {
+        let argv = std::iter::once("quasar")
+            .chain(std::iter::once("profile"))
+            .chain(args.iter().copied());
+        match Cli::try_parse_from(argv)?.command {
+            Command::Profile(cmd) => Ok(cmd),
+            other => panic!("expected a profile command, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn budget_flags_default_to_off() {
+        let cmd = profile_args(&[]).expect("bare profile");
+        assert!(!cmd.write_budget);
+        assert!(!cmd.check_budget);
+        assert!(!cmd.json);
+        assert_eq!(cmd.budget_path, None, "resolved to the default at run time");
+    }
+
+    #[test]
+    fn budget_path_overrides_the_default() {
+        let cmd = profile_args(&["--check-budget", "--budget", "ci/budget.toml"])
+            .expect("explicit budget path");
+        assert!(cmd.check_budget);
+        assert_eq!(cmd.budget_path, Some(PathBuf::from("ci/budget.toml")));
+    }
+
+    #[test]
+    fn json_requires_a_check() {
+        // Without this, `--json` on a plain profile would silently do nothing.
+        assert!(profile_args(&["--json"]).is_err());
+        assert!(profile_args(&["--write-budget", "--json"]).is_err());
+        assert!(profile_args(&["--check-budget", "--json"]).is_ok());
+    }
+
+    #[test]
+    fn budget_flags_reject_modes_that_would_ignore_them() {
+        for mode in [
+            vec!["--watch"],
+            vec!["--share"],
+            vec!["--diff", "some_program"],
+        ] {
+            for budget in [&["--check-budget"], &["--write-budget"]] {
+                let args: Vec<&str> = budget.iter().copied().chain(mode.iter().copied()).collect();
+                assert!(
+                    profile_args(&args).is_err(),
+                    "{args:?} must conflict rather than silently drop the budget flag"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn default_budget_file_is_the_documented_name() {
+        assert_eq!(
+            quasar_profile::budget::DEFAULT_BUDGET_FILE,
+            "quasar-budget.toml"
+        );
+    }
 }

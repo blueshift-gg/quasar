@@ -1,5 +1,5 @@
 use {
-    crate::aggregate::ProfileResult,
+    crate::{aggregate::ProfileResult, budget::Report},
     serde::Serialize,
     std::{
         collections::HashMap,
@@ -233,6 +233,57 @@ fn print_full_table(
             format_cu(total)
         ))
     );
+}
+
+/// Human-readable form of `--check-budget`. `--json` prints the report instead.
+pub(crate) fn print_budget_report(report: &Report) {
+    println!();
+    if report.ok {
+        println!(
+            "  {}  {}",
+            bold(&report.program),
+            green(&format!("within budget ({})", report.budget_path)),
+        );
+    } else {
+        println!(
+            "  {}  {}",
+            bold(&report.program),
+            red(&format!(
+                "over budget ({} violations, {})",
+                report.violations.len(),
+                report.budget_path
+            )),
+        );
+        for v in &report.violations {
+            println!(
+                "    {}  {} > {} {}",
+                v.subject(),
+                red(&format_cu(v.actual)),
+                format_cu(v.budget),
+                red(&format!("(+{})", format_cu(v.over))),
+            );
+        }
+    }
+
+    for name in &report.absent_functions {
+        println!(
+            "  {}",
+            dim(&format!(
+                "budgeted function not found (inlined or renamed): {name}"
+            ))
+        );
+    }
+    println!();
+}
+
+pub(crate) fn print_budget_written(path: &str, program: &str) {
+    println!();
+    println!(
+        "  {}  {}",
+        bold(program),
+        green(&format!("budget written to {path}")),
+    );
+    println!();
 }
 
 pub(crate) fn print_flamegraph_link(url: &str) {
