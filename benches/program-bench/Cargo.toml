@@ -1,0 +1,31 @@
+[package]
+name = "program-bench"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bench]]
+name = "bench"
+harness = false
+
+[dev-dependencies]
+# The measured program: the driver reads its state types to seed accounts.
+quasar-bench = { path = "programs/quasar-bench" }
+# Generated from that program's IDL; builds every instruction. See README.
+quasar-bench-client = { path = "client" }
+quasar-lang = { path = "../../lang" }
+quasar-test = { path = "../../test" }
+
+# Standalone: not part of the main no_std quasar workspace. Owns the SBF
+# program and the generated client so all three share one lockfile.
+[workspace]
+members = ["client", "programs/quasar-bench"]
+
+# Profiles are only honored at the workspace root, and `cargo build-sbf` on the
+# program resolves to this one. Matches the main quasar workspace so CU and
+# binary-size numbers are representative of a real build.
+[profile.release]
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
+opt-level = 3

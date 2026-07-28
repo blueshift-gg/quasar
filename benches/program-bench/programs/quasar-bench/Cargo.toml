@@ -1,0 +1,28 @@
+[package]
+name = "quasar-bench"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "lib"]
+doctest = false
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(target_os, values("solana"))',
+] }
+
+[features]
+default = ["alloc", "debug"]
+alloc = []
+debug = []
+idl-build = ["quasar-lang/idl-build"]
+
+[dependencies]
+quasar-lang = { path = "../../../../lang" }
+quasar-spl = { path = "../../../../spl" }
+
+# The benchmark driver lives in ../../benches/bench.rs; this crate is just the
+# program. Workspace root and release profile are the parent program-bench
+# manifest's.
