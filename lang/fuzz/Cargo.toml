@@ -53,3 +53,10 @@ bench = false
 # libFuzzer needs some debug info for readable stacks; keep optimizations on.
 [profile.release]
 debug = 1
+
+# Mirrors the workspace zeropod patch (this fuzz crate is its own workspace):
+# crates-io zeropod 0.3.3 caps solana-address <2.6 and the wincode 0.4 line,
+# which skews this lock onto two wincodes. Delete when zeropod >=0.3.4 ships.
+[patch.crates-io]
+zeropod = { git = "https://github.com/blueshift-gg/zeropod", rev = "d08742d" }
+zeropod-derive = { git = "https://github.com/blueshift-gg/zeropod", rev = "d08742d" }

@@ -18,6 +18,6 @@
   "sideEffects": false,
   "dependencies": {
     "@solana/codecs": "^6.2.0",
-    "@solana/web3.js": "^3.0.0"
+    "@solana/web3.js": "^3.0.0-rc.2"
   }
 }

@@ -368,4 +368,15 @@ mod quasar_test_misc {
     pub fn composite_group(ctx: Ctx<CompositeGroup>) -> Result<(), ProgramError> {
         ctx.accounts.handler()
     }
+
+    /// Full dynamic rewrite through `set_inner` with no `Sysvar<Rent>` field:
+    /// rent resolves through the syscall path when the account resizes.
+    #[instruction(discriminator = 66)]
+    pub fn dynamic_set_inner(
+        ctx: Ctx<DynamicSetInner>,
+        new_name: String<8>,
+        new_tags: Vec<Address, 2>,
+    ) -> Result<(), ProgramError> {
+        ctx.accounts.handler(new_name, new_tags)
+    }
 }

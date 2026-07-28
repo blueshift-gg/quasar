@@ -53,9 +53,15 @@ crate-type = ["cdylib", "lib"]
 idl-build = ["quasar-lang/idl-build"]
 
 [dependencies]
-quasar-lang = {{ path = "{}" }}
+quasar-lang = {{ path = "{lang}" }}
+
+# TEMPORARY: mirrors the workspace zeropod patch until zeropod >=0.3.4
+# (solana-address <3, wincode 0.5) is published.
+[patch.crates-io]
+zeropod = {{ git = "https://github.com/blueshift-gg/zeropod", rev = "d08742d" }}
+zeropod-derive = {{ git = "https://github.com/blueshift-gg/zeropod", rev = "d08742d" }}
 "#,
-            workspace_root().join("lang").display()
+            lang = workspace_root().join("lang").display()
         ),
     )?;
     write_file(

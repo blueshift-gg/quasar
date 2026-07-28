@@ -2,7 +2,7 @@ use {
     super::accounts::{account_source, AccountSource},
     super::model::{
         account_field_definition, account_field_seed_inputs, resolved_account_order, CodegenError,
-        CodegenResult, ProgramFeatures, ProgramModel, WireType,
+        CodegenResult, ProgramFeatures, ProgramModel, SeedNameForm, WireType,
     },
     crate::codegen::naming::{
         camel_to_snake, pascal_to_snake, snake_to_pascal,
@@ -42,13 +42,13 @@ pub fn generate_cargo_toml(
     } else {
         String::new()
     };
-    // `solana-address` implements the wincode traits against one exact wincode
-    // version; a caret range on either lets cargo pick a pair that does not
-    // implement `SchemaRead`/`SchemaWrite` for `Address`. They move together.
+    // `solana-address` and `wincode` implement each other's traits, so they
+    // move together; ranged pins let a consumer's resolver pick a compatible
+    // pair instead of colliding with a litesvm-era graph.
     let solana_address = if has_pdas {
-        r#"solana-address = { version = "=2.2.0", features = ["curve25519", "wincode"] }"#
+        r#"solana-address = { version = ">=2.2, <2.7", features = ["curve25519", "wincode"] }"#
     } else {
-        r#"solana-address = { version = "=2.2.0", features = ["wincode"] }"#
+        r#"solana-address = { version = ">=2.2, <2.7", features = ["wincode"] }"#
     };
     format!(
         r#"[package]
@@ -59,7 +59,7 @@ description = "Generated Solana client for the {name} program."
 license = "Apache-2.0 OR MIT"
 
 [dependencies]
-{quasar_lang}wincode = {{ version = "=0.4.9", features = ["derive"] }}
+{quasar_lang}wincode = {{ version = "0.5", features = ["derive"] }}
 {solana_address}
 solana-instruction = "3"
 "#,
@@ -690,7 +690,11 @@ fn emit_single_instruction(
         out.push_str("use std::vec::Vec;\n");
     }
 
-    out.push_str("use solana_instruction::{AccountMeta, Instruction};\n");
+    if ix.accounts.is_empty() && !has_remaining {
+        out.push_str("use solana_instruction::Instruction;\n");
+    } else {
+        out.push_str("use solana_instruction::{AccountMeta, Instruction};\n");
+    }
     out.push_str("use crate::ID;\n");
 
     let args_need_address = ix.args.iter().any(|arg| field_needs_address(&arg.ty));
@@ -934,6 +938,7 @@ fn emit_resolved_instruction(
 
     crate::codegen::docs::line_comments(out, &ix.docs, "", "///");
     writeln!(out, "pub struct {instruction_name} {{").expect("write to String");
+    let fields_start = out.len();
 
     // Required caller-controlled accounts first. Optional accounts stay
     // caller-controlled even when their wrapped resolver is a PDA: `None`
@@ -981,6 +986,7 @@ fn emit_resolved_instruction(
     if ix.remaining_accounts.is_some() {
         out.push_str("    pub remaining_accounts: Vec<AccountMeta>,\n");
     }
+    let caller_struct_is_empty = out.len() == fields_start;
     out.push_str("}\n\n");
 
     writeln!(
@@ -993,6 +999,9 @@ fn emit_resolved_instruction(
         "    fn from(ix: {instruction_name}) -> {raw_instruction_name} {{"
     )
     .expect("write to String");
+    if caller_struct_is_empty {
+        out.push_str("        let _ = ix;\n");
+    }
 
     // Bind every caller-controlled account before deriving PDAs. A PDA may
     // appear before one of its input seed accounts in the IDL account list.
@@ -1133,15 +1142,26 @@ fn rust_account_field_seed_inputs<'a>(
         out.push(RustAccountFieldSeed {
             path: seed.path,
             field_name: seed.field,
-            input_name: format!(
-                "{}_{}_seed",
-                camel_to_snake(seed.path),
-                camel_to_snake(seed.field)
-            ),
+            input_name: rust_seed_input_name(seed.path, seed.field, seed.form),
             field: field_def,
         });
     }
     out
+}
+
+/// Spell an account-field seed input for the Rust client (snake_case), applying
+/// the shared collision-avoidance rule (see [`SeedNameForm`]).
+fn rust_seed_input_name(path: &str, field: &str, form: SeedNameForm) -> String {
+    let field = field
+        .split('.')
+        .map(camel_to_snake)
+        .collect::<Vec<_>>()
+        .join("_");
+    match form {
+        SeedNameForm::Field => field,
+        SeedNameForm::BaseField => format!("{}_{}", camel_to_snake(path), field),
+        SeedNameForm::BaseFieldSeed => format!("{}_{}_seed", camel_to_snake(path), field),
+    }
 }
 
 fn rust_resolved_seed_expr(

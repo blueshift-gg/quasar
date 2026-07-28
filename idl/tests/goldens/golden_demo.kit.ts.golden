@@ -177,6 +177,23 @@ export const PoolCodec = {
   decode(data: Parameters<typeof PoolStructCodec.decode>[0], offset = 0): Pool { return decodeExact<Pool>(PoolStructCodec, Uint8Array.from(data).slice(offset)); },
 };
 
+/* Account Codecs */
+export const VaultAccount = {
+  decode: VaultCodec.decode,
+  encode: VaultCodec.encode,
+  owner: PROGRAM_ADDRESS,
+  discriminator: VAULT_DISCRIMINATOR,
+  size: 42,
+} as const;
+
+export const PoolAccount = {
+  decode: PoolCodec.decode,
+  encode: PoolCodec.encode,
+  owner: PROGRAM_ADDRESS,
+  discriminator: POOL_DISCRIMINATOR,
+  size: 41,
+} as const;
+
 /* Enums */
 export const ProgramEvent = {
   VaultMade: "VaultMade",
@@ -250,11 +267,11 @@ export class GoldenDemoClient {
     return null;
   }
 
-  async createMakeInstruction(input: MakeInstructionInput): Promise<Instruction> {
+  async createMakeInstruction(input: MakeInstructionInput): Promise<Instruction & { readonly vaultAddress: Address }> {
     return this.createMakeInstructionRaw(input, {});
   }
 
-  async createMakeInstructionRaw(input: MakeInstructionInput, accountOverrides: MakeInstructionAccountOverrides): Promise<Instruction> {
+  async createMakeInstructionRaw(input: MakeInstructionInput, accountOverrides: MakeInstructionAccountOverrides): Promise<Instruction & { readonly vaultAddress: Address }> {
     const __vault: Address = await findVaultAddress((accountOverrides.authority ?? input.authority));
     const argsCodec = getStructCodec([
       ["amount", getU64Codec()],
@@ -268,14 +285,15 @@ export class GoldenDemoClient {
         { address: (accountOverrides.vault ?? __vault), role: AccountRole.WRITABLE },
       ],
       data,
+      vaultAddress: (accountOverrides.vault ?? __vault),
     };
   }
 
-  async createSyncInstruction(input: SyncInstructionInput): Promise<Instruction> {
+  async createSyncInstruction(input: SyncInstructionInput): Promise<Instruction & { readonly poolAddress: Address }> {
     return this.createSyncInstructionRaw(input, {});
   }
 
-  async createSyncInstructionRaw(input: SyncInstructionInput, accountOverrides: SyncInstructionAccountOverrides): Promise<Instruction> {
+  async createSyncInstructionRaw(input: SyncInstructionInput, accountOverrides: SyncInstructionAccountOverrides): Promise<Instruction & { readonly poolAddress: Address }> {
     const __pool: Address = (await getProgramDerivedAddress({
       programAddress: PROGRAM_ADDRESS,
       seeds: [
@@ -291,14 +309,15 @@ export class GoldenDemoClient {
         { address: (accountOverrides.pool ?? __pool), role: AccountRole.WRITABLE },
       ],
       data,
+      poolAddress: (accountOverrides.pool ?? __pool),
     };
   }
 
-  async createSettleInstruction(input: SettleInstructionInput): Promise<Instruction> {
+  async createSettleInstruction(input: SettleInstructionInput): Promise<Instruction & { readonly payerTokensAddress: Address }> {
     return this.createSettleInstructionRaw(input, {});
   }
 
-  async createSettleInstructionRaw(input: SettleInstructionInput, accountOverrides: SettleInstructionAccountOverrides): Promise<Instruction> {
+  async createSettleInstructionRaw(input: SettleInstructionInput, accountOverrides: SettleInstructionAccountOverrides): Promise<Instruction & { readonly payerTokensAddress: Address }> {
     const __tokenProgram: Address = address("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
     const __recipient: Address = input.target;
     const __payerTokens: Address = (await getProgramDerivedAddress({
@@ -322,6 +341,7 @@ export class GoldenDemoClient {
         { address: (accountOverrides.maybeRefund ?? input.maybeRefund ?? PROGRAM_ADDRESS), role: AccountRole.READONLY },
       ],
       data,
+      payerTokensAddress: (accountOverrides.payerTokens ?? __payerTokens),
     };
   }
 }
@@ -369,4 +389,3 @@ export const PROGRAM_ERROR_CODES = {
 export const PROGRAM_ERRORS: Record<number, { name: string; msg?: string }> = {
   6000: { name: "Unauthorized", msg: "caller is not the vault authority" },
 };
-

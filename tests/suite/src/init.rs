@@ -1,6 +1,6 @@
 use {
+    crate::compat::{Account, Instruction, ProgramError, Pubkey},
     crate::helpers::*,
-    quasar_svm::{Account, Instruction, ProgramError, Pubkey},
     quasar_test_misc::cpi::*,
 };
 
@@ -46,7 +46,7 @@ fn prefunded_partial_rent() {
                 address: payer,
                 lamports: payer_lamports,
                 data: vec![],
-                owner: quasar_svm::system_program::ID,
+                owner: crate::compat::system_program::ID,
                 executable: false,
             },
             prefunded_account(account, prefund),
@@ -238,14 +238,14 @@ fn payer_insufficient_funds() {
                 address: payer,
                 lamports: 1,
                 data: vec![],
-                owner: quasar_svm::system_program::ID,
+                owner: crate::compat::system_program::ID,
                 executable: false,
             },
             empty_account(account),
         ],
     );
     // spl_token::TokenError::InsufficientFunds
-    result.assert_error(quasar_svm::ProgramError::Custom(1));
+    result.assert_error(crate::compat::ProgramError::Custom(1));
 }
 
 #[test]
@@ -263,7 +263,7 @@ fn wrong_pda_seeds() {
         &ix,
         &[rich_signer_account(payer), empty_account(wrong_account)],
     );
-    result.assert_error(quasar_svm::ProgramError::Custom(
+    result.assert_error(crate::compat::ProgramError::Custom(
         quasar_lang::prelude::QuasarError::InvalidPda as u32,
     ));
 }
@@ -309,7 +309,7 @@ fn prefunded_exact_no_topup() {
                 address: payer,
                 lamports: payer_lamports,
                 data: vec![],
-                owner: quasar_svm::system_program::ID,
+                owner: crate::compat::system_program::ID,
                 executable: false,
             },
             prefunded_account(account, 100_000_000),

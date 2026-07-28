@@ -200,6 +200,29 @@ fn accounts_composite() {
         .assert_eq(&expand_pretty(derive_accounts_inner(input)));
 }
 
+/// A composite between two ordinary accounts: pins that the client splices the
+/// group's metas in place (`push`, `extend`, `push`) rather than appending
+/// them, which the single-composite fixture cannot show.
+///
+/// Note this does not reach the raw builder: no snapshot fixture classifies an
+/// account as client-derived, so `has_derived_accounts` stays false here. The
+/// raw builder is covered functionally by the suite instead
+/// (`pda::test_update_pda_wrong_seeds`).
+#[test]
+fn accounts_composite_with_derived() {
+    let input = quote! {
+        pub struct CompositeWithPda {
+            #[account(mut)]
+            pub payer: Signer,
+            pub pairs: AccountsArray<SignerPair, 2>,
+            #[account(init, payer = payer, address = Escrow::seeds(payer.address()))]
+            pub escrow: Account<Escrow>,
+        }
+    };
+    expect_test::expect_file!["expansions/accounts_composite_with_derived.rs"]
+        .assert_eq(&expand_pretty(derive_accounts_inner(input)));
+}
+
 /// Custom behavior group: builder chain + const-assert scaffold emitted for a
 /// plugin behavior (`min_value(min = ..)`).
 #[test]

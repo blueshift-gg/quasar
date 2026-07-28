@@ -174,6 +174,19 @@ fn generate_cargo_toml(name: &str, development_root: Option<&Path>) -> String {
     } else {
         format!(r#""={version}""#)
     };
+    // A development scaffold resolves quasar path deps whose zeropod
+    // requirement needs the widened solana-address cap; mirror the
+    // workspace's temporary crates-io patch until zeropod >=0.3.4 ships.
+    let zeropod_patch = development_root
+        .map(|_| {
+            concat!(
+                "\n[patch.crates-io]\n",
+                "zeropod = { git = \"https://github.com/blueshift-gg/zeropod\", rev = \"d08742d\" }\n",
+                "zeropod-derive = { git = \"https://github.com/blueshift-gg/zeropod\", rev = \"d08742d\" }\n",
+            )
+            .to_string()
+        })
+        .unwrap_or_default();
     format!(
         r#"[package]
 name = "{name}"
@@ -201,7 +214,7 @@ solana-instruction = {{ version = "3.2.0" }}
 
 [dev-dependencies]
 quasar-test = {quasar_test}
-"#
+{zeropod_patch}"#
     )
 }
 
@@ -245,9 +258,9 @@ fn generate_tests_rs() -> &'static str {
     r#"use {crate::cpi::InitializeInstruction, quasar_test::prelude::*};
 
 #[quasar_test]
-fn initialize(test: &mut Test) {
-    let payer = test.add(Wallet::new());
-    test.send(InitializeInstruction { payer }).succeeds();
+fn initialize() {
+    let payer = ctx.add(Wallet::account());
+    ctx.execute(InitializeInstruction { payer }).check(Outcome::success());
 }
 "#
 }

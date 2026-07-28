@@ -1,4 +1,4 @@
-use {crate::helpers::*, quasar_svm::Instruction, quasar_test_misc::cpi::*};
+use {crate::compat::Instruction, crate::helpers::*, quasar_test_misc::cpi::*};
 
 #[test]
 fn cpi_invoke_with_return_round_trips_u64() {
@@ -41,7 +41,8 @@ fn cpi_invoke_with_return_detects_missing_return_after_prior_success() {
 // in-program (compare cpi_invoke_with_return_detects_missing_return_...).
 
 use {
-    quasar_lang::prelude::QuasarError, quasar_svm::ProgramError, quasar_test_errors::cpi as err_cpi,
+    crate::compat::ProgramError, quasar_lang::prelude::QuasarError,
+    quasar_test_errors::cpi as err_cpi,
 };
 
 #[test]

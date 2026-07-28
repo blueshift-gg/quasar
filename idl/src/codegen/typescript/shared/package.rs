@@ -7,7 +7,10 @@ use {
 };
 
 const SOLANA_KIT_VERSION: &str = "^7.0.0";
-const SOLANA_WEB3JS_VERSION: &str = "^3.0.0";
+// web3.js v3 has shipped only release candidates; a bare `^3.0.0` matches no
+// published version, so the range must include the prereleases until 3.0.0
+// finals.
+const SOLANA_WEB3JS_VERSION: &str = "^3.0.0-rc.2";
 
 pub fn client_dependency_version(target: TsTarget) -> &'static str {
     match target {
@@ -92,16 +95,18 @@ mod package_tests {
     }
 
     #[test]
-    fn stable_targets_have_independent_final_only_manifests() {
+    fn stable_targets_have_independent_resolvable_manifests() {
         let idl = minimal_idl();
         let kit = generate_package_json(&idl, TsTarget::Kit).unwrap();
         let web3 = generate_package_json(&idl, TsTarget::Web3js).unwrap();
 
         assert!(kit.contains(r#""@solana/kit": "^7.0.0""#));
         assert!(!kit.contains("@solana/web3.js"));
-        assert!(web3.contains(r#""@solana/web3.js": "^3.0.0""#));
-        assert!(!web3.contains("@solana/kit"));
         assert!(!kit.contains("-rc."));
-        assert!(!web3.contains("-rc."));
+        // web3.js v3 has published only release candidates, so its range must
+        // include them to resolve at all; kit stays final-only. Drop the
+        // exception once web3.js 3.0.0 finals ship.
+        assert!(web3.contains(r#""@solana/web3.js": "^3.0.0-rc.2""#));
+        assert!(!web3.contains("@solana/kit"));
     }
 }

@@ -1,0 +1,21 @@
+error[E0080]: evaluation panicked: PodString<N, PFX>: N exceeds the maximum value representable by the PFX-byte length prefix
+  --> /Users/leo/.cargo/git/checkouts/zeropod-d8fda269950b7752/d08742d/zeropod/src/pod/string.rs:30:9
+   |
+30 | /         assert!(
+31 | |             N <= max_n_for_pfx(PFX),
+32 | |             "PodString<N, PFX>: N exceeds the maximum value representable by the PFX-byte length \
+33 | |              prefix"
+34 | |         );
+   | |_________^ evaluation of `quasar_lang::String::<256>::_CAP_CHECK` failed here
+
+note: erroneous constant encountered
+  --> /Users/leo/.cargo/git/checkouts/zeropod-d8fda269950b7752/d08742d/zeropod/src/pod/string.rs:37:27
+   |
+37 |     pub const VALID: () = Self::_CAP_CHECK;
+   |                           ^^^^^^^^^^^^^^^^
+
+note: erroneous constant encountered
+ --> tests/compile_fail_local/pod_string_n_exceeds_pfx.rs:6:15
+  |
+6 | const _: () = PodString::<256, 1>::VALID;
+  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^

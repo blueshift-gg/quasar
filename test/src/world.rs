@@ -1,34 +1,38 @@
+//! The [`Ctx`] world and its builder.
+//!
+//! `Ctx` is a thin newtype over [`parallax_svm::Ctx`]: everything the Parallax
+//! harness already provides is reached through [`Deref`], while quasar-test
+//! layers its own PDA and typed-state sugar on top as inherent methods that take
+//! precedence during method resolution.
+
 use {
-    crate::{
-        backend::Backend,
-        fixture::{Fixture, TokenProgram},
-        fixtures,
-        outcome::{mint_supply, token_amount, TrackedAccount},
-        Account, Instruction, Outcome, Pubkey, SetupError, TestBuilder,
-    },
+    crate::{fixture::Fixture, Account, Outcome, Pubkey, SetupError},
     quasar_lang::{
         __zeropod::{ZcElem, ZcValidate},
         traits::{AccountData, Discriminator, Owner, SeedSlices},
     },
-    std::{ops::Deref, path::Path},
+    solana_rent::Rent,
+    std::{
+        ops::{Deref, DerefMut},
+        path::PathBuf,
+    },
 };
 
-/// Default balance assigned by [`crate::fixture::Wallet`]: ten SOL.
-pub const DEFAULT_WALLET_LAMPORTS: u64 = 10_000_000_000;
+/// Environment variable set by `quasar test` to the freshly built program.
+///
+/// [`CtxBuilder::build`] bridges it to Parallax's own
+/// [`PROGRAM_PATH_ENV`](parallax_svm::PROGRAM_PATH_ENV) so tests run through the
+/// `quasar` CLI keep loading the compiled artifact without a build step.
+pub const PROGRAM_PATH_ENV: &str = "QUASAR_PROGRAM_PATH";
 
 /// An isolated Solana program test world.
 ///
-/// Each `Test` owns its runtime and account state. The public API describes
-/// test behavior rather than a particular SVM, so the same test can be hosted
-/// by additional runtimes without becoming generic over a backend.
-pub struct Test {
-    pub(super) backend: Backend,
-    pub(super) program_id: Pubkey,
-    pub(super) program_path: std::path::PathBuf,
-    pub(super) fresh_addresses: u64,
-}
+/// Wraps [`parallax_svm::Ctx`]; its whole surface — `add`, `execute`, `account`,
+/// `warp_to_timestamp`, and the rest — is available directly, plus the
+/// quasar-test extras below.
+pub struct Ctx(pub(crate) parallax_svm::Ctx);
 
-impl Test {
+impl Ctx {
     /// Load the current project's compiled program.
     ///
     /// # Panics
@@ -47,66 +51,17 @@ impl Test {
     }
 
     /// Configure artifact discovery and runtime limits before loading a world.
-    pub fn builder(program_id: impl Into<Pubkey>) -> TestBuilder {
-        TestBuilder::new(program_id.into())
-    }
-
-    /// The primary program under test.
-    pub fn program_id(&self) -> Pubkey {
-        self.program_id
-    }
-
-    /// The ELF artifact loaded for the primary program.
-    pub fn program_path(&self) -> &Path {
-        &self.program_path
+    pub fn builder(program_id: impl Into<Pubkey>) -> CtxBuilder {
+        CtxBuilder::new(program_id.into())
     }
 
     /// Install a built-in or application-defined fixture.
+    ///
+    /// Uses quasar-test's [`Fixture`] trait, so an application fixture's
+    /// `install` receives this sugar-carrying `Ctx` and can call
+    /// [`Self::derive_pda`], [`Self::write`], and the rest.
     pub fn add<F: Fixture>(&mut self, fixture: F) -> F::Output {
         fixture.install(self)
-    }
-
-    /// Insert or replace a raw account.
-    pub fn set_account(&mut self, account: Account) {
-        self.backend.set_account(account);
-    }
-
-    /// Read a raw account from the current world.
-    pub fn account(&self, address: Pubkey) -> Option<Account> {
-        self.backend.account(&address)
-    }
-
-    /// Decode an account with a generated client decoder.
-    pub fn account_as<T>(
-        &self,
-        address: Pubkey,
-        decode: impl FnOnce(&[u8]) -> Option<T>,
-    ) -> Option<T> {
-        self.account(address)
-            .and_then(|account| decode(&account.data))
-    }
-
-    /// Preload a program for cross-program invocations.
-    pub fn load_program(&mut self, program_id: Pubkey, elf: &[u8]) {
-        self.backend.load_program(&program_id, elf);
-    }
-
-    /// Produce a deterministic address unused by earlier fixtures in this
-    /// world. The sequence is independent for every test.
-    pub fn fresh_address(&mut self) -> Pubkey {
-        self.fresh_addresses += 1;
-        let mut bytes = *b"quasar-test/fresh-address\0\0\0\0\0\0\0";
-        bytes[24..].copy_from_slice(&self.fresh_addresses.to_le_bytes());
-        Pubkey::new_from_array(bytes)
-    }
-
-    /// Derive an associated-token address without installing the account.
-    pub fn derive_ata(&self, owner: Pubkey, mint: Pubkey, token_program: TokenProgram) -> Pubkey {
-        Pubkey::find_program_address(
-            &[owner.as_ref(), token_program.id().as_ref(), mint.as_ref()],
-            &crate::SPL_ASSOCIATED_TOKEN_PROGRAM_ID,
-        )
-        .0
     }
 
     /// Derive a PDA from an account type's declared seeds.
@@ -116,7 +71,8 @@ impl Test {
 
     /// Derive a PDA and its canonical bump.
     pub fn derive_pda_with_bump(&self, seeds: impl SeedSlices) -> (Pubkey, u8) {
-        seeds.with_slices(|slices| Pubkey::find_program_address(slices, &self.program_id))
+        let program_id = self.0.program_id();
+        seeds.with_slices(|slices| Pubkey::find_program_address(slices, &program_id))
     }
 
     /// Read a fixed-size Quasar account through its on-chain wrapper type.
@@ -130,39 +86,38 @@ impl Test {
     {
         let name = core::any::type_name::<T>();
         let account = self
+            .0
             .account(address)
             .unwrap_or_else(|| panic!("read {name}: no account at {address}"));
-        if account.owner != T::OWNER {
-            panic!(
-                "read {name}: account {address} is owned by {}, expected {}",
-                account.owner,
-                T::OWNER
-            );
-        }
-        let discriminator = T::DISCRIMINATOR;
-        let expected_len = discriminator.len() + core::mem::size_of::<T::Target>();
-        if account.data.len() < expected_len {
-            panic!(
-                "read {name}: account {address} holds {} bytes, expected at least {expected_len}",
-                account.data.len()
-            );
-        }
-        if &account.data[..discriminator.len()] != discriminator {
-            panic!(
-                "read {name}: account {address} discriminator is {:?}, expected {discriminator:?}",
-                &account.data[..discriminator.len()]
-            );
-        }
-        // SAFETY: `T::Target` is `ZcElem` (alignment one and no padding), and
-        // the length check above proves the target bytes are in bounds.
-        let state = unsafe { &*(account.data[discriminator.len()..].as_ptr() as *const T::Target) };
-        if let Err(error) = <T::Target as ZcValidate>::validate_ref(state) {
-            panic!("read {name}: account {address} holds invalid data: {error:?}");
-        }
+        let state = validate_typed::<T>("read", &account);
         Snapshot {
             address,
             lamports: account.lamports,
-            state: *state,
+            state,
+        }
+    }
+
+    /// Read a fixed-size Quasar account whose typed state starts at `offset`
+    /// within the account data (after the discriminator), with the same
+    /// ownership, discriminator, and zero-copy validation as [`Self::read`].
+    ///
+    /// The schema-only wincode pair stays reachable through deref as
+    /// `(*ctx).read(..)` / `(*ctx).write(..)`.
+    pub fn read_at<T>(&self, address: Pubkey, offset: usize) -> Snapshot<T>
+    where
+        T: Discriminator + Owner + Deref,
+        T::Target: ZcElem + ZcValidate + Copy,
+    {
+        let name = core::any::type_name::<T>();
+        let account = self
+            .0
+            .account(address)
+            .unwrap_or_else(|| panic!("read_at {name}: no account at {address}"));
+        let state = validate_typed_at::<T>("read_at", &account, offset);
+        Snapshot {
+            address,
+            lamports: account.lamports,
+            state,
         }
     }
 
@@ -185,162 +140,206 @@ impl Test {
                 size,
             );
         }
-        self.set_account(fixtures::program_account(
-            address,
-            <D::Wrapper as Owner>::OWNER,
-            data,
-        ));
+        self.0
+            .set_account(program_account(address, <D::Wrapper as Owner>::OWNER, data));
         address
     }
 
-    /// An account's current lamport balance.
-    pub fn lamports(&self, address: Pubkey) -> u64 {
-        self.required_account(address).lamports
+    /// Execute and commit one transaction: a single instruction, or a chain
+    /// as a tuple, array, or `Vec`.
+    pub fn execute<M>(&mut self, instructions: impl parallax_svm::IntoInstructions<M>) -> Outcome {
+        Outcome::new(self.0.execute(instructions))
     }
 
-    /// A base Token or Token-2022 account's current amount.
-    pub fn tokens(&self, address: Pubkey) -> u64 {
-        token_amount(&self.required_account(address))
-    }
-
-    /// A base Token or Token-2022 mint's current supply.
-    pub fn supply(&self, address: Pubkey) -> u64 {
-        mint_supply(&self.required_account(address))
-    }
-
-    /// Set the runtime clock's Unix timestamp.
-    pub fn warp_to_timestamp(&mut self, timestamp: i64) {
-        self.backend.warp_to_timestamp(timestamp);
-    }
-
-    /// Execute and commit one instruction.
-    pub fn send(&mut self, instruction: impl Into<Instruction>) -> Outcome {
-        self.execute([instruction.into()], Vec::new(), true)
-    }
-
-    /// Execute and commit an atomic instruction sequence.
-    pub fn send_all<I, T>(&mut self, instructions: I) -> Outcome
-    where
-        I: IntoIterator<Item = T>,
-        T: Into<Instruction>,
-    {
-        self.execute(
-            instructions.into_iter().map(Into::into).collect::<Vec<_>>(),
-            Vec::new(),
-            true,
-        )
-    }
-
-    /// Execute and commit one instruction with raw transaction-input
-    /// accounts. Fixtures installed in the world normally make this
-    /// unnecessary; it remains useful when malformed input is the test case.
-    pub fn send_with(
+    /// Execute and commit with raw transaction-input accounts seeding or
+    /// overriding world state.
+    pub fn execute_with<M>(
         &mut self,
-        instruction: impl Into<Instruction>,
+        instructions: impl parallax_svm::IntoInstructions<M>,
         accounts: impl IntoIterator<Item = Account>,
     ) -> Outcome {
-        self.execute([instruction.into()], accounts.into_iter().collect(), true)
+        Outcome::new(self.0.execute_with(instructions, accounts))
     }
 
-    /// Execute an instruction without committing its changes.
-    pub fn simulate(&mut self, instruction: impl Into<Instruction>) -> Outcome {
-        self.execute([instruction.into()], Vec::new(), false)
+    /// Execute one transaction without committing its changes.
+    pub fn simulate<M>(&mut self, instructions: impl parallax_svm::IntoInstructions<M>) -> Outcome {
+        Outcome::new(self.0.simulate(instructions))
     }
 
-    fn execute(
+    /// Simulate with raw transaction-input accounts, committing nothing.
+    pub fn simulate_with<M>(
         &mut self,
-        instructions: impl AsRef<[Instruction]>,
-        mut inputs: Vec<Account>,
-        commit: bool,
+        instructions: impl parallax_svm::IntoInstructions<M>,
+        accounts: impl IntoIterator<Item = Account>,
     ) -> Outcome {
-        let instructions = instructions.as_ref();
-        assert!(
-            !instructions.is_empty(),
-            "a transaction needs an instruction"
-        );
-        assert_unique_accounts(&inputs);
-
-        let mut tracked = Vec::<TrackedAccount>::new();
-        for instruction in instructions {
-            for meta in &instruction.accounts {
-                if let Some(existing) = tracked
-                    .iter_mut()
-                    .find(|account| account.address == meta.pubkey)
-                {
-                    existing.writable |= meta.is_writable;
-                    continue;
-                }
-                let before = inputs
-                    .iter()
-                    .find(|account| account.address == meta.pubkey)
-                    .cloned()
-                    .or_else(|| self.backend.account(&meta.pubkey));
-                tracked.push(TrackedAccount {
-                    address: meta.pubkey,
-                    writable: meta.is_writable,
-                    before,
-                    after: None,
-                });
-            }
-        }
-
-        for input in &inputs {
-            if tracked
-                .iter()
-                .all(|account| account.address != input.address)
-            {
-                tracked.push(TrackedAccount {
-                    address: input.address,
-                    writable: false,
-                    before: Some(input.clone()),
-                    after: None,
-                });
-            }
-        }
-
-        // A missing writable account enters the transaction as Solana's empty
-        // system account. QuasarSVM commits that transaction input only when
-        // execution succeeds, so init targets persist without polluting the
-        // world after a failed transaction.
-        for account in &tracked {
-            if account.writable
-                && account.before.is_none()
-                && inputs.iter().all(|input| input.address != account.address)
-            {
-                inputs.push(fixtures::empty_account(account.address));
-            }
-        }
-
-        let result = self.backend.execute(instructions, &inputs, commit);
-        let succeeded = result.raw_result.is_ok();
-        for account in &mut tracked {
-            account.after = if !succeeded {
-                account.before.clone()
-            } else if commit {
-                self.backend.account(&account.address)
-            } else {
-                Outcome::simulated_account(&result, &account.address)
-            };
-        }
-        Outcome::from_backend(result, tracked)
-    }
-
-    fn required_account(&self, address: Pubkey) -> Account {
-        self.account(address)
-            .unwrap_or_else(|| panic!("no account at {address}"))
+        Outcome::new(self.0.simulate_with(instructions, accounts))
     }
 }
 
-fn assert_unique_accounts(accounts: &[Account]) {
-    for (index, account) in accounts.iter().enumerate() {
-        assert!(
-            accounts[..index]
-                .iter()
-                .all(|earlier| earlier.address != account.address),
-            "transaction input contains account {} more than once",
-            account.address
+impl Deref for Ctx {
+    type Target = parallax_svm::Ctx;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for Ctx {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+/// Create a rent-exempt program-owned account containing `data`.
+fn program_account(address: Pubkey, owner: Pubkey, data: Vec<u8>) -> Account {
+    Account::new(
+        address,
+        owner,
+        Rent::default().minimum_balance(data.len()),
+        data,
+    )
+}
+
+/// World setup: which program artifact to load and its runtime limits.
+///
+/// Created by [`Ctx::builder`]. Wraps [`parallax_svm::CtxBuilder`] and adds
+/// the [`PROGRAM_PATH_ENV`] bridge in [`Self::build`].
+pub struct CtxBuilder {
+    inner: parallax_svm::CtxBuilder,
+    program_path_set: bool,
+}
+
+impl CtxBuilder {
+    fn new(program_id: Pubkey) -> Self {
+        Self {
+            inner: parallax_svm::Ctx::builder(program_id),
+            program_path_set: false,
+        }
+    }
+
+    /// Set the transaction compute-unit limit for this world.
+    pub fn compute_unit_limit(mut self, limit: u64) -> Self {
+        self.inner = self.inner.compute_unit_limit(limit);
+        self
+    }
+
+    /// RPC endpoint that `Dump` fixtures fetch from on a store miss. Code-only
+    /// and set once; unset, it defaults to the public mainnet-beta RPC.
+    pub fn rpc(mut self, url: impl Into<String>) -> Self {
+        self.inner = self.inner.rpc(url);
+        self
+    }
+
+    /// Project directory whose committed `.parallax/` store dumps read and
+    /// write, when the default manifest walk-up is not wanted.
+    pub fn project_dir(mut self, dir: impl Into<String>) -> Self {
+        self.inner = self.inner.project_dir(dir);
+        self
+    }
+
+    /// Load the primary program from in-memory ELF bytes, skipping artifact
+    /// discovery. Empty bytes are equivalent to [`Self::no_program`].
+    pub fn program_bytes(mut self, elf: impl Into<Vec<u8>>) -> Self {
+        self.inner = self.inner.program_bytes(elf);
+        self.program_path_set = true;
+        self
+    }
+
+    /// Build a world with no primary program, loading only the runtime's
+    /// built-in programs.
+    pub fn no_program(mut self) -> Self {
+        self.inner = self.inner.no_program();
+        self.program_path_set = true;
+        self
+    }
+
+    /// Load an explicit program artifact instead of discovering one.
+    pub fn program_path(mut self, path: impl Into<PathBuf>) -> Self {
+        self.inner = self.inner.program_path(path);
+        self.program_path_set = true;
+        self
+    }
+
+    /// Prefer `target/deploy/{crate_name}.so` (with `-` mapped to `_`) during
+    /// discovery, so tests resolve their own program in a workspace that builds
+    /// several. `#[quasar_test]` passes `env!("CARGO_PKG_NAME")`.
+    pub fn crate_name(mut self, name: impl Into<String>) -> Self {
+        self.inner = self.inner.crate_name(name);
+        self
+    }
+
+    /// Load the program and start the world.
+    pub fn build(mut self) -> Result<Ctx, SetupError> {
+        // Bridge the `quasar test` override to Parallax's own env var without
+        // mutating process state (tests run on parallel threads). An explicit
+        // `program_path`, or Parallax's env var, both take precedence.
+        if !self.program_path_set && std::env::var_os(parallax_svm::PROGRAM_PATH_ENV).is_none() {
+            if let Some(path) = std::env::var_os(PROGRAM_PATH_ENV) {
+                let path = PathBuf::from(path);
+                if !path.is_file() {
+                    return Err(SetupError::ConfiguredProgramMissing {
+                        env: PROGRAM_PATH_ENV,
+                        path,
+                    });
+                }
+                self.inner = self.inner.program_path(path);
+            }
+        }
+        self.inner.build().map(Ctx)
+    }
+}
+
+/// Validate `account` as a fixed-size Quasar account of type `T` and return a
+/// copy of its typed state. `context` names the calling operation so panics stay
+/// actionable (`read`, `State`, ...). Shared by [`Ctx::read`] and
+/// [`crate::State`] so both apply identical ownership,
+/// discriminator, length, and zero-copy checks.
+pub(crate) fn validate_typed<T>(context: &str, account: &Account) -> T::Target
+where
+    T: Discriminator + Owner + Deref,
+    T::Target: ZcElem + ZcValidate + Copy,
+{
+    validate_typed_at::<T>(context, account, 0)
+}
+
+/// [`validate_typed`] with the typed state starting `offset` bytes past the
+/// discriminator; backs [`Ctx::read_at`].
+pub(crate) fn validate_typed_at<T>(context: &str, account: &Account, offset: usize) -> T::Target
+where
+    T: Discriminator + Owner + Deref,
+    T::Target: ZcElem + ZcValidate + Copy,
+{
+    let name = core::any::type_name::<T>();
+    let address = account.address;
+    if account.owner != T::OWNER {
+        panic!(
+            "{context} {name}: account {address} is owned by {}, expected {}",
+            account.owner,
+            T::OWNER
         );
     }
+    let discriminator = T::DISCRIMINATOR;
+    let start = discriminator.len() + offset;
+    let expected_len = start + core::mem::size_of::<T::Target>();
+    if account.data.len() < expected_len {
+        panic!(
+            "{context} {name}: account {address} holds {} bytes, expected at least {expected_len}",
+            account.data.len()
+        );
+    }
+    if &account.data[..discriminator.len()] != discriminator {
+        panic!(
+            "{context} {name}: account {address} discriminator is {:?}, expected {discriminator:?}",
+            &account.data[..discriminator.len()]
+        );
+    }
+    // SAFETY: `T::Target` is `ZcElem` (alignment one and no padding), and the
+    // length check above proves the target bytes are in bounds.
+    let state = unsafe { &*(account.data[start..].as_ptr() as *const T::Target) };
+    if let Err(error) = <T::Target as ZcValidate>::validate_ref(state) {
+        panic!("{context} {name}: account {address} holds invalid data: {error:?}");
+    }
+    *state
 }
 
 /// Typed fixed-size account state captured at one point in a test.
@@ -376,5 +375,58 @@ where
 
     fn deref(&self) -> &Self::Target {
         &self.state
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // A minimal fixed-size Quasar account whose payload is a single address,
+    // enough to exercise the typed validation path without a program.
+    #[repr(transparent)]
+    #[derive(Clone, Copy)]
+    struct Marker(Pubkey);
+
+    impl Deref for Marker {
+        type Target = Pubkey;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+
+    impl Discriminator for Marker {
+        const DISCRIMINATOR: &'static [u8] = &[0xAB];
+    }
+
+    impl Owner for Marker {
+        const OWNER: Pubkey = Pubkey::new_from_array([9; 32]);
+    }
+
+    fn marker_account(address: Pubkey, owner: Pubkey, stored: Pubkey) -> Account {
+        let mut data = Marker::DISCRIMINATOR.to_vec();
+        data.extend_from_slice(stored.as_ref());
+        Account::new(address, owner, 42, data)
+    }
+
+    #[test]
+    fn validate_typed_reads_the_stored_state() {
+        let address = Pubkey::new_from_array([5; 32]);
+        let stored = Pubkey::new_from_array([7; 32]);
+        let account = marker_account(address, Marker::OWNER, stored);
+
+        let state = validate_typed::<Marker>("read", &account);
+        assert_eq!(state, stored);
+    }
+
+    #[test]
+    #[should_panic(expected = "read")]
+    fn validate_typed_panics_when_ownership_is_wrong() {
+        let address = Pubkey::new_from_array([5; 32]);
+        let foreign = Pubkey::new_from_array([1; 32]);
+        let account = marker_account(address, foreign, address);
+
+        validate_typed::<Marker>("read", &account);
     }
 }

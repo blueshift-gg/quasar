@@ -11,7 +11,8 @@ use {codec::*, pda::*};
 use {
     super::super::accounts::account_source,
     super::super::model::{
-        account_field_definition, account_field_seed_inputs, CodegenResult, ProgramModel,
+        account_field_definition, account_field_seed_inputs, resolved_account_order, CodegenResult,
+        ProgramModel,
     },
     crate::codegen::naming::{
         snake_to_pascal, to_camel_case, to_screaming_snake as pascal_to_screaming_snake,
@@ -28,6 +29,49 @@ use {
 pub enum TsTarget {
     Web3js,
     Kit,
+}
+
+/// A derived account exposed on a builder's return value: the camelCase
+/// `{field}Address` accessor property and the expression yielding the address
+/// the builder resolved for it.
+struct BuilderAddressAccessor {
+    property: String,
+    value_expr: String,
+}
+
+/// Collect the `{field}Address` accessors a builder exposes: one per PDA/ATA
+/// account it derives, in dependency order. This mirrors the derivation set of
+/// the in-crate Rust `{field}_address()` accessors, so a caller can name a
+/// builder-derived address off the returned instruction without re-deriving
+/// seeds by hand.
+fn builder_address_accessors(
+    ix: &IdlInstruction,
+    account_expr: &impl Fn(&str) -> String,
+) -> Vec<BuilderAddressAccessor> {
+    resolved_account_order(ix)
+        .expect("validated derived-account order")
+        .into_iter()
+        .map(|account| BuilderAddressAccessor {
+            property: format!("{}Address", to_camel_case(&account.name)),
+            value_expr: account_expr(&account.name),
+        })
+        .collect()
+}
+
+/// The `& { readonly {field}Address: Address; ... }` suffix appended to a
+/// builder's instruction return type, one member per derived account. Empty
+/// when the instruction derives no PDAs or ATAs, so plain instructions keep
+/// their unadorned return type.
+fn builder_address_accessor_type(accessors: &[BuilderAddressAccessor]) -> String {
+    if accessors.is_empty() {
+        return String::new();
+    }
+    let members = accessors
+        .iter()
+        .map(|accessor| format!("readonly {}: Address", accessor.property))
+        .collect::<Vec<_>>()
+        .join("; ");
+    format!(" & {{ {members} }}")
 }
 
 #[derive(Clone, Copy)]
@@ -142,6 +186,10 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
         codec_imports.push("getBooleanCodec");
     }
     if used.contains("option") {
+        // Nullable, not Option: the generated interfaces type optional fields
+        // as `T | null`, and `getNullableCodec` decodes to exactly that with
+        // the same one-byte-prefix wire. `getOptionCodec` yields `Option<T>`
+        // wrapper objects, which silently diverge from the declared types.
         codec_imports.push("getNullableCodec");
     }
     // For Web3.js v3, a custom codec is needed to handle its Address type
@@ -391,6 +439,38 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
             )
             .expect("write to String");
             out.push_str("};\n\n");
+        }
+    }
+
+    // === Account codec bundles ===
+    // A ready-made `AccountCodec`-shaped object per account: the body codec's
+    // `decode`/`encode` plus the owner/discriminator/size framing the test SDK
+    // validates. Callers pass `{Name}Account` instead of hand-assembling it.
+    // `size` (discriminator + fixed body) is omitted when the layout is variable.
+    let account_bundles: Vec<_> = idl
+        .accounts
+        .iter()
+        .filter(|account| idl.types.iter().any(|ty| ty.name == account.name))
+        .collect();
+    if !account_bundles.is_empty() {
+        out.push_str("/* Account Codecs */\n");
+        for account in account_bundles {
+            let name = &account.name;
+            let const_name = pascal_to_screaming_snake(name);
+            let owner = match target {
+                TsTarget::Kit => "PROGRAM_ADDRESS".to_string(),
+                TsTarget::Web3js => format!("new Address(\"{}\")", idl.address),
+            };
+            writeln!(out, "export const {name}Account = {{").expect("write to String");
+            writeln!(out, "  decode: {name}Codec.decode,").expect("write to String");
+            writeln!(out, "  encode: {name}Codec.encode,").expect("write to String");
+            writeln!(out, "  owner: {owner},").expect("write to String");
+            writeln!(out, "  discriminator: {const_name}_DISCRIMINATOR,").expect("write to String");
+            if let Some(body) = type_body_fixed_size(idl, name) {
+                writeln!(out, "  size: {},", account.discriminator.len() + body)
+                    .expect("write to String");
+            }
+            out.push_str("} as const;\n\n");
         }
     }
 
@@ -650,5 +730,8 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
         out.push_str("};\n\n");
     }
 
+    while out.ends_with("\n\n") {
+        out.pop();
+    }
     Ok(out)
 }

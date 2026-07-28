@@ -1,6 +1,6 @@
 use {
+    crate::compat::{Account, Instruction, ProgramError, Pubkey},
     crate::helpers::*,
-    quasar_svm::{Account, Instruction, ProgramError, Pubkey},
     quasar_test_misc::cpi::*,
 };
 
@@ -104,7 +104,7 @@ fn create_insufficient_funds() {
                 address: payer,
                 lamports: 1,
                 data: vec![],
-                owner: quasar_svm::system_program::ID,
+                owner: crate::compat::system_program::ID,
                 executable: false,
             },
             empty_account(new_account),
@@ -171,7 +171,7 @@ fn transfer_full_balance() {
                 address: from,
                 lamports: balance,
                 data: vec![],
-                owner: quasar_svm::system_program::ID,
+                owner: crate::compat::system_program::ID,
                 executable: false,
             },
             signer_account(to),
@@ -201,7 +201,7 @@ fn transfer_to_self_borrow_fail() {
     let result = svm.process_instruction(&ix, &[rich_signer_account(account)]);
     // the harness maps InstructionErrors without a dedicated variant to their Debug
     // string
-    result.assert_error(quasar_svm::ProgramError::Runtime(
+    result.assert_error(crate::compat::ProgramError::Runtime(
         "AccountBorrowFailed".into(),
     ));
 }
@@ -234,7 +234,7 @@ fn assign_to_system_program() {
 
     let ix: Instruction = AssignTestInstruction {
         account,
-        owner: quasar_svm::system_program::ID,
+        owner: crate::compat::system_program::ID,
     }
     .into();
 
@@ -261,7 +261,7 @@ fn transfer_rejects_insufficient_funds() {
                 address: from,
                 lamports: 100,
                 data: vec![],
-                owner: quasar_svm::system_program::ID,
+                owner: crate::compat::system_program::ID,
                 executable: false,
             },
             signer_account(to),

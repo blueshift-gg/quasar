@@ -183,6 +183,23 @@ export const PoolCodec = {
   decode(data: Parameters<typeof PoolStructCodec.decode>[0], offset = 0): Pool { return decodeExact<Pool>(PoolStructCodec, Uint8Array.from(data).slice(offset)); },
 };
 
+/* Account Codecs */
+export const VaultAccount = {
+  decode: VaultCodec.decode,
+  encode: VaultCodec.encode,
+  owner: new Address("11111111111111111111111111111111"),
+  discriminator: VAULT_DISCRIMINATOR,
+  size: 42,
+} as const;
+
+export const PoolAccount = {
+  decode: PoolCodec.decode,
+  encode: PoolCodec.encode,
+  owner: new Address("11111111111111111111111111111111"),
+  discriminator: POOL_DISCRIMINATOR,
+  size: 41,
+} as const;
+
 /* Enums */
 export const ProgramEvent = {
   VaultMade: "VaultMade",
@@ -257,18 +274,18 @@ export class GoldenDemoClient {
     return null;
   }
 
-  async createMakeInstruction(input: MakeInstructionInput): Promise<TransactionInstruction> {
+  async createMakeInstruction(input: MakeInstructionInput): Promise<TransactionInstruction & { readonly vaultAddress: Address }> {
     return this.createMakeInstructionRaw(input, {});
   }
 
-  async createMakeInstructionRaw(input: MakeInstructionInput, accountOverrides: MakeInstructionAccountOverrides): Promise<TransactionInstruction> {
+  async createMakeInstructionRaw(input: MakeInstructionInput, accountOverrides: MakeInstructionAccountOverrides): Promise<TransactionInstruction & { readonly vaultAddress: Address }> {
     const __vault: Address = await findVaultAddress((accountOverrides.authority ?? input.authority));
     const argsCodec = getStructCodec([
       ["amount", getU64Codec()],
       ["flag", getBooleanCodec()],
     ]);
     const data = Uint8Array.from([0, ...argsCodec.encode({ amount: input.amount, flag: input.flag })]);
-    return new TransactionInstruction({
+    const instruction = new TransactionInstruction({
       programId: GoldenDemoClient.programId,
       keys: [
         { pubkey: (accountOverrides.authority ?? input.authority), isSigner: true, isWritable: false },
@@ -276,13 +293,16 @@ export class GoldenDemoClient {
       ],
       data,
     });
+    return Object.assign(instruction, {
+      vaultAddress: (accountOverrides.vault ?? __vault),
+    });
   }
 
-  async createSyncInstruction(input: SyncInstructionInput): Promise<TransactionInstruction> {
+  async createSyncInstruction(input: SyncInstructionInput): Promise<TransactionInstruction & { readonly poolAddress: Address }> {
     return this.createSyncInstructionRaw(input, {});
   }
 
-  async createSyncInstructionRaw(input: SyncInstructionInput, accountOverrides: SyncInstructionAccountOverrides): Promise<TransactionInstruction> {
+  async createSyncInstructionRaw(input: SyncInstructionInput, accountOverrides: SyncInstructionAccountOverrides): Promise<TransactionInstruction & { readonly poolAddress: Address }> {
     const __pool: Address = (await Address.findProgramAddress(
       [
         new Uint8Array([112, 111, 111, 108]),
@@ -291,7 +311,7 @@ export class GoldenDemoClient {
       GoldenDemoClient.programId,
     ))[0];
     const data = Uint8Array.from([1]);
-    return new TransactionInstruction({
+    const instruction = new TransactionInstruction({
       programId: GoldenDemoClient.programId,
       keys: [
         { pubkey: (accountOverrides.authority ?? input.authority), isSigner: true, isWritable: false },
@@ -299,13 +319,16 @@ export class GoldenDemoClient {
       ],
       data,
     });
+    return Object.assign(instruction, {
+      poolAddress: (accountOverrides.pool ?? __pool),
+    });
   }
 
-  async createSettleInstruction(input: SettleInstructionInput): Promise<TransactionInstruction> {
+  async createSettleInstruction(input: SettleInstructionInput): Promise<TransactionInstruction & { readonly payerTokensAddress: Address }> {
     return this.createSettleInstructionRaw(input, {});
   }
 
-  async createSettleInstructionRaw(input: SettleInstructionInput, accountOverrides: SettleInstructionAccountOverrides): Promise<TransactionInstruction> {
+  async createSettleInstructionRaw(input: SettleInstructionInput, accountOverrides: SettleInstructionAccountOverrides): Promise<TransactionInstruction & { readonly payerTokensAddress: Address }> {
     const __tokenProgram: Address = new Address("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
     const __recipient: Address = input.target;
     const __payerTokens: Address = (await Address.findProgramAddress(
@@ -318,7 +341,7 @@ export class GoldenDemoClient {
       ["bonus", getNullableCodec(getU64Codec())],
     ]);
     const data = Uint8Array.from([2, ...argsCodec.encode({ target: input.target, amount: input.amount, bonus: input.bonus })]);
-    return new TransactionInstruction({
+    const instruction = new TransactionInstruction({
       programId: GoldenDemoClient.programId,
       keys: [
         { pubkey: (accountOverrides.payer ?? input.payer), isSigner: true, isWritable: true },
@@ -329,6 +352,9 @@ export class GoldenDemoClient {
         { pubkey: (accountOverrides.maybeRefund ?? input.maybeRefund ?? GoldenDemoClient.programId), isSigner: false, isWritable: false },
       ],
       data,
+    });
+    return Object.assign(instruction, {
+      payerTokensAddress: (accountOverrides.payerTokens ?? __payerTokens),
     });
   }
 }
@@ -352,4 +378,3 @@ export const PROGRAM_ERROR_CODES = {
 export const PROGRAM_ERRORS: Record<number, { name: string; msg?: string }> = {
   6000: { name: "Unauthorized", msg: "caller is not the vault authority" },
 };
-

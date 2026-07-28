@@ -22,15 +22,24 @@ pub struct InitProfile {
 
 impl InitProfile {
     pub fn handler(&mut self) -> Result<(), ProgramError> {
-        self.profile.set_inner(
+        // Explicit path: rent from the declared sysvar field.
+        self.profile.set_inner_with_rent(
             ProfileInner {
                 bump: 1,
                 name: "leo",
                 scores: &[1, 2, 3],
             },
             self.payer.to_account_view(),
-            self.rent.lamports_per_byte(),
-            self.rent.exemption_threshold_raw(),
+            self.rent.get(),
+        )?;
+        // Syscall path: no rent argument at all.
+        self.profile.set_inner(
+            ProfileInner {
+                bump: 2,
+                name: "leo",
+                scores: &[4, 5, 6],
+            },
+            self.payer.to_account_view(),
         )
     }
 }

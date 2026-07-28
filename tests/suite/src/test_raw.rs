@@ -1,6 +1,6 @@
 use {
+    crate::compat::{Instruction, Pubkey},
     crate::helpers::*,
-    quasar_svm::{Instruction, Pubkey},
     quasar_test_raw::cpi::*,
 };
 
@@ -30,7 +30,7 @@ fn raw_write_succeeds() {
     let target = Pubkey::new_unique();
 
     // Create a data account owned by the program with 32 bytes of data.
-    let target_account = quasar_svm::Account {
+    let target_account = crate::compat::Account {
         address: target,
         lamports: 1_000_000,
         data: vec![0u8; 32],
@@ -46,12 +46,12 @@ fn raw_write_succeeds() {
     let ix = Instruction {
         program_id: quasar_test_raw::ID,
         accounts: vec![
-            quasar_svm::AccountMeta {
+            crate::compat::AccountMeta {
                 pubkey: target,
                 is_signer: false,
                 is_writable: true,
             },
-            quasar_svm::AccountMeta {
+            crate::compat::AccountMeta {
                 pubkey: signer,
                 is_signer: true,
                 is_writable: false,
@@ -78,7 +78,7 @@ fn raw_helper_write_succeeds() {
     let mut svm = svm_raw();
     let target = Pubkey::new_unique();
 
-    let target_account = quasar_svm::Account {
+    let target_account = crate::compat::Account {
         address: target,
         lamports: 1_000_000,
         data: vec![0u8; 32],
@@ -92,7 +92,7 @@ fn raw_helper_write_succeeds() {
 
     let ix = Instruction {
         program_id: quasar_test_raw::ID,
-        accounts: vec![quasar_svm::AccountMeta {
+        accounts: vec![crate::compat::AccountMeta {
             pubkey: target,
             is_signer: false,
             is_writable: true,
@@ -117,7 +117,7 @@ fn raw_helper_write_fails_when_write_exceeds_account_data() {
     let mut svm = svm_raw();
     let target = Pubkey::new_unique();
 
-    let target_account = quasar_svm::Account {
+    let target_account = crate::compat::Account {
         address: target,
         lamports: 1_000_000,
         data: vec![0u8; 12],
@@ -130,7 +130,7 @@ fn raw_helper_write_fails_when_write_exceeds_account_data() {
 
     let ix = Instruction {
         program_id: quasar_test_raw::ID,
-        accounts: vec![quasar_svm::AccountMeta {
+        accounts: vec![crate::compat::AccountMeta {
             pubkey: target,
             is_signer: false,
             is_writable: true,
@@ -139,7 +139,7 @@ fn raw_helper_write_fails_when_write_exceeds_account_data() {
     };
 
     let result = svm.process_instruction(&ix, &[target_account]);
-    result.assert_error(quasar_svm::ProgramError::AccountDataTooSmall);
+    result.assert_error(crate::compat::ProgramError::AccountDataTooSmall);
 }
 
 #[test]
@@ -147,7 +147,7 @@ fn raw_helper_write_fails_when_account_is_not_writable() {
     let mut svm = svm_raw();
     let target = Pubkey::new_unique();
 
-    let target_account = quasar_svm::Account {
+    let target_account = crate::compat::Account {
         address: target,
         lamports: 1_000_000,
         data: vec![0u8; 32],
@@ -160,7 +160,7 @@ fn raw_helper_write_fails_when_account_is_not_writable() {
 
     let ix = Instruction {
         program_id: quasar_test_raw::ID,
-        accounts: vec![quasar_svm::AccountMeta {
+        accounts: vec![crate::compat::AccountMeta {
             pubkey: target,
             is_signer: false,
             is_writable: false,
@@ -169,7 +169,7 @@ fn raw_helper_write_fails_when_account_is_not_writable() {
     };
 
     let result = svm.process_instruction(&ix, &[target_account]);
-    result.assert_error(quasar_svm::ProgramError::Immutable);
+    result.assert_error(crate::compat::ProgramError::Immutable);
 }
 
 /// Raw instruction fails when signer check fails because account[1] is not a
@@ -180,7 +180,7 @@ fn raw_write_fails_without_signer() {
     let not_signer = Pubkey::new_unique();
     let target = Pubkey::new_unique();
 
-    let target_account = quasar_svm::Account {
+    let target_account = crate::compat::Account {
         address: target,
         lamports: 1_000_000,
         data: vec![0u8; 32],
@@ -194,12 +194,12 @@ fn raw_write_fails_without_signer() {
     let ix = Instruction {
         program_id: quasar_test_raw::ID,
         accounts: vec![
-            quasar_svm::AccountMeta {
+            crate::compat::AccountMeta {
                 pubkey: target,
                 is_signer: false,
                 is_writable: true,
             },
-            quasar_svm::AccountMeta {
+            crate::compat::AccountMeta {
                 pubkey: not_signer,
                 is_signer: false, // NOT a signer
                 is_writable: false,
@@ -208,16 +208,16 @@ fn raw_write_fails_without_signer() {
         data,
     };
 
-    let non_signer_account = quasar_svm::Account {
+    let non_signer_account = crate::compat::Account {
         address: not_signer,
         lamports: 1_000_000,
         data: vec![],
-        owner: quasar_svm::system_program::ID,
+        owner: crate::compat::system_program::ID,
         executable: false,
     };
 
     let result = svm.process_instruction(&ix, &[target_account, non_signer_account]);
-    result.assert_error(quasar_svm::ProgramError::MissingRequiredSignature);
+    result.assert_error(crate::compat::ProgramError::MissingRequiredSignature);
 }
 
 /// Raw + inline asm: the handler uses sBPF ldxdw/stxdw to copy a u64
@@ -228,7 +228,7 @@ fn raw_asm_write_succeeds() {
     let signer = Pubkey::new_unique();
     let target = Pubkey::new_unique();
 
-    let target_account = quasar_svm::Account {
+    let target_account = crate::compat::Account {
         address: target,
         lamports: 1_000_000,
         data: vec![0u8; 32],
@@ -244,12 +244,12 @@ fn raw_asm_write_succeeds() {
     let ix = Instruction {
         program_id: quasar_test_raw::ID,
         accounts: vec![
-            quasar_svm::AccountMeta {
+            crate::compat::AccountMeta {
                 pubkey: target,
                 is_signer: false,
                 is_writable: true,
             },
-            quasar_svm::AccountMeta {
+            crate::compat::AccountMeta {
                 pubkey: signer,
                 is_signer: true,
                 is_writable: false,
@@ -281,7 +281,7 @@ fn raw_write_fails_with_short_data() {
     let signer = Pubkey::new_unique();
     let target = Pubkey::new_unique();
 
-    let target_account = quasar_svm::Account {
+    let target_account = crate::compat::Account {
         address: target,
         lamports: 1_000_000,
         data: vec![0u8; 32],
@@ -295,12 +295,12 @@ fn raw_write_fails_with_short_data() {
     let ix = Instruction {
         program_id: quasar_test_raw::ID,
         accounts: vec![
-            quasar_svm::AccountMeta {
+            crate::compat::AccountMeta {
                 pubkey: target,
                 is_signer: false,
                 is_writable: true,
             },
-            quasar_svm::AccountMeta {
+            crate::compat::AccountMeta {
                 pubkey: signer,
                 is_signer: true,
                 is_writable: false,
@@ -310,7 +310,7 @@ fn raw_write_fails_with_short_data() {
     };
 
     let result = svm.process_instruction(&ix, &[target_account, signer_account(signer)]);
-    result.assert_error(quasar_svm::ProgramError::InvalidInstructionData);
+    result.assert_error(crate::compat::ProgramError::InvalidInstructionData);
 }
 
 // callx dispatch proves the SVM accepts indirect function calls via function
@@ -321,7 +321,7 @@ fn callx_dispatch_selector_0_writes_aa() {
     let mut svm = svm_raw();
     let target = Pubkey::new_unique();
 
-    let target_account = quasar_svm::Account {
+    let target_account = crate::compat::Account {
         address: target,
         lamports: 1_000_000,
         data: vec![0u8; 32],
@@ -334,7 +334,7 @@ fn callx_dispatch_selector_0_writes_aa() {
 
     let ix = Instruction {
         program_id: quasar_test_raw::ID,
-        accounts: vec![quasar_svm::AccountMeta {
+        accounts: vec![crate::compat::AccountMeta {
             pubkey: target,
             is_signer: false,
             is_writable: true,
@@ -361,7 +361,7 @@ fn callx_dispatch_selector_1_writes_bb() {
     let mut svm = svm_raw();
     let target = Pubkey::new_unique();
 
-    let target_account = quasar_svm::Account {
+    let target_account = crate::compat::Account {
         address: target,
         lamports: 1_000_000,
         data: vec![0u8; 32],
@@ -374,7 +374,7 @@ fn callx_dispatch_selector_1_writes_bb() {
 
     let ix = Instruction {
         program_id: quasar_test_raw::ID,
-        accounts: vec![quasar_svm::AccountMeta {
+        accounts: vec![crate::compat::AccountMeta {
             pubkey: target,
             is_signer: false,
             is_writable: true,

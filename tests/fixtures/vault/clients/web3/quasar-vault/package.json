@@ -1,0 +1,23 @@
+{
+  "name": "quasar-vault-client-web3",
+  "version": "0.1.0",
+  "description": "Generated Solana client for the quasar_vault program.",
+  "license": "Apache-2.0 OR MIT",
+  "type": "module",
+  "types": "./client.ts",
+  "exports": {
+    ".": {
+      "types": "./client.ts",
+      "default": "./client.ts"
+    }
+  },
+  "files": [
+    "client.ts",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "dependencies": {
+    "@solana/codecs": "^6.2.0",
+    "@solana/web3.js": "^3.0.0-rc.2"
+  }
+}

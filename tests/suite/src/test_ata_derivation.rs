@@ -1,9 +1,9 @@
 use {
+    crate::compat::Pubkey,
     crate::helpers::*,
     quasar_spl::{
         get_associated_token_address_const, get_associated_token_address_with_program_const,
     },
-    quasar_svm::Pubkey,
 };
 
 #[test]

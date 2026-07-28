@@ -1,0 +1,20 @@
+error[E0080]: evaluation panicked: PodString<N, PFX>: PFX must be 1, 2, 4, or 8
+  --> /Users/leo/.cargo/git/checkouts/zeropod-d8fda269950b7752/d08742d/zeropod/src/pod/string.rs:26:9
+   |
+26 | /         assert!(
+27 | |             PFX == 1 || PFX == 2 || PFX == 4 || PFX == 8,
+28 | |             "PodString<N, PFX>: PFX must be 1, 2, 4, or 8"
+29 | |         );
+   | |_________^ evaluation of `quasar_lang::String::<10, 3>::_CAP_CHECK` failed here
+
+note: erroneous constant encountered
+  --> /Users/leo/.cargo/git/checkouts/zeropod-d8fda269950b7752/d08742d/zeropod/src/pod/string.rs:37:27
+   |
+37 |     pub const VALID: () = Self::_CAP_CHECK;
+   |                           ^^^^^^^^^^^^^^^^
+
+note: erroneous constant encountered
+ --> tests/compile_fail_local/pod_string_invalid_pfx.rs:6:15
+  |
+6 | const _: () = PodString::<10, 3>::VALID;
+  |               ^^^^^^^^^^^^^^^^^^^^^^^^^

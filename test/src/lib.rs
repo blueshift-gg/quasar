@@ -1,188 +1,142 @@
 //! Fixture-first tests for Solana programs built with Quasar.
 //!
-//! [`quasar_test`] turns an ordinary Rust test into an isolated [`Test`]
-//! world loaded with the current program. [`fixture`] provides composable
-//! account setup, while [`Outcome`] keeps execution assertions structured and
+//! [`quasar_test`] turns an ordinary Rust test into an isolated [`Ctx`] world
+//! loaded with the current program. [`fixture`] provides composable account
+//! setup, while [`Outcome`] keeps execution assertions structured and
 //! independent of the SVM that ran the transaction.
 //!
 //! ```rust,ignore
-//! use quasar_test::{fixture::Wallet, prelude::*};
+//! use quasar_test::prelude::*;
 //!
 //! #[quasar_test]
-//! fn initializes(test: &mut Test) {
-//!     let authority = test.add(Wallet::new());
-//!     test.send(InitializeInstruction { authority }).succeeds();
+//! fn initializes() {
+//!     let authority = ctx.add(Wallet::account());
+//!     ctx.execute(InitializeInstruction { authority }).check(Outcome::success());
 //! }
 //! ```
+//!
+//! [`fixture::Wallet::account`] funds an actor with the default balance;
+//! [`fixture::Wallet::fund`] sets an exact one. Any signer a transaction names
+//! but never installs is auto-funded on execute, so co-signers cost nothing extra.
+//!
+//! ## Adapter over Parallax
+//!
+//! quasar-test is a thin adapter over the [`parallax_svm`] harness. The SVM
+//! world, fixtures, `Outcome` reporting, and program discovery all live in
+//! Parallax and are re-exported here unchanged. quasar-test adds the
+//! Quasar-specific sugar on top: quasar-lang `SeedSlices` PDA derivation
+//! ([`Ctx::derive_pda`]), the strict, discriminator- and owner-checked typed
+//! state API ([`Ctx::read`]/[`Ctx::write`]/the strict [`State`] checks), the
+//! `#[quasar_test]` attribute, and the `QUASAR_PROGRAM_PATH` bridge.
 
 #![warn(missing_docs)]
 
-mod backend;
 pub mod fixture;
-mod fixtures;
 mod outcome;
-mod setup;
-mod types;
 mod world;
 
 pub use {
-    outcome::Outcome,
-    quasar_svm::{
-        system_program, AccountMeta, Instruction, Pubkey, SPL_ASSOCIATED_TOKEN_PROGRAM_ID,
-        SPL_TOKEN_2022_PROGRAM_ID, SPL_TOKEN_PROGRAM_ID,
-    },
+    outcome::{Outcome, State},
     quasar_test_derive::quasar_test,
-    setup::{SetupError, TestBuilder, PROGRAM_PATH_ENV},
-    types::{Account, AccountChange, ProgramError},
-    world::{Snapshot, Test, DEFAULT_WALLET_LAMPORTS},
+    world::{Ctx, CtxBuilder, Snapshot, PROGRAM_PATH_ENV},
 };
+
+// Re-exported unchanged from Parallax so existing imports resolve exactly as
+// before: the account/error types, the instruction and address types, the
+// check grammar (`CheckFn`, `bundle`, `Cu`, the verdict-error trait),
+// program discovery errors, the co-signer helper, and the SPL program
+// constants.
+pub use parallax_svm::{
+    bundle, co_signers, system_program, Account, AccountChange, AccountMeta, CheckFn, Cu,
+    DataExpected, Expected, ExpectedBytes, Instruction, IntoInstructions, IntoTransactionError,
+    Many, One, ProgramError, Pubkey, Raw, ReturnData, SetupError, Typed, DEFAULT_WALLET_LAMPORTS,
+    SPL_ASSOCIATED_TOKEN_PROGRAM_ID, SPL_TOKEN_2022_PROGRAM_ID, SPL_TOKEN_PROGRAM_ID,
+};
+
+/// Parallax's schema-only snapshot, distinct from quasar-test's strict
+/// [`Snapshot`]; returned by the deref-reachable `(*ctx).read(..)`.
+pub use parallax_svm::Snapshot as SchemaSnapshot;
 
 /// Imports used by most program tests.
 pub mod prelude {
     pub use crate::{
+        bundle, co_signers,
         fixture::{
-            AssociatedTokenAccount, Fixture, Mint, Program, TokenAccount, TokenProgram, Wallet,
+            AssociatedTokenAccount, Dump, Fixture, Load, Mint, Program, TokenAccount, TokenProgram,
+            Wallet,
         },
-        quasar_test, system_program, Account, AccountChange, AccountMeta, Instruction, Outcome,
-        ProgramError, Pubkey, Snapshot, Test, DEFAULT_WALLET_LAMPORTS,
-        SPL_ASSOCIATED_TOKEN_PROGRAM_ID, SPL_TOKEN_2022_PROGRAM_ID, SPL_TOKEN_PROGRAM_ID,
+        quasar_test, system_program, Account, AccountChange, AccountMeta, CheckFn, Ctx, Cu,
+        Expected, ExpectedBytes, Instruction, IntoInstructions, Outcome, ProgramError, Pubkey,
+        ReturnData, Snapshot, State, DEFAULT_WALLET_LAMPORTS, SPL_ASSOCIATED_TOKEN_PROGRAM_ID,
+        SPL_TOKEN_2022_PROGRAM_ID, SPL_TOKEN_PROGRAM_ID,
     };
 }
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::{
-            backend::Backend,
-            fixture::{AssociatedTokenAccount, Fixture, Mint, TokenAccount, TokenProgram, Wallet},
-            setup::resolve_program_path_from_named,
-            Account, ProgramError, Pubkey, SetupError, Test, SPL_TOKEN_2022_PROGRAM_ID,
-        },
-        std::{fs, path::PathBuf},
+    use crate::{
+        co_signers,
+        fixture::{Dump, Load, Wallet},
+        AccountMeta, Ctx, Instruction, Pubkey,
     };
 
-    fn temp_dir(name: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "quasar-test-{name}-{}-{}",
-            std::process::id(),
-            std::thread::current().name().unwrap_or("test")
-        ))
+    /// Compile-level proof that the `Dump`/`Load` fixtures delegate through
+    /// quasar-test's `Fixture` trait; network- and file-backed installs run in
+    /// the example suites, not here.
+    #[allow(dead_code)]
+    fn dump_and_load_fixtures_delegate(test: &mut Ctx) {
+        let [_pool, _oracle] = test.add(Dump::accounts([
+            Pubkey::new_from_array([1; 32]),
+            Pubkey::new_from_array([2; 32]),
+        ]));
+        let _accounts: Vec<Pubkey> = test.add(Load::accounts("fixtures/pool.dump"));
+        let _program: Pubkey = test.add(Load::program("fixtures/amm.dump"));
+        let _refreshed: Vec<Pubkey> = test.add(Dump::refresh_all());
     }
 
-    fn empty_test() -> Test {
-        Test {
-            backend: Backend::new(),
-            program_id: Pubkey::new_from_array([42; 32]),
-            program_path: PathBuf::new(),
-            fresh_addresses: 0,
+    // The delegated builder options end-to-end: a program-less world with a
+    // configured RPC executes a bare system transfer against the built-in
+    // programs.
+    #[test]
+    fn builder_delegations_build_a_program_less_world() {
+        let mut test = Ctx::builder(Pubkey::new_from_array([42; 32]))
+            .rpc("http://127.0.0.1:1")
+            .no_program()
+            .build()
+            .expect("program-less world builds");
+
+        let payer = test.add(Wallet::account());
+        let recipient = Pubkey::new_from_array([7; 32]);
+        let mut data = vec![2, 0, 0, 0];
+        data.extend_from_slice(&1_000_000u64.to_le_bytes());
+
+        test.execute(Instruction {
+            program_id: crate::system_program::ID,
+            accounts: vec![
+                AccountMeta::new(payer, true),
+                AccountMeta::new(recipient, false),
+            ],
+            data,
+        })
+        .checks([
+            crate::Outcome::success(),
+            crate::Account::lamports(recipient, 1_000_000),
+        ]);
+    }
+
+    #[test]
+    fn co_signers_are_read_only_signer_metas() {
+        let first = Pubkey::new_from_array([1; 32]);
+        let second = Pubkey::new_from_array([2; 32]);
+
+        let metas = co_signers(&[first, second]);
+
+        assert_eq!(metas.len(), 2);
+        for (meta, expected) in metas.iter().zip([first, second]) {
+            assert_eq!(meta.pubkey, expected);
+            assert!(meta.is_signer);
+            assert!(!meta.is_writable);
         }
-    }
-
-    #[test]
-    fn resolves_the_only_deployed_program() {
-        let root = temp_dir("resolve");
-        let nested = root.join("program/tests");
-        let deploy = root.join("target/deploy");
-        fs::create_dir_all(&nested).unwrap();
-        fs::create_dir_all(&deploy).unwrap();
-        fs::write(deploy.join("example.so"), b"elf").unwrap();
-
-        assert_eq!(
-            resolve_program_path_from_named(&nested, None).unwrap(),
-            deploy.join("example.so")
-        );
-
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn resolves_the_named_crate_among_many_programs() {
-        let root = temp_dir("named");
-        let deploy = root.join("target/deploy");
-        fs::create_dir_all(&deploy).unwrap();
-        fs::write(deploy.join("my_program.so"), b"elf").unwrap();
-        fs::write(deploy.join("other_program.so"), b"elf").unwrap();
-
-        assert_eq!(
-            resolve_program_path_from_named(&root, Some("my-program")).unwrap(),
-            deploy.join("my_program.so")
-        );
-
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn rejects_ambiguous_deploy_directories() {
-        let root = temp_dir("ambiguous");
-        let deploy = root.join("target/deploy");
-        fs::create_dir_all(&deploy).unwrap();
-        fs::write(deploy.join("one.so"), b"elf").unwrap();
-        fs::write(deploy.join("two.so"), b"elf").unwrap();
-
-        assert!(matches!(
-            resolve_program_path_from_named(&root, None),
-            Err(SetupError::AmbiguousPrograms { .. })
-        ));
-
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn fixtures_are_deterministic_and_compose() {
-        let mut test = empty_test();
-        let wallet = test.add(Wallet::new().lamports(42));
-        let mint = test.add(
-            Mint::new(wallet)
-                .supply(1_000)
-                .decimals(9)
-                .token_program(TokenProgram::Token2022),
-        );
-        let tokens = test.add(
-            TokenAccount::new(mint, wallet)
-                .amount(600)
-                .token_program(TokenProgram::Token2022),
-        );
-        let associated = test.add(
-            AssociatedTokenAccount::new(mint, wallet)
-                .amount(400)
-                .token_program(TokenProgram::Token2022),
-        );
-
-        assert_eq!(test.lamports(wallet), 42);
-        assert_eq!(test.supply(mint), 1_000);
-        assert_eq!(test.tokens(tokens), 600);
-        assert_eq!(test.tokens(associated), 400);
-        assert_eq!(test.account(mint).unwrap().owner, SPL_TOKEN_2022_PROGRAM_ID);
-        assert_eq!(
-            associated,
-            test.derive_ata(wallet, mint, TokenProgram::Token2022)
-        );
-    }
-
-    #[test]
-    fn applications_can_define_protocol_fixtures() {
-        struct ProtocolFixture;
-
-        impl Fixture for ProtocolFixture {
-            type Output = (Pubkey, Pubkey);
-
-            fn install(self, test: &mut Test) -> Self::Output {
-                let authority = test.add(Wallet::new());
-                let state = test.fresh_address();
-                test.add(Account::new(state, test.program_id(), 1, vec![1, 2, 3]));
-                (authority, state)
-            }
-        }
-
-        let mut test = empty_test();
-        let (authority, state) = test.add(ProtocolFixture);
-        assert_ne!(authority, state);
-        assert_eq!(test.account(state).unwrap().data, [1, 2, 3]);
-    }
-
-    #[test]
-    fn stable_program_errors_do_not_expose_the_backend_type() {
-        let error = ProgramError::from(quasar_svm::ProgramError::InvalidInstructionData);
-        assert_eq!(error, ProgramError::InvalidInstructionData);
+        assert!(co_signers(&[]).is_empty());
     }
 }

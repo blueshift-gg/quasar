@@ -1,6 +1,6 @@
 use {
+    crate::compat::{Instruction, Pubkey},
     crate::helpers::*,
-    quasar_svm::{Instruction, Pubkey},
     quasar_test_token_init::cpi::*,
 };
 
@@ -58,7 +58,7 @@ fn init_mint_spl_already_initialized() {
             signer_account(authority),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::AccountAlreadyInitialized);
+    result.assert_error(crate::compat::ProgramError::AccountAlreadyInitialized);
 }
 
 // init mint with Token-2022.
@@ -115,7 +115,7 @@ fn init_mint_t22_already_initialized() {
             signer_account(authority),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::AccountAlreadyInitialized);
+    result.assert_error(crate::compat::ProgramError::AccountAlreadyInitialized);
 }
 
 // init_if_needed mint without freeze, SPL Token.
@@ -214,7 +214,7 @@ fn init_if_needed_mint_spl_wrong_decimals() {
             signer_account(authority),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -241,7 +241,7 @@ fn init_if_needed_mint_spl_wrong_authority() {
             signer_account(authority),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -273,7 +273,7 @@ fn init_if_needed_mint_spl_wrong_owner() {
     );
     // The existing account is system-owned, so init takes the create
     // branch: SystemError::AccountAlreadyInUse.
-    result.assert_error(quasar_svm::ProgramError::Custom(0));
+    result.assert_error(crate::compat::ProgramError::Custom(0));
 }
 
 #[test]
@@ -303,7 +303,7 @@ fn init_if_needed_mint_spl_unexpected_freeze() {
             signer_account(authority),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 // init_if_needed mint without freeze, Token-2022.
@@ -446,7 +446,7 @@ fn init_if_needed_mint_freeze_spl_wrong_freeze_authority() {
             signer_account(freeze_auth),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -476,7 +476,7 @@ fn init_if_needed_mint_freeze_spl_missing_freeze_authority() {
             signer_account(freeze_auth),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 // init_if_needed mint with freeze, Token-2022.
@@ -519,5 +519,5 @@ fn init_if_needed_mint_freeze_t22_happy_new() {
 // init mint with metadata, SPL Token.
 
 // Skipped: InitMintWithMetadata requires the Metaplex Token Metadata program
-// to be loaded into the SVM, which QuasarSvm does not bundle. These tests
+// to be loaded into the SVM, which SuiteSvm does not bundle. These tests
 // would need a custom program loader or mock for the metadata program.
