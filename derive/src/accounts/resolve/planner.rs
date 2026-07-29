@@ -97,10 +97,7 @@ fn plan_field(
 
     if sem.has_init() {
         if let Some(addr) = &sem.address {
-            pre_load.push(PreLoadStep::VerifyAddress(Box::new(AddressSpec {
-                expr: addr.expr.clone(),
-                error: addr.error.clone(),
-            })));
+            pre_load.push(PreLoadStep::VerifyAddress(Box::new(address_spec(addr))));
         }
     }
 
@@ -151,10 +148,7 @@ fn plan_field(
     // Post-load: address verification for non-init fields.
     if !sem.has_init() {
         if let Some(addr) = &sem.address {
-            post_load.push(PostLoadStep::VerifyExistingAddress(AddressSpec {
-                expr: addr.expr.clone(),
-                error: addr.error.clone(),
-            }));
+            post_load.push(PostLoadStep::VerifyExistingAddress(address_spec(addr)));
         }
     }
 
@@ -246,7 +240,9 @@ fn plan_idl_resolver(
     instruction_args: &[InstructionArg],
 ) -> Option<IdlResolverPlan> {
     if let Some(AddressConstraint {
-        kind: AddressKind::Seeds { account_ty, seeds },
+        kind: AddressKind::Seeds {
+            account_ty, seeds, ..
+        },
         ..
     }) = &sem.address
     {
@@ -310,6 +306,16 @@ fn account_type_name(ty: &Type) -> Option<String> {
         .map(|segment| segment.ident.to_string())
 }
 
+/// Project an `AddressConstraint` into the emitter's `AddressSpec`, carrying
+/// the const-PDA eligibility classified in lowering.
+fn address_spec(addr: &AddressConstraint) -> AddressSpec {
+    AddressSpec {
+        expr: addr.expr.clone(),
+        error: addr.error.clone(),
+        const_eligible: matches!(&addr.kind, AddressKind::Seeds { const_eligible, .. } if *const_eligible),
+    }
+}
+
 /// The `{field}_signer` helper is emitted for Single fields whose `address` is
 /// a typed-seeds PDA.
 fn plan_signer_helper(sem: &FieldSemantics) -> Option<SignerHelperPlan> {
@@ -352,10 +358,7 @@ fn plan_init(
 ) -> InitPlan {
     // A preceding `VerifyAddress` step stored `__addr_{f}`/`__bumps_{f}` when
     // the field has an `address`; init signs with those seeds.
-    let verified_address = sem.address.as_ref().map(|addr| AddressSpec {
-        expr: addr.expr.clone(),
-        error: addr.error.clone(),
-    });
+    let verified_address = sem.address.as_ref().map(address_spec);
 
     // If there are behavior groups attached, this is a delegated init.
     if sem.groups.is_empty() {

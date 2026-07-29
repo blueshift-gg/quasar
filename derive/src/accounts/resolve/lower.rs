@@ -307,7 +307,12 @@ fn classify_address(expr: &Expr, scope: &SeedScope) -> AddressKind {
         .iter()
         .map(|arg| resolve_seed_ref(arg, scope))
         .collect();
-    AddressKind::Seeds { account_ty, seeds }
+    let const_eligible = call.args.iter().all(|arg| matches!(arg, Expr::Lit(_)));
+    AddressKind::Seeds {
+        account_ty,
+        seeds,
+        const_eligible,
+    }
 }
 
 /// Strip surrounding parens/groups and return the inner call if it is a

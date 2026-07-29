@@ -48,3 +48,6 @@ pub use init_const_seed::*;
 
 pub mod verify_scoped_item;
 pub use verify_scoped_item::*;
+
+pub mod verify_literal_seed;
+pub use verify_literal_seed::*;

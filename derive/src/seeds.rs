@@ -265,7 +265,7 @@ pub(crate) fn generate_seeds_impl(
 
         impl #impl_generics #name #ty_generics #where_clause {
             #[inline(always)]
-            #vis fn seeds<'__quasar_seed>(
+            #vis const fn seeds<'__quasar_seed>(
                 #( #param_names: #param_types ),*
             ) -> #seed_set<'__quasar_seed> {
                 #seed_set {
@@ -293,7 +293,7 @@ pub(crate) fn generate_seeds_impl(
 
         impl<'__quasar_seed> #seed_set<'__quasar_seed> {
             #[inline(always)]
-            pub fn with_bump(self, bump: u8) -> #seed_set_bump<'__quasar_seed> {
+            pub const fn with_bump(self, bump: u8) -> #seed_set_bump<'__quasar_seed> {
                 #seed_set_bump {
                     inner: self,
                     _bump: [bump],
@@ -301,7 +301,7 @@ pub(crate) fn generate_seeds_impl(
             }
 
             #[inline(always)]
-            pub fn as_slices(&self) -> [&[u8]; #n_slices] {
+            pub const fn as_slices(&self) -> [&[u8]; #n_slices] {
                 [ #( #slice_exprs ),* ]
             }
         }
@@ -315,7 +315,7 @@ pub(crate) fn generate_seeds_impl(
 
         impl<'__quasar_seed> #seed_set_bump<'__quasar_seed> {
             #[inline(always)]
-            pub fn as_slices(&self) -> [&[u8]; #n_slices_with_bump] {
+            pub const fn as_slices(&self) -> [&[u8]; #n_slices_with_bump] {
                 [ #( #slice_exprs_bump ),* ]
             }
 

@@ -14,7 +14,7 @@ pub struct VaultPdaSeedSetWithBump<'__quasar_seed> {
 }
 impl VaultPda {
     #[inline(always)]
-    pub fn seeds<'__quasar_seed>(
+    pub const fn seeds<'__quasar_seed>(
         authority: &'__quasar_seed ::quasar_lang::prelude::Address,
     ) -> VaultPdaSeedSet<'__quasar_seed> {
         VaultPdaSeedSet {
@@ -36,15 +36,15 @@ impl ::quasar_lang::traits::SeedParam<0usize> for VaultPda {
 }
 impl<'__quasar_seed> VaultPdaSeedSet<'__quasar_seed> {
     #[inline(always)]
-    pub fn with_bump(self, bump: u8) -> VaultPdaSeedSetWithBump<'__quasar_seed> {
+    pub const fn with_bump(self, bump: u8) -> VaultPdaSeedSetWithBump<'__quasar_seed> {
         VaultPdaSeedSetWithBump {
             inner: self,
             _bump: [bump],
         }
     }
     #[inline(always)]
-    pub fn as_slices(&self) -> [&[u8]; 2usize] {
-        [b"vault", self._authority.as_ref()]
+    pub const fn as_slices(&self) -> [&[u8]; 2usize] {
+        [b"vault", self._authority.as_array().as_slice()]
     }
 }
 impl<'__quasar_seed> ::quasar_lang::traits::SeedSlices
@@ -56,8 +56,8 @@ for VaultPdaSeedSet<'__quasar_seed> {
 }
 impl<'__quasar_seed> VaultPdaSeedSetWithBump<'__quasar_seed> {
     #[inline(always)]
-    pub fn as_slices(&self) -> [&[u8]; 3usize] {
-        [b"vault", self.inner._authority.as_ref(), &self._bump]
+    pub const fn as_slices(&self) -> [&[u8]; 3usize] {
+        [b"vault", self.inner._authority.as_array().as_slice(), &self._bump]
     }
     /// Materialize the signer-seed array once.
     ///
@@ -118,7 +118,7 @@ for VaultPdaSeedSet<'__quasar_seed> {
         let __bump_ref = [bump];
         let slices: [&[u8]; 3usize] = [
             b"vault",
-            self._authority.as_ref(),
+            self._authority.as_array().as_slice(),
             __bump_ref.as_ref(),
         ];
         ::quasar_lang::pda::verify_program_address(&slices, program_id, actual)
@@ -135,7 +135,7 @@ for VaultPdaSeedSet<'__quasar_seed> {
     ) -> R {
         let seeds = [
             ::quasar_lang::cpi::Seed::from(b"vault"),
-            ::quasar_lang::cpi::Seed::from(self._authority.as_ref()),
+            ::quasar_lang::cpi::Seed::from(self._authority.as_array().as_slice()),
             ::quasar_lang::cpi::Seed::from(bump),
         ];
         let signer = ::quasar_lang::cpi::Signer::from(&seeds);

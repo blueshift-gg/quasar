@@ -103,7 +103,7 @@ impl SeedType {
             Some(p) => quote! { self.#p.#field_name },
         };
         match self {
-            SeedType::Address => quote! { #access.as_ref() },
+            SeedType::Address => quote! { #access.as_array().as_slice() },
             SeedType::U8
             | SeedType::U16
             | SeedType::U32
