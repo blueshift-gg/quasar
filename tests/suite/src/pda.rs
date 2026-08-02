@@ -1252,8 +1252,7 @@ fn test_literal_seed_verify_const_compare() {
     let (config, config_account, _) = init_literal_config(&mollusk);
 
     let instruction: Instruction = VerifyLiteralSeedInstruction {}.into();
-    let result =
-        mollusk.process_instruction(&instruction, &[(config, config_account.clone())]);
+    let result = mollusk.process_instruction(&instruction, &[(config, config_account.clone())]);
     assert!(
         result.program_result.is_ok(),
         "literal seed verify failed: {:?}",
