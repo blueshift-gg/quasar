@@ -169,6 +169,10 @@ pub(crate) struct AddressSpec {
     pub expr: Expr,
     /// Optional custom `@ error` mapped onto the verify call's failure.
     pub error: Option<Expr>,
+    /// Typed-seeds PDA whose seed arguments are all literals: the emitter
+    /// bakes address + bump in a `const` block against `crate::ID` instead of
+    /// deriving at runtime (see `AddressKind::Seeds::const_eligible`).
+    pub const_eligible: bool,
 }
 
 /// A field carries a generated stored-bump slot (`__bumps_{f}: u8` and a `u8`

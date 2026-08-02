@@ -135,6 +135,7 @@ pub(crate) enum AddressKind {
     Seeds {
         account_ty: syn::Path,
         seeds: Vec<SeedRef>,
+        const_eligible: bool,
     },
     /// Any other address expression (a constant or opaque derivation). The
     /// expression itself lives on `AddressConstraint::expr`.

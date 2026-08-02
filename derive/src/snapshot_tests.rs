@@ -125,6 +125,25 @@ fn accounts_init_payer() {
         .assert_eq(&expand_pretty(derive_accounts_inner(input)));
 }
 
+/// Const PDA: all-literal seeds bake address + bump in a `const` block — init
+/// skips the runtime bump search; verify collapses to one address compare.
+#[test]
+fn accounts_const_pda_literal_seeds() {
+    let input = quote! {
+        pub struct ConstPda {
+            #[account(mut)]
+            pub payer: Signer,
+            #[account(mut, init, payer = payer, address = Config::seeds())]
+            pub config: Account<Config>,
+            #[account(address = Registry::seeds())]
+            pub registry: Account<Registry>,
+            pub system_program: Program<SystemProgram>,
+        }
+    };
+    expect_test::expect_file!["expansions/accounts_const_pda_literal_seeds.rs"]
+        .assert_eq(&expand_pretty(derive_accounts_inner(input)));
+}
+
 /// Close capability: `close(dest = ...)` scheduled at the epilogue.
 #[test]
 fn accounts_close() {

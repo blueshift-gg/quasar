@@ -101,4 +101,9 @@ mod quasar_test_pda {
     pub fn init_const_seed(ctx: Ctx<InitConstSeed>) -> Result<(), ProgramError> {
         ctx.accounts.handler(&ctx.bumps)
     }
+
+    #[instruction(discriminator = 17)]
+    pub fn verify_literal_seed(ctx: Ctx<VerifyLiteralSeed>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
 }

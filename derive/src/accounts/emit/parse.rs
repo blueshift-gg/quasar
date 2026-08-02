@@ -159,11 +159,28 @@ fn emit_init_phase_typed(
                     let addr_var = format_ident!("__addr_{}", ident);
                     let addr_expr = &addr_spec.expr;
                     let term = address_verify_terminator(&addr_spec.error);
-                    stmts.push(quote! {
-                        let #addr_var = #addr_expr;
-                        #bump_var = #krate::address::AddressVerify::verify(
-                            &#addr_var, #ident.address(), __program_id,
-                        )#term;
+                    stmts.push(if addr_spec.const_eligible {
+                        let expected = const_pda_expr(addr_expr);
+                        quote! {
+                            let #addr_var = #addr_expr;
+                            #bump_var = {
+                                let (__expected_addr, __expected_bump) = #expected;
+                                if #krate::keys_eq(#ident.address(), &__expected_addr) {
+                                    Ok(__expected_bump)
+                                } else {
+                                    Err(#krate::prelude::ProgramError::from(
+                                        #krate::error::QuasarError::InvalidPda,
+                                    ))
+                                }
+                            }#term;
+                        }
+                    } else {
+                        quote! {
+                            let #addr_var = #addr_expr;
+                            #bump_var = #krate::address::AddressVerify::verify(
+                                &#addr_var, #ident.address(), __program_id,
+                            )#term;
+                        }
                     });
                 }
                 PreLoadStep::Init(init_plan) => {
@@ -283,6 +300,29 @@ fn emit_post_load_typed(
                 PostLoadStep::UserCheck(check) => {
                     let check_stmts = emit_user_check(ident, check);
                     (quote! { #(#check_stmts)* }, false)
+                }
+                PostLoadStep::VerifyExistingAddress(addr_spec) if addr_spec.const_eligible => {
+                    let bump_var = format_ident!("__bumps_{}", ident);
+                    let term = address_verify_terminator(&addr_spec.error);
+                    let expected = const_pda_expr(&addr_spec.expr);
+                    (
+                        quote! {
+                            {
+                                let (__expected_addr, __expected_bump) = #expected;
+                                #bump_var = if #krate::keys_eq(
+                                    #ident.to_account_view().address(),
+                                    &__expected_addr,
+                                ) {
+                                    Ok(__expected_bump)
+                                } else {
+                                    Err(#krate::prelude::ProgramError::from(
+                                        #krate::error::QuasarError::InvalidPda,
+                                    ))
+                                }#term;
+                            }
+                        },
+                        false,
+                    )
                 }
                 PostLoadStep::VerifyExistingAddress(addr_spec) => {
                     let bump_var = format_ident!("__bumps_{}", ident);
@@ -878,6 +918,26 @@ fn composite_assoc_ty(ty: &syn::Type) -> proc_macro2::TokenStream {
     // Composite field types are path types; fall back to the whole type token
     // (a localized trait error, never a cascade) if that ever fails to hold.
     strip_generics(ty).unwrap_or_else(|_| quote! { #ty })
+}
+
+/// Compile-time canonical PDA for an all-literal `X::seeds(..)` expression:
+/// a `const` block evaluating to `(Address, u8)`. Derivation runs entirely at
+/// compile time (`find_program_address_const` on `const_crypto`), so the
+/// runtime cost is a 32-byte load from rodata.
+///
+/// The program id is `crate::ID`: seed literals cannot reference another
+/// program, and the consuming crate declares its id with `declare_id!` (the
+/// same contract the `#[program]` event authority already relies on).
+fn const_pda_expr(addr_expr: &syn::Expr) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
+    quote! {
+        const {
+            #krate::pda::find_program_address_const(
+                &(#addr_expr).as_slices(),
+                &crate::ID,
+            )
+        }
+    }
 }
 
 /// Trailing operator for an `AddressVerify::verify*` call.

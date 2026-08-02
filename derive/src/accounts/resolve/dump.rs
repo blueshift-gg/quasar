@@ -138,10 +138,14 @@ fn dump_address_constraint(out: &mut String, addr: &Option<AddressConstraint>) {
 fn address_kind(kind: &AddressKind) -> String {
     match kind {
         AddressKind::Opaque => "Opaque".to_string(),
-        AddressKind::Seeds { account_ty, seeds } => {
+        AddressKind::Seeds {
+            account_ty,
+            seeds,
+            const_eligible,
+        } => {
             let seeds: Vec<String> = seeds.iter().map(seed_ref).collect();
             format!(
-                "Seeds(account_ty=`{}` seeds=[{}])",
+                "Seeds(account_ty=`{}` seeds=[{}] const_eligible={const_eligible})",
                 toks(account_ty),
                 seeds.join(", "),
             )

@@ -1200,3 +1200,96 @@ fn test_wrong_stored_bumps_rejected() {
         );
     }
 }
+
+// Const PDA path: all-literal seeds (`ConfigAccount::seeds()`) are derived at
+// compile time, so create skips the runtime bump search and verify collapses
+// to a single 32-byte address compare (no sol_sha256, no curve syscall).
+
+/// Init the literal-seed config PDA, returning its address, resulting
+/// account, and the CU consumed by the create instruction.
+fn init_literal_config(mollusk: &Mollusk) -> (Address, Account, u64) {
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let payer = Address::new_unique();
+    let (config, _) = Address::find_program_address(&[b"config"], &quasar_test_pda::ID);
+
+    let instruction: Instruction = InitLiteralSeedInstruction { payer }.into();
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (payer, Account::new(1_000_000_000, 0, &system_program)),
+            (config, Account::default()),
+            (system_program, system_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_ok(),
+        "literal seed init failed: {:?}",
+        result.program_result
+    );
+    (
+        config,
+        result.resulting_accounts[1].1.clone(),
+        result.compute_units_consumed,
+    )
+}
+
+#[test]
+fn test_literal_seed_create_cu_no_bump_search() {
+    let mollusk = setup();
+    let (_, _, cu) = init_literal_config(&mollusk);
+    // The runtime path (sol_sha256 + sol_curve_validate_point bump search)
+    // costs ~700 CU more. Ceiling set from a measured 1381 CU with headroom.
+    assert!(
+        cu < 1_500,
+        "literal-seed create consumed {cu} CU; expected the compile-time \
+         derivation (no bump search) to stay below 1500"
+    );
+}
+
+#[test]
+fn test_literal_seed_verify_const_compare() {
+    let mollusk = setup();
+    let (config, config_account, _) = init_literal_config(&mollusk);
+
+    let instruction: Instruction = VerifyLiteralSeedInstruction {}.into();
+    let result = mollusk.process_instruction(&instruction, &[(config, config_account.clone())]);
+    assert!(
+        result.program_result.is_ok(),
+        "literal seed verify failed: {:?}",
+        result.program_result
+    );
+    // A bare address compare is double-digit CU; the runtime hash path is
+    // ~240 CU.
+    assert!(
+        result.compute_units_consumed < 100,
+        "literal-seed verify consumed {} CU; expected a bare address compare",
+        result.compute_units_consumed
+    );
+
+    // Deterministic: an identical transaction consumes identical CU.
+    let rerun = mollusk.process_instruction(&instruction, &[(config, config_account)]);
+    assert_eq!(
+        result.compute_units_consumed, rerun.compute_units_consumed,
+        "verify CU must be deterministic across identical runs"
+    );
+}
+
+#[test]
+fn test_literal_seed_verify_wrong_account_fails() {
+    let mollusk = setup();
+    let (_, config_account, _) = init_literal_config(&mollusk);
+
+    // Same (valid) account data, wrong address: the baked-address compare
+    // must reject it — the check is real, not a no-op.
+    let wrong = Address::new_unique();
+    let mut instruction: Instruction = VerifyLiteralSeedInstruction {}.into();
+    instruction.accounts[0].pubkey = wrong;
+
+    let result = mollusk.process_instruction(&instruction, &[(wrong, config_account)]);
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(quasar_lang::prelude::ProgramError::Custom(
+            quasar_lang::prelude::QuasarError::InvalidPda as u32
+        ))
+    );
+}
