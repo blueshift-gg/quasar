@@ -193,6 +193,101 @@ impl RemainingAccount {
     }
 }
 
+/// Stack slot owned by `#[instruction]` codegen for `CtxWithRemaining`.
+/// Parsed remaining groups with epilogues are moved here on `Drop` and run
+/// only after the handler returns `Ok`.
+#[doc(hidden)]
+pub struct RemainingLifecycle {
+    epilogue: Option<unsafe fn(*mut u8) -> Result<(), ProgramError>>,
+    drop_items: Option<unsafe fn(*mut u8)>,
+    data: core::mem::MaybeUninit<[u8; MAX_DEFERRED_REMAINING]>,
+    occupied: bool,
+    overflow: bool,
+}
+
+const MAX_DEFERRED_REMAINING: usize = 256;
+
+impl RemainingLifecycle {
+    #[inline(always)]
+    pub const fn new() -> Self {
+        Self {
+            epilogue: None,
+            drop_items: None,
+            data: core::mem::MaybeUninit::uninit(),
+            occupied: false,
+            overflow: false,
+        }
+    }
+
+    #[inline(always)]
+    fn data_ptr(&mut self) -> *mut u8 {
+        self.data.as_mut_ptr() as *mut u8
+    }
+
+    #[inline(always)]
+    fn defer_erased(
+        &mut self,
+        src: *mut u8,
+        size: usize,
+        epilogue: unsafe fn(*mut u8) -> Result<(), ProgramError>,
+        drop_items: unsafe fn(*mut u8),
+    ) {
+        if self.occupied || size > MAX_DEFERRED_REMAINING {
+            self.overflow = true;
+            // SAFETY: `src` is a live `Remaining<T, N>` being dropped.
+            unsafe { drop_items(src) };
+            return;
+        }
+        // SAFETY: `data` has room for `size` bytes and is unoccupied.
+        unsafe {
+            core::ptr::copy_nonoverlapping(src, self.data_ptr(), size);
+        }
+        self.epilogue = Some(epilogue);
+        self.drop_items = Some(drop_items);
+        self.occupied = true;
+    }
+
+    /// Run deferred remaining epilogues. Call only after a successful handler.
+    #[inline(always)]
+    pub fn run_epilogue(&mut self) -> Result<(), ProgramError> {
+        if self.overflow {
+            self.drop_initialized();
+            return Err(ProgramError::InvalidAccountData);
+        }
+        let result = if let Some(epilogue) = self.epilogue.take() {
+            // SAFETY: `defer` wrote a live `Remaining<T, N>` into `data`.
+            unsafe { epilogue(self.data_ptr()) }
+        } else {
+            Ok(())
+        };
+        self.drop_initialized();
+        result
+    }
+
+    #[inline(always)]
+    fn drop_initialized(&mut self) {
+        if let Some(drop_items) = self.drop_items.take() {
+            // SAFETY: `data` still holds the deferred remaining value.
+            unsafe { drop_items(self.data_ptr()) };
+        }
+        self.occupied = false;
+    }
+}
+
+impl Drop for RemainingLifecycle {
+    #[inline(always)]
+    fn drop(&mut self) {
+        self.drop_initialized();
+    }
+}
+
+unsafe fn remaining_drop_thunk<T, const N: usize>(ptr: *mut u8) {
+    // SAFETY: `ptr` is a deferred `Remaining<T, N>`.
+    let remaining = unsafe { &mut *(ptr as *mut Remaining<T, N>) };
+    remaining.drop_initialized();
+    remaining.len = 0;
+}
+
 /// Zero-allocation remaining accounts accessor.
 ///
 /// Uses a boundary pointer instead of a count, with no reads or arithmetic
@@ -211,6 +306,8 @@ pub struct RemainingAccounts<'a> {
     program_id: Option<&'a Address>,
     /// Instruction data for typed account-group parsing.
     data: &'a [u8],
+    /// Instruction-owned slot that runs remaining-group epilogues on success.
+    lifecycle: *mut RemainingLifecycle,
 }
 
 impl<'a> RemainingAccounts<'a> {
@@ -224,6 +321,7 @@ impl<'a> RemainingAccounts<'a> {
             declared,
             program_id: None,
             data: &[],
+            lifecycle: core::ptr::null_mut(),
         }
     }
 
@@ -243,7 +341,15 @@ impl<'a> RemainingAccounts<'a> {
             declared,
             program_id: Some(program_id),
             data,
+            lifecycle: core::ptr::null_mut(),
         }
+    }
+
+    #[doc(hidden)]
+    #[inline(always)]
+    pub fn with_lifecycle(mut self, lifecycle: *mut RemainingLifecycle) -> Self {
+        self.lifecycle = lifecycle;
+        self
     }
     /// Returns `true` if there are no remaining accounts.
     #[inline(always)]
@@ -312,6 +418,7 @@ impl<'a> RemainingAccounts<'a> {
             declared: self.declared,
             program_id: self.program_id,
             data: self.data,
+            lifecycle: self.lifecycle,
         })
     }
 }
@@ -320,6 +427,12 @@ impl<'a> RemainingAccounts<'a> {
 pub trait RemainingItem<'input>: Sized {
     const COUNT: usize;
     const REJECT_DUPLICATES: bool = true;
+    const HAS_EPILOGUE: bool = false;
+
+    #[inline(always)]
+    fn epilogue(&mut self) -> Result<(), ProgramError> {
+        Ok(())
+    }
 
     /// # Safety
     ///
@@ -571,6 +684,10 @@ pub type RemainingIter<'a> = RemainingIterImpl<'a>;
 pub struct Remaining<T, const N: usize> {
     items: [core::mem::MaybeUninit<T>; N],
     len: usize,
+    lifecycle: *mut RemainingLifecycle,
+    has_epilogue: bool,
+    epilogue_fn: unsafe fn(*mut u8) -> Result<(), ProgramError>,
+    drop_fn: unsafe fn(*mut u8),
 }
 
 impl<T, const N: usize> Remaining<T, N> {
@@ -585,6 +702,10 @@ impl<T, const N: usize> Remaining<T, N> {
                 core::mem::MaybeUninit::<[core::mem::MaybeUninit<T>; N]>::uninit().assume_init()
             },
             len: 0,
+            lifecycle: accounts.lifecycle,
+            has_epilogue: T::HAS_EPILOGUE,
+            epilogue_fn: Self::epilogue_fn(),
+            drop_fn: remaining_drop_thunk::<T, N>,
         };
         // SAFETY: An uninitialized `[MaybeUninit<Address>; MAX_REMAINING_ACCOUNTS]`
         // is valid.
@@ -693,6 +814,10 @@ impl<T, const N: usize> Remaining<T, N> {
                 core::mem::MaybeUninit::<[core::mem::MaybeUninit<T>; N]>::uninit().assume_init()
             },
             len: 0,
+            lifecycle: accounts.lifecycle,
+            has_epilogue: T::HAS_EPILOGUE,
+            epilogue_fn: Self::epilogue_fn(),
+            drop_fn: remaining_drop_thunk::<T, N>,
         };
         // SAFETY: An uninitialized `[MaybeUninit<Address>; N]` is valid.
         let mut seen = unsafe {
@@ -770,6 +895,12 @@ impl<T, const N: usize> Remaining<T, N> {
     }
 
     #[inline(always)]
+    pub fn as_mut_slice(&mut self) -> &mut [T] {
+        // SAFETY: Only the first `self.len` entries are initialized.
+        unsafe { core::slice::from_raw_parts_mut(self.items.as_mut_ptr() as *mut T, self.len) }
+    }
+
+    #[inline(always)]
     pub fn iter(&self) -> core::slice::Iter<'_, T> {
         self.as_slice().iter()
     }
@@ -788,10 +919,9 @@ impl<T, const N: usize> Remaining<T, N> {
     pub const fn is_empty(&self) -> bool {
         self.len == 0
     }
-}
 
-impl<T, const N: usize> Drop for Remaining<T, N> {
-    fn drop(&mut self) {
+    #[inline(always)]
+    fn drop_initialized(&mut self) {
         if !core::mem::needs_drop::<T>() {
             return;
         }
@@ -801,6 +931,76 @@ impl<T, const N: usize> Drop for Remaining<T, N> {
             unsafe { self.items[i].assume_init_drop() };
             i += 1;
         }
+    }
+
+    #[inline(always)]
+    fn epilogue_items<'input>(&mut self) -> Result<(), ProgramError>
+    where
+        T: RemainingItem<'input>,
+    {
+        if !T::HAS_EPILOGUE {
+            return Ok(());
+        }
+        let mut i = 0usize;
+        while i < self.len {
+            // SAFETY: Only slots below `self.len` are initialized.
+            unsafe { self.items[i].assume_init_mut().epilogue()? };
+            i += 1;
+        }
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub fn epilogue<'input>(&mut self) -> Result<(), ProgramError>
+    where
+        T: RemainingItem<'input>,
+    {
+        self.epilogue_items()
+    }
+
+    /// Invoked before the instruction's account lifetime ends.
+    #[inline(always)]
+    fn epilogue_fn<'input>() -> unsafe fn(*mut u8) -> Result<(), ProgramError>
+    where
+        T: RemainingItem<'input>,
+    {
+        unsafe fn thunk<'a, TT, const NN: usize>(ptr: *mut u8) -> Result<(), ProgramError>
+        where
+            TT: RemainingItem<'a>,
+        {
+            let remaining = unsafe { &mut *(ptr as *mut Remaining<TT, NN>) };
+            remaining.epilogue_items()
+        }
+        // SAFETY: `run_epilogue` runs before `'input` on the instruction ends.
+        unsafe {
+            core::mem::transmute::<
+                unsafe fn(*mut u8) -> Result<(), ProgramError>,
+                unsafe fn(*mut u8) -> Result<(), ProgramError>,
+            >(thunk::<'input, T, N>)
+        }
+    }
+}
+
+impl<T, const N: usize> Drop for Remaining<T, N> {
+    fn drop(&mut self) {
+        if self.has_epilogue && self.len > 0 && !self.lifecycle.is_null() {
+            let size = core::mem::size_of::<Self>();
+            let epilogue_fn = self.epilogue_fn;
+            let drop_fn = self.drop_fn;
+            // SAFETY: `lifecycle` is the instruction-owned slot bound for this
+            // `CtxWithRemaining` call, and it outlives the handler locals.
+            unsafe {
+                (*self.lifecycle).defer_erased(
+                    self as *mut Self as *mut u8,
+                    size,
+                    epilogue_fn,
+                    drop_fn,
+                );
+            }
+            self.len = 0;
+            return;
+        }
+        self.drop_initialized();
     }
 }
 

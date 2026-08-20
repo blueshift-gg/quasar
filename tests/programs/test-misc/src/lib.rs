@@ -11,6 +11,11 @@ declare_id!("44444444444444444444444444444444444444444444");
 
 pub const EXPECTED_ADDRESS: Address = Address::new_from_array([42u8; 32]);
 
+pub const REMAINING_EPILOGUE_FLAGS: (bool, bool) = (
+    REMAINING_GROUP_HAS_EPILOGUE,
+    DECLARED_GROUP_HAS_EPILOGUE,
+);
+
 #[program]
 mod quasar_test_misc {
     use super::*;
@@ -340,5 +345,12 @@ mod quasar_test_misc {
     #[instruction(discriminator = 62)]
     pub fn optional_mut_accounts(ctx: Ctx<OptionalMutAccounts>) -> Result<(), ProgramError> {
         ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 63)]
+    pub fn remaining_epilogue_claim(
+        ctx: CtxWithRemaining<RemainingEpilogueClaim>,
+    ) -> Result<(), ProgramError> {
+        ctx.accounts.handler(ctx.remaining_accounts())
     }
 }
