@@ -95,6 +95,14 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
     pub const fn has_epilogue(&self) -> bool {
         T::HAS_EPILOGUE
     }
+
+    #[doc(hidden)]
+    #[inline(always)]
+    pub fn bind_remaining_lifecycle(
+        &mut self,
+        _lifecycle: &mut crate::remaining::RemainingLifecycle,
+    ) {
+    }
 }
 
 /// Like [`Ctx`] but also captures the remaining accounts region.
@@ -126,6 +134,8 @@ pub struct CtxWithRemaining<
 
     /// End-of-accounts boundary pointer.
     accounts_boundary: *const u8,
+
+    remaining_lifecycle: *mut crate::remaining::RemainingLifecycle,
 }
 
 impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + AccountCount>
@@ -165,6 +175,7 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
             remaining_ptr: ctx.remaining_ptr,
             declared,
             accounts_boundary: ctx.accounts_boundary,
+            remaining_lifecycle: core::ptr::null_mut(),
         })
     }
 
@@ -173,6 +184,15 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
     #[inline(always)]
     pub const fn has_epilogue(&self) -> bool {
         T::HAS_EPILOGUE
+    }
+
+    #[doc(hidden)]
+    #[inline(always)]
+    pub fn bind_remaining_lifecycle(
+        &mut self,
+        lifecycle: &mut crate::remaining::RemainingLifecycle,
+    ) {
+        self.remaining_lifecycle = lifecycle;
     }
 
     /// Remaining-account accessor.
@@ -191,5 +211,6 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
             unsafe { as_address(self.program_id) },
             self.data,
         )
+        .with_lifecycle(self.remaining_lifecycle)
     }
 }

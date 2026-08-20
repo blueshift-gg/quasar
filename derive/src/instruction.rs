@@ -77,6 +77,7 @@ fn emit_handler_tail(
     stmts: &[syn::Stmt],
     has_return_data: bool,
     return_ok_type: Option<&Type>,
+    defer_remaining: bool,
 ) -> Vec<syn::Stmt> {
     let user_body: proc_macro2::TokenStream = stmts.iter().map(|s| quote!(#s)).collect();
     let mut tail = Vec::new();
@@ -87,6 +88,21 @@ fn emit_handler_tail(
         if #param_ident.has_epilogue() {
             #param_ident.accounts.epilogue()?;
         }
+    };
+
+    let remaining_bind = if defer_remaining {
+        quote! {
+            let mut __remaining_lifecycle =
+                quasar_lang::remaining::RemainingLifecycle::new();
+            #param_ident.bind_remaining_lifecycle(&mut __remaining_lifecycle);
+        }
+    } else {
+        quote! {}
+    };
+    let remaining_run = if defer_remaining {
+        quote! { __remaining_lifecycle.run_epilogue()?; }
+    } else {
+        quote! {}
     };
 
     if has_return_data {
@@ -100,9 +116,11 @@ fn emit_handler_tail(
         ));
         tail.push(syn::parse_quote!(
             {
+                #remaining_bind
                 let __result: Result<#ok_ty, ProgramError> = (|| { #user_body })();
                 match __result {
                     Ok(ref __val) => {
+                        #remaining_run
                         #epilogue_call
                         let __zc =
                             <#ok_ty as quasar_lang::instruction_arg::InstructionArg>::to_zc(__val);
@@ -121,8 +139,10 @@ fn emit_handler_tail(
         ));
     } else {
         tail.push(syn::parse_quote!({
+            #remaining_bind
             let __user_result: Result<(), ProgramError> = { #user_body };
             __user_result?;
+            #remaining_run
             #epilogue_call
             Ok(())
         }));
@@ -137,6 +157,7 @@ fn emit_decode_and_tail(
     stmts: &[syn::Stmt],
     has_return_data: bool,
     return_ok_type: Option<&Type>,
+    defer_remaining: bool,
 ) -> syn::Result<Vec<syn::Stmt>> {
     let mut out = Vec::new();
 
@@ -215,6 +236,7 @@ fn emit_decode_and_tail(
                     stmts,
                     has_return_data,
                     return_ok_type,
+                    defer_remaining,
                 ));
                 return Ok(out);
             } else {
@@ -334,6 +356,7 @@ fn emit_decode_and_tail(
         stmts,
         has_return_data,
         return_ok_type,
+        defer_remaining,
     ));
     Ok(out)
 }
@@ -463,12 +486,15 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut new_stmts: Vec<syn::Stmt> = vec![syn::parse_quote!(
         let mut #param_name: #param_type = <#param_type>::new(context)?;
     )];
+    let defer_remaining =
+        extract_generic_inner_type(param_type, "CtxWithRemaining").is_some();
     let decoded_tail = match emit_decode_and_tail(
         &param_ident,
         &remaining,
         &stmts,
         has_return_data,
         return_ok_type.as_ref(),
+        defer_remaining,
     ) {
         Ok(stmts) => stmts,
         Err(e) => return e.to_compile_error().into(),
@@ -509,6 +535,7 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
             &stmts,
             has_return_data,
             return_ok_type.as_ref(),
+            false,
         ) {
             Ok(stmts) => stmts,
             Err(e) => return e.to_compile_error().into(),

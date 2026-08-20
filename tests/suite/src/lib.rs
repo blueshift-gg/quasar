@@ -9,6 +9,8 @@ mod pda;
 #[cfg(test)]
 mod remaining;
 #[cfg(test)]
+mod remaining_epilogue;
+#[cfg(test)]
 mod sysvar;
 #[cfg(test)]
 mod token_state;

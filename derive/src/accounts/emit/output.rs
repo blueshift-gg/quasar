@@ -198,6 +198,13 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
             #parse_where_clause
         {
             const COUNT: usize = <Self as quasar_lang::traits::AccountCount>::COUNT;
+            const HAS_EPILOGUE: bool =
+                <Self as quasar_lang::traits::ParseAccounts<'input>>::HAS_EPILOGUE;
+
+            #[inline(always)]
+            fn epilogue(&mut self) -> Result<(), ProgramError> {
+                <Self as quasar_lang::traits::ParseAccounts<'input>>::epilogue(self)
+            }
 
             #[inline(always)]
             unsafe fn parse_remaining_chunk(

@@ -49,6 +49,9 @@ pub use optional_account::*;
 pub mod remaining_accounts_check;
 pub use remaining_accounts_check::*;
 
+pub mod remaining_epilogue_claim;
+pub use remaining_epilogue_claim::*;
+
 pub mod dynamic_account_check;
 pub use dynamic_account_check::*;
 
