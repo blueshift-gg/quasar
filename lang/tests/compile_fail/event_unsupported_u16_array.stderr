@@ -1,0 +1,5 @@
+error: unsupported event array element; expected u8
+ --> tests/compile_fail/event_unsupported_u16_array.rs:5:13
+  |
+5 |     pub x: [u16; 4],
+  |             ^^^

@@ -483,6 +483,32 @@ fn test_emit_u64_payload_reaches_log() {
 }
 
 #[test]
+fn test_emit_byte_array_payload_reaches_log() {
+    // BytesEvent discriminator 8, then 32 0xAA bytes, then 1u64 LE:
+    // [8, 0xAA x32, 1, 0, 0, 0, 0, 0, 0, 0] == base64
+    // "CKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqAQAAAAAAAAA=".
+    let elf = std::fs::read("../../target/deploy/quasar_test_events.so")
+        .expect("run `make build-sbf` first");
+    let mut svm = quasar_svm::QuasarSvm::new().with_program(&quasar_test_events::ID, &elf);
+    let signer = quasar_svm::Pubkey::new_unique();
+    let instruction: quasar_svm::Instruction = EmitBytesEventInstruction {
+        signer,
+        hash: [0xAA; 32],
+        amount: 1,
+    }
+    .into();
+    let result = svm.process_instruction(&instruction, &[crate::helpers::signer_account(signer)]);
+    assert!(result.is_ok(), "emit failed: {:?}", result.raw_result);
+    assert!(
+        result.logs.iter().any(|line| {
+            line == "Program data: CKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqAQAAAAAAAAA="
+        }),
+        "expected byte-array event payload in logs, got: {:?}",
+        result.logs
+    );
+}
+
+#[test]
 fn test_emit_cpi_aliased_program_field_reaches_log() {
     // The fixture names its program field `emitter` instead of `program`:
     // beyond compiling (type-based field detection), the aliased wiring must

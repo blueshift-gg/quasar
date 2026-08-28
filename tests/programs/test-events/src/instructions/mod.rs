@@ -24,3 +24,6 @@ pub use emit_large_event::*;
 
 pub mod emit_two_events;
 pub use emit_two_events::*;
+
+pub mod emit_bytes_event;
+pub use emit_bytes_event::*;

@@ -44,3 +44,9 @@ pub struct LargeEvent {
 pub struct SecondSimpleEvent {
     pub value: u64,
 }
+
+#[event(discriminator = 8)]
+pub struct BytesEvent {
+    pub hash: [u8; 32],
+    pub amount: u64,
+}

@@ -1,0 +1,5 @@
+error: event byte array length must be an integer literal
+ --> tests/compile_fail/event_array_non_literal_len.rs:7:20
+  |
+7 |     pub hash: [u8; HASH_LEN],
+  |                    ^^^^^^^^

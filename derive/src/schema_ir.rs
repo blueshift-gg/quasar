@@ -17,7 +17,7 @@ use {
     crate::helpers::{map_to_pod_type, PodDynField},
     proc_macro2::TokenStream,
     quote::quote,
-    syn::{Expr, Ident, Type, Visibility},
+    syn::{Expr, Ident, Lit, Type, Visibility},
 };
 
 /// The wire class of one compact-schema field.
@@ -248,7 +248,8 @@ pub(crate) fn field_size_expr(pd: &PodDynField, len: TokenStream) -> TokenStream
 }
 
 /// The on-chain byte size of one `#[event]` field. Preserves the rejection of
-/// unsupported field types (only primitive integers, `bool`, and `Address`).
+/// unsupported field types (only primitive integers, `bool`, `Address`, and
+/// `[u8; N]` with `N` an integer literal).
 pub(crate) fn event_field_size(ty: &Type) -> syn::Result<usize> {
     if let Type::Path(type_path) = ty {
         if let Some(seg) = type_path.path.segments.last() {
@@ -262,13 +263,42 @@ pub(crate) fn event_field_size(ty: &Type) -> syn::Result<usize> {
                 _ => Err(syn::Error::new_spanned(
                     ty,
                     format!(
-                        "unsupported event field type `{}`; only primitive integers, bool, and \
-                         Address are supported",
+                        "unsupported event field type `{}`; only primitive integers, bool, \
+                         Address, and [u8; N] are supported",
                         seg.ident
                     ),
                 )),
             };
         }
     }
+
+    if let Type::Array(array) = ty {
+        let Type::Path(elem_path) = array.elem.as_ref() else {
+            return Err(syn::Error::new_spanned(
+                &array.elem,
+                "unsupported event array element; expected u8",
+            ));
+        };
+        if !elem_path.path.is_ident("u8") {
+            return Err(syn::Error::new_spanned(
+                &array.elem,
+                "unsupported event array element; expected u8",
+            ));
+        }
+        let Expr::Lit(expr_lit) = &array.len else {
+            return Err(syn::Error::new_spanned(
+                &array.len,
+                "event byte array length must be an integer literal",
+            ));
+        };
+        let Lit::Int(lit_int) = &expr_lit.lit else {
+            return Err(syn::Error::new_spanned(
+                &array.len,
+                "event byte array length must be an integer literal",
+            ));
+        };
+        return lit_int.base10_parse::<usize>();
+    }
+
     Err(syn::Error::new_spanned(ty, "unsupported event field type"))
 }
