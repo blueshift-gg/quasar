@@ -1,4 +1,4 @@
-error: unsupported event field type `String`; only primitive integers, bool, and Address are supported
+error: unsupported event field type `String`; only primitive integers, bool, Address, and [u8; N] are supported
  --> tests/compile_fail/event_unsupported_string.rs:5:12
   |
 5 |     pub x: String,

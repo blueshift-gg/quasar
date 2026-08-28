@@ -420,6 +420,20 @@ fn event_basic() {
         .assert_eq(&expand_pretty(event_inner(attr, item)));
 }
 
+/// Event with a `[u8; 32]` field plus `u64`: payload is 40 bytes, IDL array.
+#[test]
+fn event_byte_array() {
+    let attr = quote! { discriminator = 1 };
+    let item = quote! {
+        pub struct BytesEvent {
+            pub hash: [u8; 32],
+            pub amount: u64,
+        }
+    };
+    expect_test::expect_file!["expansions/event_byte_array.rs"]
+        .assert_eq(&expand_pretty(event_inner(attr, item)));
+}
+
 /// Error enum: auto-assigned codes from the 6000 offset + `TryFrom` arms.
 #[test]
 fn error_code_basic() {

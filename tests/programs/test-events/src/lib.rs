@@ -88,4 +88,13 @@ mod quasar_test_events {
     ) -> Result<(), ProgramError> {
         ctx.accounts.handler(value)
     }
+
+    #[instruction(discriminator = 9)]
+    pub fn emit_bytes_event(
+        ctx: Ctx<EmitBytesEvent>,
+        hash: [u8; 32],
+        amount: u64,
+    ) -> Result<(), ProgramError> {
+        ctx.accounts.handler(hash, amount)
+    }
 }
