@@ -1,12 +1,12 @@
-/target
-cli/target/
+target/
 
 # AI
 .apex
 .claude
 .codex
 .factory
-docs/
+docs/*
+!docs/lamport-vault.expanded.rs
 
 AGENTS.md
 CLAUDE.md
@@ -17,3 +17,6 @@ audit/
 # Profiler
 *.profile.json
 
+# Property-test artifacts
+*.proptest-regressions
+proptest-regressions/

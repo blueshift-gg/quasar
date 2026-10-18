@@ -1,0 +1,5 @@
+error: an instruction takes one argument, `Ctx<Accounts>` or `Ctx<Accounts, Data>`
+ --> tests/ui/fail/handler_without_ctx.rs:6:5
+  |
+6 | pub fn greet(amount: u64) -> Result {
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

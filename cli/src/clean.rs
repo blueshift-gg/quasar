@@ -10,18 +10,9 @@ use {
 pub fn run(all: bool) -> CliResult {
     let clients_dir = resolve_client_path()?;
     let clients_dir = clients_dir.to_string_lossy();
-    let dirs = [
-        "target/deploy",
-        "target/profile",
-        "target/idl",
-        clients_dir.as_ref(),
-    ];
+    let dirs = ["target/deploy", "target/profile", "target/idl", clients_dir.as_ref()];
 
-    let removed: Vec<&str> = dirs
-        .iter()
-        .copied()
-        .filter(|dir| Path::new(dir).exists())
-        .collect();
+    let removed: Vec<&str> = dirs.iter().copied().filter(|dir| Path::new(dir).exists()).collect();
 
     if removed.is_empty() && !all {
         println!("  {}", style::dim("nothing to clean"));
@@ -38,7 +29,27 @@ pub fn run(all: bool) -> CliResult {
     }
 
     if all {
-        let output = Command::new("cargo").arg("clean").output()?;
+        // Cargo also deletes deploy/, so keep program identities across a full clean.
+        let deploy = Path::new("target/deploy");
+        let mut keypairs = Vec::new();
+        if deploy.exists() {
+            for entry in fs::read_dir(deploy)? {
+                let path = entry?.path();
+                if path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.ends_with("-keypair.json"))
+                {
+                    keypairs.push((path.clone(), fs::read(path)?));
+                }
+            }
+        }
+        let result = Command::new("cargo").arg("clean").output();
+        for (path, bytes) in keypairs {
+            fs::create_dir_all(path.parent().expect("deploy path"))?;
+            fs::write(path, bytes)?;
+        }
+        let output = result?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(CliError::process_failure(
@@ -57,10 +68,8 @@ fn clean_deploy_dir() -> Result<(), std::io::Error> {
     let deploy = Path::new("target/deploy");
     for entry in fs::read_dir(deploy)?.flatten() {
         let path = entry.path();
-        let is_keypair = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .is_some_and(|n| n.ends_with("-keypair.json"));
+        let is_keypair =
+            path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.ends_with("-keypair.json"));
 
         if !is_keypair {
             if path.is_dir() {

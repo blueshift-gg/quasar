@@ -1,0 +1,21 @@
+[package]
+name = "blueshift-vault"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[workspace]
+
+[dependencies]
+# Blueshift's Quasar at the revision pinned in bench/rivals.sh, which checks it out.
+quasar-lang = { path = "../../../target/rivals/src/blueshift/lang" }
+
+[lints.rust.unexpected_cfgs]
+level = "allow"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1

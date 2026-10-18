@@ -1,0 +1,5 @@
+error: `String` needs `#[max_len(N)]`: an account has a capacity
+ --> tests/ui/fail/string_without_max_len.rs:7:15
+  |
+7 |     pub name: String,
+  |               ^^^^^^

@@ -1,0 +1,20 @@
+# Root documentation-only edits do not require builds. Include all inputs to
+# generated-code checks and package checks, not just Rust source files.
+code:
+  - '{bench,cli,derive,examples,idl,lang,metadata,profile,schema,spl,test,tests}/**'
+  - '**/*.rs'
+  - '**/Cargo.toml'
+  - '**/Cargo.lock'
+  - '.cargo/**'
+  - '.github/**'
+  - 'Makefile'
+  - 'rust-toolchain*'
+  - 'rustfmt.toml'
+miri:
+  - '{derive,lang,metadata,spl}/**'
+  - '**/Cargo.toml'
+  - '**/Cargo.lock'
+  - '.cargo/**'
+  - '.github/**'
+  - 'Makefile'
+  - 'rust-toolchain*'

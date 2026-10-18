@@ -1,0 +1,7 @@
+error: an account discriminator cannot be all zeros: anyone can create a zeroed account this program owns, and it would pass as this kind
+ --> tests/ui/fail/zero_account_discriminator.rs:5:1
+  |
+5 | #[account(discriminator = [0, 0])]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `account` (in Nightly builds, run with -Z macro-backtrace for more info)

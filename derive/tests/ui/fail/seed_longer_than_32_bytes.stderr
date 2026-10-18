@@ -1,0 +1,5 @@
+error: a seed is at most 32 bytes
+ --> tests/ui/fail/seed_longer_than_32_bytes.rs:6:9
+  |
+6 | #[seeds(b"a seed that is longer than thirty-two bytes")]
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -60,10 +60,7 @@ pub(super) fn format_build_errors(stderr: &str, elapsed: std::time::Duration) ->
 
     if errors.is_empty() {
         if !stderr.is_empty() {
-            return format!(
-                "{stderr}\n\nbuild failed in {}",
-                style::human_duration(elapsed)
-            );
+            return format!("{stderr}\n\nbuild failed in {}", style::human_duration(elapsed));
         }
         return format!("build failed in {}", style::human_duration(elapsed));
     }
@@ -73,19 +70,14 @@ pub(super) fn format_build_errors(stderr: &str, elapsed: std::time::Duration) ->
 
     let mut summary = String::new();
     if err_count > 0 {
-        summary.push_str(&format!(
-            "{err_count} error{}",
-            if err_count == 1 { "" } else { "s" }
-        ));
+        summary.push_str(&format!("{err_count} error{}", if err_count == 1 { "" } else { "s" }));
     }
     if warn_count > 0 {
         if !summary.is_empty() {
             summary.push_str(", ");
         }
-        summary.push_str(&format!(
-            "{warn_count} warning{}",
-            if warn_count == 1 { "" } else { "s" }
-        ));
+        summary
+            .push_str(&format!("{warn_count} warning{}", if warn_count == 1 { "" } else { "s" }));
     }
 
     let mut message = String::new();
@@ -94,9 +86,6 @@ pub(super) fn format_build_errors(stderr: &str, elapsed: std::time::Duration) ->
         message.push('\n');
     }
     message.push('\n');
-    message.push_str(&format!(
-        "build failed in {} ({summary})",
-        style::human_duration(elapsed)
-    ));
+    message.push_str(&format!("build failed in {} ({summary})", style::human_duration(elapsed)));
     message
 }

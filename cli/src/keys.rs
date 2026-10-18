@@ -56,10 +56,8 @@ fn current_program_id() -> Option<String> {
 fn replace_program_id(old_id: &str, new_id: &str) -> Result<(), crate::error::CliError> {
     let source =
         fs::read_to_string("src/lib.rs").map_err(|e| CliError::io_path("read", "src/lib.rs", e))?;
-    let updated = source.replace(
-        &format!("declare_id!(\"{old_id}\")"),
-        &format!("declare_id!(\"{new_id}\")"),
-    );
+    let updated = source
+        .replace(&format!("declare_id!(\"{old_id}\")"), &format!("declare_id!(\"{new_id}\")"));
     fs::write("src/lib.rs", updated).map_err(|e| CliError::io_path("write", "src/lib.rs", e))?;
     Ok(())
 }
@@ -101,21 +99,13 @@ pub fn sync() -> CliResult {
     };
 
     if current_id == keypair_id {
-        println!(
-            "  {} {}",
-            style::success("Already in sync:"),
-            style::bold(&keypair_id)
-        );
+        println!("  {} {}", style::success("Already in sync:"), style::bold(&keypair_id));
         return Ok(());
     }
 
     replace_program_id(&current_id, &keypair_id)?;
 
-    println!(
-        "  {} {}",
-        style::success("Synced program ID:"),
-        style::bold(&keypair_id)
-    );
+    println!("  {} {}", style::success("Synced program ID:"), style::bold(&keypair_id));
     Ok(())
 }
 
@@ -146,20 +136,15 @@ pub fn new(force: bool) -> CliResult {
     fs::write(&path, &keypair_json)?;
 
     let id = bs58::encode(signing_key.verifying_key().as_bytes()).into_string();
-    println!(
-        "  {} {}",
-        style::success("Generated keypair:"),
-        style::bold(&id)
-    );
+    println!("  {} {}", style::success("Generated keypair:"), style::bold(&id));
 
     // Auto-sync declare_id!() if src/lib.rs exists
-    if std::path::Path::new("src/lib.rs").exists() {
-        if let Some(current_id) = current_program_id() {
-            if current_id != id {
-                replace_program_id(&current_id, &id)?;
-                println!("  {} declare_id!() updated", style::success("Synced:"),);
-            }
-        }
+    if std::path::Path::new("src/lib.rs").exists()
+        && let Some(current_id) = current_program_id()
+        && current_id != id
+    {
+        replace_program_id(&current_id, &id)?;
+        println!("  {} declare_id!() updated", style::success("Synced:"),);
     }
 
     Ok(())

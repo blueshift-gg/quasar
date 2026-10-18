@@ -1,0 +1,5 @@
+error: a handler is `pub`, so clients and other programs can build its instruction
+  --> tests/ui/fail/private_handler.rs:15:8
+   |
+15 |     fn greet(_ctx: Ctx<Greet>) -> Result {
+   |        ^^^^^

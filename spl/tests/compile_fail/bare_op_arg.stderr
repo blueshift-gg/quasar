@@ -1,5 +1,0 @@
-error: behavior arg `mint` requires a value: `mint = ...`. Bare flags are not supported in behavior groups
-  --> tests/compile_fail/bare_op_arg.rs:12:21
-   |
-12 |     #[account(token(mint, authority = authority))]
-   |                     ^^^^

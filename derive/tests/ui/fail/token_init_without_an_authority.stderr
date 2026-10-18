@@ -1,0 +1,7 @@
+error[E0063]: missing field `authority` in initializer of `quasar_spl::token::Init<'_>`
+ --> tests/ui/fail/token_init_without_an_authority.rs:6:10
+  |
+6 | #[derive(Accounts)]
+  |          ^^^^^^^^ missing `authority`
+  |
+  = note: this error originates in the derive macro `Accounts` (in Nightly builds, run with -Z macro-backtrace for more info)

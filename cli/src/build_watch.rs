@@ -30,12 +30,7 @@ where
 }
 
 fn collect_watch_mtimes() -> Vec<(PathBuf, std::time::SystemTime)> {
-    const WATCH_FILES: &[&str] = &[
-        "Cargo.toml",
-        "Cargo.lock",
-        "Quasar.toml",
-        ".cargo/config.toml",
-    ];
+    const WATCH_FILES: &[&str] = &["Cargo.toml", "Cargo.lock", "Quasar.toml", ".cargo/config.toml"];
     const WATCH_DIRS: &[&str] = &["src", "tests"];
 
     let mut times = Vec::new();

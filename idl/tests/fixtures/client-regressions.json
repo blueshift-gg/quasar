@@ -1,0 +1,236 @@
+{
+  "spec": "quasar-idl/1.0.0",
+  "name": "client_regressions",
+  "version": "0.1.0",
+  "address": "11111111111111111111111111111112",
+  "instructions": [
+    {
+      "name": "submit",
+      "discriminator": [
+        7
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "resolver": {
+            "kind": "input"
+          },
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "maybe_name",
+          "type": {
+            "option": "string"
+          },
+          "codec": {
+            "kind": "sizePrefixed",
+            "prefix": {
+              "type": "u8",
+              "endian": "le"
+            },
+            "storage": "tail"
+          }
+        },
+        {
+          "name": "maybe_addrs",
+          "type": {
+            "option": {
+              "vec": "pubkey"
+            }
+          },
+          "codec": {
+            "kind": "sizePrefixed",
+            "prefix": {
+              "type": "u16",
+              "endian": "le"
+            },
+            "storage": "tail"
+          }
+        }
+      ],
+      "layout": {
+        "kind": "compact",
+        "inlineFields": [],
+        "tailFields": [
+          "maybe_name",
+          "maybe_addrs"
+        ],
+        "wire": "inlineFieldsThenTailHeadersThenTailPayloads"
+      }
+    },
+    {
+      "name": "fixedArray",
+      "discriminator": [
+        8
+      ],
+      "accounts": [],
+      "args": [
+        {
+          "name": "payload_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "numericVec",
+      "discriminator": [
+        9
+      ],
+      "accounts": [],
+      "args": [
+        {
+          "name": "nums",
+          "type": {
+            "vec": "u64"
+          },
+          "codec": {
+            "kind": "sizePrefixed",
+            "prefix": {
+              "type": "u16",
+              "endian": "le"
+            },
+            "storage": "tail"
+          }
+        }
+      ],
+      "layout": {
+        "kind": "compact",
+        "inlineFields": [],
+        "tailFields": [
+          "nums"
+        ],
+        "wire": "inlineFieldsThenTailHeadersThenTailPayloads"
+      }
+    },
+    {
+      "name": "simple",
+      "discriminator": [
+        10
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "resolver": {
+            "kind": "input"
+          },
+          "signer": true
+        },
+        {
+          "name": "state",
+          "resolver": {
+            "kind": "input"
+          },
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "resolverHeavy",
+      "discriminator": [
+        11
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "resolver": {
+            "kind": "input"
+          }
+        },
+        {
+          "name": "scopedItem",
+          "resolver": {
+            "kind": "pda",
+            "program": {
+              "kind": "programId"
+            },
+            "seeds": [
+              {
+                "kind": "accountField",
+                "path": "config",
+                "account": "NamespaceConfig",
+                "field": "namespace"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "StaticAccount",
+      "discriminator": [
+        1
+      ]
+    },
+    {
+      "name": "DynamicAccount",
+      "discriminator": [
+        2
+      ]
+    },
+    {
+      "name": "NamespaceConfig",
+      "discriminator": [
+        3
+      ]
+    }
+  ],
+  "types": [
+    {
+      "name": "StaticAccount",
+      "kind": "struct",
+      "fields": [
+        {
+          "name": "count",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "DynamicAccount",
+      "kind": "struct",
+      "fields": [
+        {
+          "name": "label",
+          "type": "string",
+          "codec": {
+            "kind": "sizePrefixed",
+            "prefix": {
+              "type": "u8",
+              "endian": "le"
+            },
+            "storage": "tail"
+          }
+        }
+      ],
+      "layout": {
+        "kind": "compact",
+        "inlineFields": [],
+        "tailFields": [
+          "label"
+        ],
+        "wire": "inlineFieldsThenTailHeadersThenTailPayloads"
+      }
+    },
+    {
+      "name": "NamespaceConfig",
+      "kind": "struct",
+      "fields": [
+        {
+          "name": "namespace",
+          "type": "u32"
+        }
+      ]
+    }
+  ]
+}

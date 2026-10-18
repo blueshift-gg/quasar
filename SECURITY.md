@@ -18,6 +18,6 @@ This policy covers:
 
 ## Unsafe Code
 
-Quasar uses `unsafe` for zero-copy access, CPI syscalls, and pointer casts. Every `unsafe` block has a documented soundness invariant and is validated by Miri under Tree Borrows with symbolic alignment checking.
+Quasar uses `unsafe` for zero-copy access, CPI syscalls, and pointer casts. Every `unsafe` block has a documented soundness invariant. The rewrite describes its invariants in [ARCHITECTURE.md](ARCHITECTURE.md), and `make check` runs its Kani proof harnesses.
 
 If you find an `unsafe` block that lacks a soundness argument or can be triggered to produce undefined behavior, that qualifies as a security vulnerability.

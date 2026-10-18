@@ -1,5 +1,0 @@
-error[E0599]: no method named `foo` found for struct `quasar_spl::accounts::token::ArgsBuilder<'a>` in the current scope
-  --> tests/compile_fail/unknown_op_arg.rs:12:57
-   |
-12 |     #[account(token(mint = mint, authority = authority, foo = authority, token_program = token_program))]
-   |                                                         ^^^ method not found in `quasar_spl::accounts::token::ArgsBuilder<'_>`

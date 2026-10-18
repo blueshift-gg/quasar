@@ -1,26 +1,19 @@
 [package]
 name = "quasar-spl"
-description = "SPL Token program CPI and zero-copy account types for the Quasar Solana framework"
+description = "SPL Token and Token-2022 support for Quasar programs"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-authors.workspace = true
+
+[dependencies]
+quasar-lang.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+solana-program-pack = "=3.0.0"
+spl-token-2022-interface = "=2.1.0"
+spl-token-interface = "=2.0.0"
 
 [lints]
 workspace = true
-
-[features]
-debug = []
-
-[dependencies]
-quasar-lang = { version = "0.0", path = "../lang" }
-solana-address = { version = ">=2.2, <2.6", features = ["copy"] }
-
-[dev-dependencies]
-solana-program-error = "3.0.0"
-trybuild = "1"
-
-[lib]
-test = false
-doctest = false

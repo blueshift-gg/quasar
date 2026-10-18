@@ -1,195 +1,101 @@
-//! Instruction context types used by the `dispatch!` macro.
-//!
-//! Three levels of context exist, each wrapping the previous:
-//!
-//! - `Context`: raw entrypoint data (program ID, account slice, instruction
-//!   data). Produced by the entrypoint; consumed by `Ctx::new()` or
-//!   `CtxWithRemaining::new()`.
-//!
-//! - `Ctx`: parsed and validated accounts with PDA bumps. Use this for most
-//!   instructions where remaining accounts are not needed.
-//!
-//! - `CtxWithRemaining`: like `Ctx` but also captures the remaining accounts
-//!   region for instructions that inspect or forward trailing accounts.
+//! What a handler receives, and the entrypoint that builds it.
 
-use crate::{prelude::*, remaining::RemainingAccounts, traits::ParseAccountsUnchecked};
+use zeropod::ZeroPod;
 
-/// Cast `&[u8; 32]` to `&Address`.
-///
-/// The entrypoint owns the 32-byte program-id storage for the entire
-/// instruction, so the returned reference is valid for `'input`. This avoids
-/// copying the program ID into a stack-local `Address` on every dispatch path.
+use crate::{
+    Address, ProgramError, Result,
+    cpi::Vouches,
+    data::{InstructionData, set_return},
+    field::FieldInfo,
+    input::{Cursor, instruction_data},
+};
+
+/// An instruction's accounts, read from the cursor in declaration order.
+/// Implemented by `#[derive(Accounts)]`: for any data `D`, or for the one
+/// its constraints read, named by `#[data(..)]`.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` does not take `{D}` as its instruction data",
+    label = "its constraints read the data named by its `#[data(..)]`"
+)]
+pub trait Accounts<D = ()>: Sized {
+    /// What runs once the handler has succeeded: a `Close` or `Settle` per
+    /// `close`, `realloc` and `init` field, in declaration order.
+    type Deferred;
+
+    /// Each field, in declaration order.
+    const FIELDS: &'static [FieldInfo];
+
+    /// `V` is what the handler's calls vouch for: those checks are left out.
+    fn from_cursor<V: Vouches>(cursor: &mut Cursor, data: &D) -> Result<Self>;
+
+    /// Each account with its own wrapper's checks, but none of the relations
+    /// between them: a property's snapshots before and after the instruction,
+    /// which only read the accounts.
+    #[cfg(kani)]
+    fn load_accounts(cursor: &mut Cursor) -> Result<Self>;
+
+    /// Taken before the handler runs, and run by `run_deferred` after it
+    /// succeeds.
+    fn deferred(&self) -> Self::Deferred;
+
+    fn run_deferred(deferred: Self::Deferred) -> Result;
+}
+
+/// What a handler receives: its accounts, checked, and its instruction data.
+pub struct Ctx<A, D = ()> {
+    pub accounts: A,
+    pub data: D,
+}
+
+/// Decodes `D`, loads `A`, runs `handler`, runs what `A` defers, and sets
+/// the handler's result as return data.
 #[inline(always)]
-unsafe fn as_address(bytes: &[u8; 32]) -> &Address {
-    // SAFETY: `Address` is a transparent 32-byte address type and `bytes`
-    // lives for the returned reference.
-    unsafe { &*(bytes as *const [u8; 32] as *const Address) }
+pub fn run<A: Accounts<D>, D: InstructionData, T: ZeroPod, V: Vouches>(
+    mut cursor: Cursor,
+    bytes: &[u8],
+    handler: impl FnOnce(Ctx<A, D>) -> Result<T>,
+) -> Result {
+    let data = D::decode(bytes)?;
+    let accounts = A::from_cursor::<V>(&mut cursor, &data)?;
+    let deferred = accounts.deferred();
+    let value = handler(Ctx { accounts, data })?;
+    A::run_deferred(deferred)?;
+    set_return(&value);
+    Ok(())
 }
 
-/// Raw entrypoint context before parsing.
+/// Splits off the discriminator and calls `dispatch`. Returns the value the
+/// entrypoint must return to the runtime. The program id the runtime passes
+/// is not compared with `id`: a copy deployed at another address can neither
+/// write nor sign for what `id` owns.
 ///
-/// Produced by entrypoint code from raw account pointers.
-/// Consumed by [`Ctx::new()`] or [`CtxWithRemaining::new()`] which parse
-/// and validate the accounts.
-pub struct Context<'input> {
-    /// 32-byte program ID passed by the runtime.
-    pub program_id: &'input [u8; 32],
-
-    /// Declared accounts (first `N` accounts deserialized from the input).
-    pub accounts: &'input mut [AccountView],
-
-    /// Pointer to the first remaining account (past the declared accounts).
-    pub remaining_ptr: *mut u8,
-
-    /// Raw instruction data (discriminator already consumed by `dispatch!`).
-    pub data: &'input [u8],
-
-    /// End of accounts region: `ix_data_ptr - sizeof(u64)`.
-    pub accounts_boundary: *const u8,
-}
-
-/// Parsed instruction context with typed accounts and PDA bumps.
-///
-/// Use [`CtxWithRemaining`] for instructions that need
-/// `remaining_accounts()`.
-pub struct Ctx<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + AccountCount> {
-    /// Validated and typed account struct.
-    pub accounts: T,
-
-    /// PDA bump seeds discovered during validation.
-    pub bumps: <T as ParseAccounts<'input>>::Bumps,
-
-    /// 32-byte program ID (raw bytes, not [`Address`]).
-    pub program_id: &'input [u8; 32],
-
-    /// Instruction data with discriminator already consumed.
-    pub data: &'input [u8],
-}
-
-impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + AccountCount>
-    Ctx<'input, T>
-{
-    /// Parse and validate the declared accounts for an instruction that does
-    /// not expose remaining accounts.
-    #[inline(always)]
-    pub fn new(ctx: Context<'input>) -> Result<Self, ProgramError> {
-        // SAFETY: `Context::program_id` points at the runtime-owned 32-byte
-        // program id for this instruction.
-        let program_id_addr = unsafe { as_address(ctx.program_id) };
-        // SAFETY: Entrypoint code constructed `ctx.accounts` with exactly
-        // `T::COUNT` declared account views for this handler.
-        let (accounts, bumps) = unsafe {
-            T::parse_with_instruction_data_unchecked(ctx.accounts, ctx.data, program_id_addr)?
-        };
-        Ok(Self {
-            accounts,
-            bumps,
-            program_id: ctx.program_id,
-            data: ctx.data,
-        })
-    }
-
-    /// Compile-time check for whether `T` has lifecycle operations
-    /// (close/sweep/migrate). When false, the epilogue call is elided.
-    #[inline(always)]
-    pub const fn has_epilogue(&self) -> bool {
-        T::HAS_EPILOGUE
+/// # Safety
+/// `input` and `data` are the pointers the runtime passed to the entrypoint.
+pub unsafe fn entrypoint<const D: usize>(
+    input: *mut u8,
+    data: *const u8,
+    id: &'static Address,
+    dispatch: impl FnOnce([u8; D], &[u8], Cursor) -> Result,
+) -> u64 {
+    // SAFETY: forwarded from this function's contract.
+    let data = unsafe { instruction_data(data) };
+    // SAFETY: as above; this is the only cursor over `input`.
+    let cursor = unsafe { Cursor::new(input, id) };
+    let result = if let Some((discriminator, args)) = data.split_first_chunk::<D>() {
+        dispatch(*discriminator, args, cursor)
+    } else {
+        Err(ProgramError::InvalidInstructionData)
+    };
+    match result {
+        Ok(()) => 0,
+        Err(error) => code(error),
     }
 }
 
-/// Like [`Ctx`] but also captures the remaining accounts region.
-///
-/// Use this for instructions that call `remaining_accounts()`, for example when
-/// inspecting trailing accounts in local logic or forwarding a variable number
-/// of accounts to a downstream CPI.
-pub struct CtxWithRemaining<
-    'input,
-    T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + AccountCount,
-> {
-    /// Validated and typed account struct.
-    pub accounts: T,
-
-    /// PDA bump seeds discovered during validation.
-    pub bumps: <T as ParseAccounts<'input>>::Bumps,
-
-    /// 32-byte program ID (raw bytes).
-    pub program_id: &'input [u8; 32],
-
-    /// Instruction data with discriminator already consumed.
-    pub data: &'input [u8],
-
-    /// Pointer to the first remaining account in the input buffer.
-    remaining_ptr: *mut u8,
-
-    /// Declared accounts slice (for duplicate resolution in remaining).
-    declared: &'input [AccountView],
-
-    /// End-of-accounts boundary pointer.
-    accounts_boundary: *const u8,
-}
-
-impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + AccountCount>
-    CtxWithRemaining<'input, T>
-{
-    /// Parse and validate declared accounts while preserving access to the
-    /// trailing remaining-account region.
-    #[inline(always)]
-    pub fn new(ctx: Context<'input>) -> Result<Self, ProgramError> {
-        // SAFETY: `Context::program_id` points at the runtime-owned 32-byte
-        // program id for this instruction.
-        let program_id_addr = unsafe { as_address(ctx.program_id) };
-        // Save pointer + length before parse consumes the mutable slice. This
-        // avoids creating a shared declared-account slice while parsing still
-        // holds the `&mut [AccountView]` borrow.
-        let declared_ptr = ctx.accounts.as_ptr();
-        let declared_len = ctx.accounts.len();
-        // SAFETY: Entrypoint code constructed `ctx.accounts` with exactly
-        // `T::COUNT` declared account views for this handler.
-        let (accounts, bumps) = unsafe {
-            T::parse_with_instruction_data_unchecked(ctx.accounts, ctx.data, program_id_addr)?
-        };
-        // SAFETY: The backing memory is still valid. Parse copies AccountView
-        // values out of the slice, it does not deallocate. We construct the
-        // shared slice here only for the RemainingAccounts API which uses it
-        // for read-only address comparisons via keys_eq. The parsed struct
-        // holds &mut refs into the pointed-to RuntimeAccount data (through
-        // the raw pointers inside each AccountView), not into the AccountView
-        // slice itself, so under Tree Borrows the shared slice's "Frozen"
-        // permission on the AccountView pointer fields does not conflict.
-        let declared = unsafe { core::slice::from_raw_parts(declared_ptr, declared_len) };
-        Ok(Self {
-            accounts,
-            bumps,
-            program_id: ctx.program_id,
-            data: ctx.data,
-            remaining_ptr: ctx.remaining_ptr,
-            declared,
-            accounts_boundary: ctx.accounts_boundary,
-        })
-    }
-
-    /// Compile-time check for whether `T` has lifecycle operations
-    /// (close/sweep/migrate). When false, the epilogue call is elided.
-    #[inline(always)]
-    pub const fn has_epilogue(&self) -> bool {
-        T::HAS_EPILOGUE
-    }
-
-    /// Remaining-account accessor.
-    ///
-    /// Preserves duplicate account metas exactly as they appeared in the input.
-    /// Data access through yielded remaining-account handles uses checked
-    /// runtime borrows, so duplicate entries are safe by default.
-    #[inline(always)]
-    pub fn remaining_accounts(&self) -> RemainingAccounts<'input> {
-        RemainingAccounts::new_with_context(
-            self.remaining_ptr,
-            self.accounts_boundary,
-            self.declared,
-            // SAFETY: `program_id` is the same runtime-owned 32-byte storage
-            // originally passed through `Context`.
-            unsafe { as_address(self.program_id) },
-            self.data,
-        )
-    }
+/// Kept out of line: inlined, the conversion's jump table is copied into
+/// every path that can fail.
+#[cold]
+#[inline(never)]
+fn code(error: ProgramError) -> u64 {
+    error.into()
 }

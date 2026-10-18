@@ -28,7 +28,8 @@ pub(crate) fn serve_background(root: &Path, port: u16, program: &str) -> std::io
 
     let root = root.to_path_buf();
 
-    // Fork: child process runs the server, parent returns immediately
+    // SAFETY: the single-threaded CLI forks before starting server workers;
+    // both processes own their listener and path, and the child exits after serving.
     unsafe {
         let pid = libc::fork();
         if pid < 0 {
@@ -110,11 +111,7 @@ fn handle_connection(mut stream: TcpStream, root: &Path) {
     };
 
     // Parse "GET /path HTTP/1.1"
-    let path = request_line
-        .split_whitespace()
-        .nth(1)
-        .unwrap_or("/")
-        .to_string();
+    let path = request_line.split_whitespace().nth(1).unwrap_or("/").to_string();
 
     // Strip query string
     let path = path.split('?').next().unwrap_or("/");
@@ -243,42 +240,27 @@ mod tests {
     #[test]
     fn request_path_defaults_to_index() {
         let root = Path::new("/tmp/quasar-profile-root");
-        assert_eq!(
-            resolve_request_path(root, "/"),
-            Some(root.join("index.html"))
-        );
-        assert_eq!(
-            resolve_request_path(root, ""),
-            Some(root.join("index.html"))
-        );
+        assert_eq!(resolve_request_path(root, "/"), Some(root.join("index.html")));
+        assert_eq!(resolve_request_path(root, ""), Some(root.join("index.html")));
     }
 
     #[test]
     fn request_path_rejects_traversal() {
         let root = Path::new("/tmp/quasar-profile-root");
         assert_eq!(resolve_request_path(root, "/../secret.txt"), None);
-        assert_eq!(
-            resolve_request_path(root, "/profiles/../../secret.txt"),
-            None
-        );
+        assert_eq!(resolve_request_path(root, "/profiles/../../secret.txt"), None);
         assert_eq!(resolve_request_path(root, "../secret.txt"), None);
     }
 
     #[test]
     fn request_path_only_serves_frontend_and_profiles() {
         let root = Path::new("/tmp/quasar-profile-root");
-        assert_eq!(
-            resolve_request_path(root, "/index.html"),
-            Some(root.join("index.html"))
-        );
+        assert_eq!(resolve_request_path(root, "/index.html"), Some(root.join("index.html")));
         assert_eq!(
             resolve_request_path(root, "/profiles/demo.profile.json"),
             Some(root.join("profiles/demo.profile.json"))
         );
-        assert_eq!(
-            resolve_request_path(root, "/profiles"),
-            Some(root.join("profiles"))
-        );
+        assert_eq!(resolve_request_path(root, "/profiles"), Some(root.join("profiles")));
         assert_eq!(resolve_request_path(root, "/src/lib.rs"), None);
         assert_eq!(resolve_request_path(root, "/Cargo.toml"), None);
     }

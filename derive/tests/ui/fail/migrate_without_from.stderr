@@ -1,0 +1,5 @@
+error: `migrate` needs `from = ..` and `payer = ..`
+  --> tests/ui/fail/migrate_without_from.rs:20:20
+   |
+20 |     #[account(mut, migrate(payer = payer))]
+   |                    ^^^^^^^^^^^^^^^^^^^^^^

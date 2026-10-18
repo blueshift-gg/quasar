@@ -1,0 +1,5 @@
+error: `#[max_len]` is for `String` and `Vec`
+ --> tests/ui/fail/max_len_on_an_integer.rs:7:5
+  |
+7 |     #[max_len(8)]
+  |     ^^^^^^^^^^^^^

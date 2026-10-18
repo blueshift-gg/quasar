@@ -14,14 +14,11 @@ pub fn workspace_target_dir() -> PathBuf {
         .args(["locate-project", "--workspace", "--message-format", "plain"])
         .stderr(Stdio::null())
         .output()
+        && o.status.success()
+        && let Ok(manifest) = String::from_utf8(o.stdout)
+        && let Some(root) = Path::new(manifest.trim()).parent()
     {
-        if o.status.success() {
-            if let Ok(manifest) = String::from_utf8(o.stdout) {
-                if let Some(root) = Path::new(manifest.trim()).parent() {
-                    return root.join("target");
-                }
-            }
-        }
+        return root.join("target");
     }
     PathBuf::from("target")
 }
@@ -39,12 +36,9 @@ pub fn find_program_crate(config: &QuasarConfig) -> PathBuf {
     let name = &config.project.name;
     let module = config.module_name();
 
-    for candidate in [
-        format!("programs/{name}"),
-        format!("programs/{module}"),
-        name.to_string(),
-        module,
-    ] {
+    for candidate in
+        [format!("programs/{name}"), format!("programs/{module}"), name.to_string(), module]
+    {
         if Path::new(&candidate).join("src/lib.rs").exists() {
             return PathBuf::from(candidate);
         }
@@ -62,11 +56,7 @@ pub fn find_so(config: &QuasarConfig, include_profile: bool) -> Option<PathBuf> 
     let module = config.module_name();
     let name = &config.project.name;
 
-    let so_names = [
-        format!("{name}.so"),
-        format!("{module}.so"),
-        format!("lib{module}.so"),
-    ];
+    let so_names = [format!("{name}.so"), format!("{module}.so"), format!("lib{module}.so")];
 
     let ws_target = workspace_target_dir();
 

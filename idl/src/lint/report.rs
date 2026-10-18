@@ -185,9 +185,7 @@ impl LintReport {
     }
 
     pub fn has_errors(&self) -> bool {
-        self.diagnostics
-            .iter()
-            .any(|diag| diag.severity == Severity::Error)
+        self.diagnostics.iter().any(|diag| diag.severity == Severity::Error)
     }
 
     pub fn should_fail(&self, config: &LintConfig) -> bool {

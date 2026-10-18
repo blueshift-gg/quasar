@@ -1,14 +1,9 @@
-//! IDL generation for Quasar programs.
+//! IDL client generation and interface compatibility checks.
 //!
-//! IDL fragments are emitted at compile time by derive macros (`#[account]`,
-//! `#[event]`, `#[error_code]`, `#[derive(QuasarSerialize)]`) and assembled by
-//! the `#[program]` macro into a complete IDL JSON via the `idl-build` feature.
-//!
-//! This crate provides:
-//! - **Codegen**: TypeScript and Rust client generators from IDL JSON
-//! - **Types**: re-export of `quasar-idl-schema` types
-//!
-//! Programs compile with `--features idl-build` to produce IDL.
+//! The runtime emits its interface through `idl().to_json()`. `read` adapts
+//! that interface to the existing public schema used by the client generators.
 pub mod codegen;
 pub mod lint;
+mod runtime;
 pub mod types;
+pub use runtime::read;

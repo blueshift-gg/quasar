@@ -1,48 +1,35 @@
 [package]
 name = "quasar-lang"
-description = "Zero-copy Solana program framework"
+description = "Runtime for Quasar Solana programs"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-authors.workspace = true
+
+[features]
+# A build to test with, not to deploy: the program makes every check itself,
+# leaving none to the calls that make them, and logs which account failed
+# which check before it fails. `cargo build-sbf --features quasar-lang/debug`.
+debug = []
+
+[dependencies]
+quasar-derive.workspace = true
+solana-address = { workspace = true, features = ["sha2"] }
+solana-program-error.workspace = true
+solana-sha256-hasher.workspace = true
+zeropod.workspace = true
+
+[target.'cfg(not(target_os = "solana"))'.dependencies]
+solana-instruction.workspace = true
+solana-sha256-hasher = { workspace = true, features = ["sha2"] }
+
+[target.'cfg(target_os = "solana")'.dependencies]
+solana-define-syscall.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+solana-rent.workspace = true
+solana-address = { workspace = true, features = ["curve25519"] }
 
 [lints]
 workspace = true
-
-[features]
-debug = []
-idl-build = ["dep:inventory", "dep:quasar-idl-schema", "dep:serde_json", "dep:bs58"]
-
-[dependencies]
-quasar-derive = { version = "0.0", path = "../derive" }
-inventory = { version = "0.3", optional = true }
-quasar-idl-schema = { path = "../idl/schema", optional = true }
-serde_json = { version = "1", optional = true }
-bs58 = { version = "0.5", optional = true }
-zeropod = { version = "0.3.3", features = ["solana-address", "solana-program-error"] }
-const-crypto = "0.3.0"
-solana-program-error = "3.0.0"
-solana-account-view = "2.0.0"
-solana-address = { version = ">=2.2, <2.6", features = ["wincode", "decode", "copy"] }
-solana-instruction-view = { version = "=2.0.0", features = ["cpi"] }
-solana-program-log = "1.0.0"
-
-[target.'cfg(any(target_os = "solana", target_arch = "bpf"))'.dependencies]
-solana-define-syscall = { version = "5.0.0", features = [
-    "unstable-static-syscalls",
-] }
-
-[target.'cfg(target_arch = "bpf")'.dependencies]
-solana-compiler-builtins = { git = "https://github.com/blueshift-gg/solana-compiler-builtins" }
-
-[target.'cfg(not(any(target_os = "solana", target_arch = "bpf")))'.dependencies]
-zeropod = { version = "0.3.3", features = ["wincode", "solana-address", "solana-program-error"] }
-solana-instruction = "3.2.0"
-wincode = { version = "0.4", features = ["derive"] }
-
-[dev-dependencies]
-trybuild = "1"
-
-[lib]
-doctest = false

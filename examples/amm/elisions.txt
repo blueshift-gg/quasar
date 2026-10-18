@@ -1,0 +1,22 @@
+initialize.mint_a: spl_token::mint
+initialize.mint_b: spl_token::mint
+deposit.lp_mint: spl_token::mint
+deposit.owner_a: spl_token::account
+deposit.owner_a: token(authority = owner)
+deposit.owner_b: spl_token::account
+deposit.owner_b: token(authority = owner)
+deposit.owner_lp: spl_token::account
+deposit.owner_lp: token(mint = lp_mint)
+deposit.vault_a: spl_token::account
+deposit.vault_b: spl_token::account
+withdraw.lp_mint: spl_token::mint
+withdraw.owner_a: spl_token::account
+withdraw.owner_b: spl_token::account
+withdraw.owner_lp: spl_token::account
+withdraw.owner_lp: token(mint = lp_mint)
+withdraw.vault_a: spl_token::account
+withdraw.vault_b: spl_token::account
+swap.owner_a: spl_token::account
+swap.owner_b: spl_token::account
+swap.vault_a: spl_token::account
+swap.vault_b: spl_token::account

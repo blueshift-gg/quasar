@@ -1,0 +1,7 @@
+error: unexpected end of input, expected integer literal
+  --> tests/ui/fail/missing_discriminator.rs:10:1
+   |
+10 | #[instruction]
+   | ^^^^^^^^^^^^^^
+   |
+   = note: this error originates in the attribute macro `instruction` (in Nightly builds, run with -Z macro-backtrace for more info)

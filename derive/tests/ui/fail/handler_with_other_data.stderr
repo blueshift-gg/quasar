@@ -1,0 +1,9 @@
+error[E0277]: `Withdraw` does not take `Other` as its instruction data
+  --> tests/ui/fail/handler_with_other_data.rs:28:27
+   |
+28 | pub fn withdraw(_ctx: Ctx<Withdraw, Other>) -> Result {
+   |                           ^^^^^^^^ its constraints read the data named by its `#[data(..)]`
+   |
+   = help: the trait `Accounts<Other>` is not implemented for `Withdraw`
+           but trait `Accounts<Amount>` is implemented for it
+   = help: for that trait implementation, expected `Amount`, found `Other`

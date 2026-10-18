@@ -1,4 +1,4 @@
-use {goblin::elf::Elf, memmap2::Mmap, std::path::Path};
+use {goblin::elf::Elf, std::path::Path};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DebugLevel {
@@ -24,7 +24,7 @@ pub(crate) struct ElfInfo {
 const EM_BPF: u16 = 247;
 const EM_SBF: u16 = 263;
 
-pub(crate) fn load(mmap: &Mmap, path: &Path) -> ElfInfo {
+pub(crate) fn load(mmap: &[u8], path: &Path) -> ElfInfo {
     let elf = Elf::parse(mmap).unwrap_or_else(|e| {
         eprintln!("Error: failed to parse ELF file {}: {}", path.display(), e);
         std::process::exit(1);
@@ -61,10 +61,8 @@ pub(crate) fn load(mmap: &Mmap, path: &Path) -> ElfInfo {
         .iter()
         .any(|sh| elf.shdr_strtab.get_at(sh.sh_name) == Some(".debug_info"));
 
-    let has_symtab = elf
-        .section_headers
-        .iter()
-        .any(|sh| sh.sh_type == goblin::elf::section_header::SHT_SYMTAB);
+    let has_symtab =
+        elf.section_headers.iter().any(|sh| sh.sh_type == goblin::elf::section_header::SHT_SYMTAB);
 
     let has_dynsym = !elf.dynsyms.is_empty();
 
@@ -83,11 +81,7 @@ pub(crate) fn load(mmap: &Mmap, path: &Path) -> ElfInfo {
         .filter_map(|sym| {
             let name = elf.strtab.get_at(sym.st_name)?;
             let demangled = rustc_demangle::demangle(name).to_string();
-            Some(Symbol {
-                addr: sym.st_value,
-                size: sym.st_size,
-                name: demangled,
-            })
+            Some(Symbol { addr: sym.st_value, size: sym.st_size, name: demangled })
         })
         .collect();
 
@@ -99,22 +93,12 @@ pub(crate) fn load(mmap: &Mmap, path: &Path) -> ElfInfo {
             .filter_map(|sym| {
                 let name = elf.dynstrtab.get_at(sym.st_name)?;
                 let demangled = rustc_demangle::demangle(name).to_string();
-                Some(Symbol {
-                    addr: sym.st_value,
-                    size: sym.st_size,
-                    name: demangled,
-                })
+                Some(Symbol { addr: sym.st_value, size: sym.st_size, name: demangled })
             })
             .collect();
     }
 
     symbols.sort_by_key(|s| s.addr);
 
-    ElfInfo {
-        text_offset,
-        text_size,
-        text_base_addr,
-        symbols,
-        debug_level,
-    }
+    ElfInfo { text_offset, text_size, text_base_addr, symbols, debug_level }
 }

@@ -11,7 +11,7 @@ use {
         error::{CliError, CliResult},
         style, toolchain,
     },
-    dialoguer::{theme::ColorfulTheme, Input, MultiSelect, Select},
+    dialoguer::{Input, MultiSelect, Select, theme::ColorfulTheme},
     git::maybe_initialize_git_repo,
     types::{
         GitSetup, PackageManager, RustFramework, Template, TestLanguage, Toolchain, TypeScriptSdk,
@@ -34,40 +34,38 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
     let skip_prompts = cmd.yes;
 
     // Validate explicit flag values before proceeding
-    if let Some(ref t) = test_language_override {
-        if !matches!(t.as_str(), "none" | "rust" | "typescript") {
-            return Err(CliError::message(format!(
-                "unknown test language: {t}\n  valid: none, rust, typescript"
-            )));
-        }
+    if let Some(ref t) = test_language_override
+        && !matches!(t.as_str(), "none" | "rust" | "typescript")
+    {
+        return Err(CliError::message(format!(
+            "unknown test language: {t}\n  valid: none, rust, typescript"
+        )));
     }
-    if let Some(ref f) = rust_framework_override {
-        if !matches!(f.as_str(), "quasar-svm" | "mollusk") {
-            return Err(CliError::message(format!(
-                "unknown rust framework: {f}\n  valid: quasar-svm, mollusk"
-            )));
-        }
+    if let Some(ref f) = rust_framework_override
+        && !matches!(f.as_str(), "quasar-svm" | "mollusk")
+    {
+        return Err(CliError::message(format!(
+            "unknown rust framework: {f}\n  valid: quasar-svm, mollusk"
+        )));
     }
-    if let Some(ref s) = ts_sdk_override {
-        if !matches!(s.as_str(), "kit" | "web3.js") {
-            return Err(CliError::message(format!(
-                "unknown TypeScript SDK: {s}\n  valid: kit, web3.js"
-            )));
-        }
+    if let Some(ref s) = ts_sdk_override
+        && !matches!(s.as_str(), "kit" | "web3.js")
+    {
+        return Err(CliError::message(format!(
+            "unknown TypeScript SDK: {s}\n  valid: kit, web3.js"
+        )));
     }
-    if let Some(ref t) = template_override {
-        if !matches!(t.as_str(), "minimal" | "full") {
-            return Err(CliError::message(format!(
-                "unknown template: {t}\n  valid: minimal, full"
-            )));
-        }
+    if let Some(ref t) = template_override
+        && !matches!(t.as_str(), "minimal" | "full")
+    {
+        return Err(CliError::message(format!("unknown template: {t}\n  valid: minimal, full")));
     }
-    if let Some(ref t) = toolchain_override {
-        if !matches!(t.as_str(), "solana" | "upstream") {
-            return Err(CliError::message(format!(
-                "unknown toolchain: {t}\n  valid: solana, upstream"
-            )));
-        }
+    if let Some(ref t) = toolchain_override
+        && !matches!(t.as_str(), "solana" | "upstream")
+    {
+        return Err(CliError::message(format!(
+            "unknown toolchain: {t}\n  valid: solana, upstream"
+        )));
     }
 
     if globals.ui.animation && !skip_prompts {
@@ -103,20 +101,16 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
     scaffold::validate_target_dir(&name)?;
 
     // Toolchain
-    let toolchain_default = match toolchain_override
-        .as_deref()
-        .or(globals.defaults.toolchain.as_deref())
-    {
-        Some("upstream") => 1,
-        _ => 0,
-    };
+    let toolchain_default =
+        match toolchain_override.as_deref().or(globals.defaults.toolchain.as_deref()) {
+            Some("upstream") => 1,
+            _ => 0,
+        };
     let toolchain_idx = if skip_prompts {
         toolchain_default
     } else {
-        let toolchain_items = &[
-            "solana    (cargo build-sbf)",
-            "upstream  (cargo +nightly build-bpf)",
-        ];
+        let toolchain_items =
+            &["solana    (cargo build-sbf)", "upstream  (cargo +nightly build-bpf)"];
         Select::with_theme(&theme)
             .with_prompt("Toolchain")
             .items(toolchain_items)
@@ -135,25 +129,18 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
         ));
     }
 
-    let lang_default = match test_language_override
-        .as_deref()
-        .or(globals.defaults.test_language.as_deref())
-    {
-        Some("none") => 0,
-        Some("typescript") => 2,
-        _ => 1, // rust default
-    };
-    let rust_fw_default = match rust_framework_override
-        .as_deref()
-        .or(globals.defaults.rust_framework.as_deref())
-    {
-        Some("mollusk") => 1,
-        _ => 0, // quasar-svm default
-    };
-    let ts_sdk_default = match ts_sdk_override
-        .as_deref()
-        .or(globals.defaults.ts_sdk.as_deref())
-    {
+    let lang_default =
+        match test_language_override.as_deref().or(globals.defaults.test_language.as_deref()) {
+            Some("none") => 0,
+            Some("typescript") => 2,
+            _ => 1, // rust default
+        };
+    let rust_fw_default =
+        match rust_framework_override.as_deref().or(globals.defaults.rust_framework.as_deref()) {
+            Some("mollusk") => 1,
+            _ => 0, // quasar-svm default
+        };
+    let ts_sdk_default = match ts_sdk_override.as_deref().or(globals.defaults.ts_sdk.as_deref()) {
         Some("web3.js") => 1,
         _ => 0, // kit default
     };
@@ -272,11 +259,8 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
             ("Golang (Experimental)", "golang"),
             ("Python (Experimental)", "python"),
         ];
-        let optional: Vec<(&str, &str)> = all_optional
-            .iter()
-            .copied()
-            .filter(|(display, _)| !forced.contains(display))
-            .collect();
+        let optional: Vec<(&str, &str)> =
+            all_optional.iter().copied().filter(|(display, _)| !forced.contains(display)).collect();
 
         let hint = format!(
             "  {} {} {} {} {} {} {}",
@@ -288,10 +272,8 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
             style::prompt_accent("enter"),
             style::dim("to confirm"),
         );
-        let prompt = format!(
-            "Additional client languages ({} always included):\n{hint}",
-            forced.join(", ")
-        );
+        let prompt =
+            format!("Additional client languages ({} always included):\n{hint}", forced.join(", "));
 
         let display_items: Vec<&str> = optional.iter().map(|(d, _)| *d).collect();
         let selected = MultiSelect::with_theme(&theme)
@@ -310,20 +292,16 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
     };
 
     // Template
-    let template_default = match template_override
-        .as_deref()
-        .or(globals.defaults.template.as_deref())
-    {
-        Some("full") => 1,
-        _ => 0,
-    };
+    let template_default =
+        match template_override.as_deref().or(globals.defaults.template.as_deref()) {
+            Some("full") => 1,
+            _ => 0,
+        };
     let template_idx = if skip_prompts {
         template_default
     } else {
-        let template_items = &[
-            "Minimal (instruction file only)",
-            "Full (state, errors, and instruction files)",
-        ];
+        let template_items =
+            &["Minimal (instruction file only)", "Full (state, errors, and instruction files)"];
         Select::with_theme(&theme)
             .with_prompt("Template")
             .items(template_items)
@@ -395,11 +373,8 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
     progress.done("Git setup complete");
 
     // Save preferences for next time (disable animation after first run)
-    let saved_git_default = if no_git {
-        globals.defaults.git.clone()
-    } else {
-        Some(git_setup.to_string())
-    };
+    let saved_git_default =
+        if no_git { globals.defaults.git.clone() } else { Some(git_setup.to_string()) };
     let saved_pm = package_manager
         .as_ref()
         .map(|pm| pm.to_string())
@@ -415,10 +390,7 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
             git: saved_git_default,
             package_manager: saved_pm,
         },
-        ui: UiConfig {
-            animation: false,
-            ..globals.ui
-        },
+        ui: UiConfig { animation: false, ..globals.ui },
     };
     progress.step("Saving CLI defaults...");
     let _ = new_globals.save(); // best-effort
@@ -436,23 +408,11 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
     println!();
     println!("  {}", style::dim("Next steps:"));
     if name != "." {
-        println!(
-            "    {}  {}",
-            style::color(45, "\u{276f}"),
-            style::bold(&format!("cd {name}"))
-        );
+        println!("    {}  {}", style::color(45, "\u{276f}"), style::bold(&format!("cd {name}")));
     }
-    println!(
-        "    {}  {}",
-        style::color(45, "\u{276f}"),
-        style::bold("quasar build")
-    );
+    println!("    {}  {}", style::color(45, "\u{276f}"), style::bold("quasar build"));
     if !matches!(test_language, TestLanguage::None) {
-        println!(
-            "    {}  {}",
-            style::color(45, "\u{276f}"),
-            style::bold("quasar test")
-        );
+        println!("    {}  {}", style::color(45, "\u{276f}"), style::bold("quasar test"));
     }
     println!();
     println!(
@@ -482,13 +442,8 @@ fn crate_name_for_target(target: &str) -> Result<String, CliError> {
 fn validate_project_name(name: &str) -> CliResult {
     let module = name.replace('-', "_");
     let valid = !module.is_empty()
-        && module
-            .chars()
-            .next()
-            .is_some_and(|c| c.is_ascii_lowercase())
-        && module
-            .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+        && module.chars().next().is_some_and(|c| c.is_ascii_lowercase())
+        && module.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
         && name
             .chars()
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-');

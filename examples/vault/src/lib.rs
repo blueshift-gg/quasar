@@ -1,26 +1,22 @@
 #![no_std]
-#![allow(dead_code)]
 
 use quasar_lang::prelude::*;
 
 mod instructions;
-use instructions::*;
-#[cfg(test)]
-mod tests;
+pub use instructions::*;
 
 declare_id!("33333333333333333333333333333333333333333333");
-
 #[program]
 mod quasar_vault {
     use super::*;
 
-    #[instruction(discriminator = 0)]
-    pub fn deposit(ctx: Ctx<Deposit>, amount: u64) -> Result<(), ProgramError> {
-        ctx.accounts.deposit(amount)
+    #[instruction(0)]
+    pub fn deposit(mut ctx: Ctx<Deposit, Amount>) -> Result<(), ProgramError> {
+        ctx.accounts.deposit(ctx.data.amount)
     }
 
-    #[instruction(discriminator = 1)]
-    pub fn withdraw(ctx: Ctx<Withdraw>, amount: u64) -> Result<(), ProgramError> {
-        ctx.accounts.withdraw(amount)
+    #[instruction(1)]
+    pub fn withdraw(mut ctx: Ctx<Withdraw, Amount>) -> Result<(), ProgramError> {
+        ctx.accounts.withdraw(ctx.data.amount)
     }
 }

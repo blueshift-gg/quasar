@@ -236,11 +236,7 @@ fn extract_abi_subset(idl: &Idl) -> AbiSubset {
 fn abi_fields(fields: &[crate::types::IdlFieldDef]) -> Vec<AbiField> {
     fields
         .iter()
-        .map(|f| AbiField {
-            name: f.name.clone(),
-            ty: f.ty.clone(),
-            codec: f.codec.clone(),
-        })
+        .map(|f| AbiField { name: f.name.clone(), ty: f.ty.clone(), codec: f.codec.clone() })
         .collect()
 }
 
@@ -366,10 +362,7 @@ mod tests {
                 name: "label".to_owned(),
                 ty: IdlType::Primitive("string".to_owned()),
                 codec: Some(IdlCodec::SizePrefixed {
-                    prefix: ScalarRepr {
-                        ty: "u8".to_owned(),
-                        endian: Endian::Le,
-                    },
+                    prefix: ScalarRepr { ty: "u8".to_owned(), endian: Endian::Le },
                     storage,
                     max_bytes: Some(32),
                     max_items: None,

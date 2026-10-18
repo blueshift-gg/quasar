@@ -1,0 +1,60 @@
+{
+  "address": "22222222222222222222222222222222222222222222",
+  "name": "escrow",
+  "instructions": [
+    {
+      "name": "make",
+      "discriminator": [0],
+      "accounts": [
+        { "name": "maker", "writable": true, "signer": true, "optional": false, "remaining": false },
+        { "name": "escrow", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "mint_a", "writable": false, "signer": false, "optional": false, "remaining": false },
+        { "name": "mint_b", "writable": false, "signer": false, "optional": false, "remaining": false },
+        { "name": "maker_ta_a", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "maker_ta_b", "writable": true, "signer": true, "optional": false, "remaining": false },
+        { "name": "vault_ta_a", "writable": true, "signer": true, "optional": false, "remaining": false },
+        { "name": "rent", "writable": false, "signer": false, "optional": false, "remaining": false },
+        { "name": "token_program", "writable": false, "signer": false, "optional": false, "remaining": false },
+        { "name": "system_program", "writable": false, "signer": false, "optional": false, "remaining": false }
+      ],
+      "args": [{ "name": "deposit", "type": "u64" }, { "name": "receive", "type": "u64" }]
+    },
+    {
+      "name": "take",
+      "discriminator": [1],
+      "accounts": [
+        { "name": "taker", "writable": true, "signer": true, "optional": false, "remaining": false },
+        { "name": "escrow", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "maker", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "mint_a", "writable": false, "signer": false, "optional": false, "remaining": false },
+        { "name": "mint_b", "writable": false, "signer": false, "optional": false, "remaining": false },
+        { "name": "taker_ta_a", "writable": true, "signer": true, "optional": false, "remaining": false },
+        { "name": "taker_ta_b", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "maker_ta_b", "writable": true, "signer": true, "optional": false, "remaining": false },
+        { "name": "vault_ta_a", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "rent", "writable": false, "signer": false, "optional": false, "remaining": false },
+        { "name": "token_program", "writable": false, "signer": false, "optional": false, "remaining": false },
+        { "name": "system_program", "writable": false, "signer": false, "optional": false, "remaining": false }
+      ],
+      "args": []
+    },
+    {
+      "name": "refund",
+      "discriminator": [2],
+      "accounts": [
+        { "name": "maker", "writable": true, "signer": true, "optional": false, "remaining": false },
+        { "name": "escrow", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "mint_a", "writable": false, "signer": false, "optional": false, "remaining": false },
+        { "name": "maker_ta_a", "writable": true, "signer": true, "optional": false, "remaining": false },
+        { "name": "vault_ta_a", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "rent", "writable": false, "signer": false, "optional": false, "remaining": false },
+        { "name": "token_program", "writable": false, "signer": false, "optional": false, "remaining": false },
+        { "name": "system_program", "writable": false, "signer": false, "optional": false, "remaining": false }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    { "name": "Escrow", "discriminator": [1], "size": 138, "fields": [{ "name": "maker", "type": "Address" }, { "name": "mint_a", "type": "Address" }, { "name": "mint_b", "type": "Address" }, { "name": "maker_ta_b", "type": "Address" }, { "name": "receive", "type": "u64" }, { "name": "bump", "type": "u8" }] }
+  ]
+}

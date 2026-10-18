@@ -1,30 +1,25 @@
 [package]
 name = "quasar-derive"
-description = "Proc macros for the Quasar Solana framework"
+description = "Macros for Quasar Solana programs"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-authors.workspace = true
-
-[lints]
-workspace = true
 
 [lib]
 proc-macro = true
-doctest = false
 
 [dependencies]
-syn = { version = "2", features = ["full"] }
+proc-macro2 = { version = "1", features = ["span-locations"] }
 quote = "1"
-proc-macro2 = "1"
-serde_json = "1"
-quasar-schema = { path = "../schema" }
-quasar-idl-schema = { path = "../idl/schema" }
+syn = { version = "2", features = ["full", "visit"] }
+solana-address.workspace = true
 
 [dev-dependencies]
-trybuild = "1"
+# These workspace-only test dependencies must not form a published dependency cycle.
 quasar-lang = { path = "../lang" }
-quasar-derive = { path = "../derive" }
 quasar-spl = { path = "../spl" }
-solana-address = { version = ">=2.2, <2.6", features = ["copy"] }
+trybuild = "1"
+
+[lints]
+workspace = true

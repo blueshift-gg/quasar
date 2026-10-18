@@ -1,5 +1,0 @@
-error: unknown key-value directive `seeds = ...`
-  --> tests/compile_fail/seeds_wrong_arity.rs:17:15
-   |
-17 |     #[account(seeds = Vault::seeds(), bump = vault.bump)]
-   |               ^^^^^

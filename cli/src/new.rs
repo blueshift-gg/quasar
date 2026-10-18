@@ -26,10 +26,11 @@ pub fn run_instruction(name: &str) -> CliResult {
     let lib_path = Path::new("src").join("lib.rs");
 
     if !lib_path.exists() {
-        return Err(CliError::message(
-            "src/lib.rs not found; are you in a Quasar project?",
-        ));
+        return Err(CliError::message("src/lib.rs not found; are you in a Quasar project?"));
     }
+
+    let original = fs::read_to_string(&lib_path)?;
+    add_instruction_to_entrypoint(&original, &snake, &snake_to_pascal(&snake))?;
 
     // Create instructions directory if it doesn't exist (minimal template)
     if !instructions_dir.exists() {
@@ -57,9 +58,7 @@ pub fn run_instruction(name: &str) -> CliResult {
 
     let file_path = instructions_dir.join(format!("{snake}.rs"));
     if file_path.exists() {
-        return Err(CliError::message(format!(
-            "src/instructions/{snake}.rs already exists"
-        )));
+        return Err(CliError::message(format!("src/instructions/{snake}.rs already exists")));
     }
 
     // Write the instruction file
@@ -75,7 +74,7 @@ pub struct {pascal} {{
 
 impl {pascal} {{
     #[inline(always)]
-    pub fn {snake}(&self) -> Result<(), ProgramError> {{
+    pub fn {snake}(&self) -> Result<()> {{
         Ok(())
     }}
 }}
@@ -96,75 +95,101 @@ impl {pascal} {{
     // Add the instruction to the #[program] block in lib.rs.
     if lib_path.exists() {
         let lib_content = fs::read_to_string(&lib_path)?;
-        if let Some(updated) = add_instruction_to_entrypoint(&lib_content, &snake, &pascal) {
-            fs::write(&lib_path, updated)?;
-            println!("  {} src/lib.rs", style::success("updated"));
-        }
+        let updated = add_instruction_to_entrypoint(&lib_content, &snake, &pascal)?;
+        fs::write(&lib_path, updated)?;
+        println!("  {} src/lib.rs", style::success("updated"));
     }
 
-    println!(
-        "  {} src/instructions/{snake}.rs",
-        style::success("created")
-    );
+    println!("  {} src/instructions/{snake}.rs", style::success("created"));
     println!("  {} src/instructions/mod.rs", style::success("updated"));
 
     Ok(())
 }
 
-/// Insert a new auto-discriminated #[instruction] entry into the #[program]
-/// block.
-fn add_instruction_to_entrypoint(lib_content: &str, snake: &str, pascal: &str) -> Option<String> {
-    // Find the closing `}}` of the #[program] mod block.
-    // Strategy: find the last `}` that closes the program module.
-    // We look for the pattern: a line with just `}` or `}}` that ends the mod
-    // block. The program block ends with a `}` at indent level 0 after
-    // `#[program]`.
-    let mut in_program = false;
-    let mut program_brace_depth = 0;
-    let mut insert_pos = None;
-
-    let mut pos = 0;
-    for line in lib_content.lines() {
-        let trimmed = line.trim();
-
-        if trimmed.starts_with("#[program]") {
-            in_program = true;
-        }
-
-        if in_program {
-            for ch in trimmed.chars() {
-                if ch == '{' {
-                    program_brace_depth += 1;
-                } else if ch == '}' {
-                    program_brace_depth -= 1;
-                    if program_brace_depth == 0 {
-                        // Insert before the `}` that closes the program module.
-                        insert_pos = Some(pos);
-                        break;
-                    }
+/// Preserve existing discriminators and allocate the next unused value of the
+/// same width. Parse Rust so braces inside comments and strings cannot move it.
+fn add_instruction_to_entrypoint(
+    lib_content: &str,
+    snake: &str,
+    pascal: &str,
+) -> Result<String, CliError> {
+    let file = syn::parse_file(lib_content).map_err(|e| CliError::message(e.to_string()))?;
+    let module = file
+        .items
+        .iter()
+        .find_map(|item| match item {
+            syn::Item::Mod(module) if module.attrs.iter().any(|a| a.path().is_ident("program")) => {
+                Some(module)
+            }
+            _ => None,
+        })
+        .ok_or_else(|| CliError::message("no inline #[program] module found in src/lib.rs"))?;
+    let (brace, items) = module
+        .content
+        .as_ref()
+        .ok_or_else(|| CliError::message("#[program] needs an inline module"))?;
+    let mut used = Vec::new();
+    for item in items {
+        if let syn::Item::Fn(handler) = item {
+            if handler.sig.ident == snake {
+                return Err(CliError::message("instruction already exists"));
+            }
+            for attr in &handler.attrs {
+                if !attr.path().is_ident("instruction") {
+                    continue;
                 }
+                let expression: syn::Expr =
+                    attr.parse_args().map_err(|e| CliError::message(e.to_string()))?;
+                let literals = match expression {
+                    syn::Expr::Array(array) => array.elems.into_iter().collect(),
+                    expr => vec![expr],
+                };
+                let bytes: Vec<u8> = literals
+                    .into_iter()
+                    .map(|expr| {
+                        if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Int(lit), .. }) = expr {
+                            lit.base10_parse().map_err(|e| CliError::message(e.to_string()))
+                        } else {
+                            Err(CliError::message(
+                                "instruction discriminators must be byte literals",
+                            ))
+                        }
+                    })
+                    .collect::<Result<_, _>>()?;
+                if bytes.is_empty() {
+                    return Err(CliError::message("empty instruction discriminator"));
+                }
+                used.push(bytes);
             }
         }
-
-        if insert_pos.is_some() {
-            break;
-        }
-
-        pos += line.len() + 1; // +1 for newline
     }
-
-    let insert_pos = insert_pos?;
-
+    let width = used.first().map_or(1, Vec::len);
+    if used.iter().any(|bytes| bytes.len() != width) {
+        return Err(CliError::message("instruction discriminators have different widths"));
+    }
+    let mut next = vec![0u8; width];
+    while used.contains(&next) {
+        let mut carry = true;
+        for byte in &mut next {
+            (*byte, carry) = byte.overflowing_add(1);
+            if !carry {
+                break;
+            }
+        }
+        if carry {
+            return Err(CliError::message("all instruction discriminators are in use"));
+        }
+    }
+    let location = brace.span.close().start();
+    let insert_pos =
+        lib_content.split_inclusive('\n').take(location.line - 1).map(str::len).sum::<usize>()
+            + location.column;
     let new_entry = format!(
-        "\n    #[instruction]\n    pub fn {snake}(ctx: Ctx<{pascal}>) -> Result<(), ProgramError> \
-         {{\n        ctx.accounts.{snake}()\n    }}\n"
+        "\n    #[instruction({next:?})]\n    pub fn {snake}(ctx: Ctx<{pascal}>) -> Result<()> {{\n        ctx.accounts.{snake}()\n    }}\n"
     );
-
-    let mut result = String::with_capacity(lib_content.len() + new_entry.len());
-    result.push_str(&lib_content[..insert_pos]);
-    result.push_str(&new_entry);
-    result.push_str(&lib_content[insert_pos..]);
-    Some(result)
+    let mut result = lib_content.to_owned();
+    result.insert_str(insert_pos, &new_entry);
+    Ok(result)
 }
 
 fn parse_discriminator(line: &str) -> Option<i64> {
@@ -175,11 +200,7 @@ fn parse_discriminator(line: &str) -> Option<i64> {
 
     let (_, after_name) = line.split_once("discriminator")?;
     let (_, after_eq) = after_name.split_once('=')?;
-    let digits: String = after_eq
-        .trim_start()
-        .chars()
-        .take_while(|c| c.is_ascii_digit())
-        .collect();
+    let digits: String = after_eq.trim_start().chars().take_while(|c| c.is_ascii_digit()).collect();
 
     if digits.is_empty() {
         return None;
@@ -210,10 +231,10 @@ pub fn run_state(name: &str) -> CliResult {
 
         let mut max_disc: i64 = 0;
         for line in existing.lines() {
-            if let Some(n) = parse_discriminator(line) {
-                if n > max_disc {
-                    max_disc = n;
-                }
+            if let Some(n) = parse_discriminator(line)
+                && n > max_disc
+            {
+                max_disc = n;
             }
         }
 
@@ -238,6 +259,7 @@ pub struct {pascal} {{
         fs::write(&state_path, content)?;
     }
 
+    wire_module("state")?;
     println!(
         "  {} src/state.rs ({})",
         style::success(if already_exists { "updated" } else { "created" }),
@@ -284,12 +306,23 @@ pub enum {pascal} {{
         fs::write(&errors_path, content)?;
     }
 
+    wire_module("errors")?;
     println!(
         "  {} src/errors.rs ({})",
         style::success(if already_exists { "updated" } else { "created" }),
         pascal,
     );
 
+    Ok(())
+}
+
+fn wire_module(name: &str) -> CliResult {
+    let path = Path::new("src/lib.rs");
+    let source = fs::read_to_string(path)?;
+    let declaration = format!("mod {name};");
+    if !source.lines().any(|line| line.trim() == declaration) {
+        fs::write(path, format!("{source}\n{declaration}\n"))?;
+    }
     Ok(())
 }
 
@@ -304,21 +337,18 @@ mod tests {
 
     #[test]
     fn discriminator_parser_accepts_space_or_no_space() {
-        assert_eq!(
-            parse_discriminator("#[instruction(discriminator = 7)]"),
-            Some(7)
-        );
+        assert_eq!(parse_discriminator("#[instruction(discriminator = 7)]"), Some(7));
         assert_eq!(parse_discriminator("#[account(discriminator=8)]"), Some(8));
     }
 
     #[test]
-    fn instruction_insert_uses_auto_discriminator() {
+    fn instruction_insert_preserves_existing_discriminators() {
         let source = r#"#[program]
 mod demo {
     use super::*;
 
-    #[instruction(discriminator=3)]
-    pub fn initialize(ctx: Ctx<Initialize>) -> Result<(), ProgramError> {
+    #[instruction(3)]
+    pub fn initialize(ctx: Ctx<Initialize>) -> Result<()> {
         ctx.accounts.initialize()
     }
 }
@@ -327,7 +357,7 @@ mod demo {
         let updated = add_instruction_to_entrypoint(source, "settle", "Settle")
             .expect("program block should be updated");
 
-        assert!(updated.contains("#[instruction]"));
+        assert!(updated.contains("#[instruction([0])]"));
         assert!(updated.contains("pub fn settle(ctx: Ctx<Settle>)"));
     }
 

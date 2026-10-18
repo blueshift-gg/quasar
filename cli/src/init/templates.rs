@@ -18,14 +18,16 @@ build-std = ["core", "alloc"]
 
 [target.bpfel-unknown-none]
 rustflags = [
-"--cfg", "feature=\"mem_unaligned\"",
+"--cfg", "target_os=\"solana\"",
+"-A", "explicit_builtin_cfgs_in_flags",
 "-C", "linker=sbpf-linker",
 "-C", "panic=abort",
 "-C", "relocation-model=static",
 "-C", "link-arg=--disable-memory-builtins",
 "-C", "link-arg=--llvm-args=--bpf-stack-size=4096",
-"-C", "link-arg=--disable-expand-memcpy-in-order",
+"-C", "link-arg=--disable-expand-memcpy-in-order=true",
 "-C", "link-arg=--export=entrypoint",
+"-C", "link-arg=--arch=v0",
 "-C", "target-cpu=v2",
 "-C", "overflow-checks=off",
 ]
@@ -47,7 +49,7 @@ pub struct Initialize {
 
 impl Initialize {
     #[inline(always)]
-    pub fn initialize(&self) -> Result<(), ProgramError> {
+    pub fn initialize(&self) -> Result<()> {
         Ok(())
     }
 }

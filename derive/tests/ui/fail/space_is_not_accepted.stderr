@@ -1,0 +1,5 @@
+error: `init` sizes an account from its layout; there is no `space`
+  --> tests/ui/fail/space_is_not_accepted.rs:14:36
+   |
+14 |     #[account(init(payer = payer), space = 16)]
+   |                                    ^^^^^

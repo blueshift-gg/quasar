@@ -1,0 +1,18 @@
+[package]
+name = "metaplex"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+quasar-lang.workspace = true
+quasar-metadata.workspace = true
+
+[dev-dependencies]
+quasar-test.workspace = true
+
+[lints]
+workspace = true
