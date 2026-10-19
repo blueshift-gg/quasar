@@ -204,7 +204,7 @@ leave it intact. Kani helpers target the crates that currently contain proofs.
 
 `make check` includes the repository policy checks. They can also run separately:
 `make check-workspace-lints`, `make check-runtime-panics`, and
-`make check-workspace-invariants` (CLI conventions). They require Python 3.11+.
+`make check-cli-conventions`. They require Python 3.11+.
 
 The panic check scans `lang`, `spl`, `metadata`, and `derive` for explicit
 `panic!`, `unreachable!`, `todo!`, and `unimplemented!` calls. Reviewed exceptions
