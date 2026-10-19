@@ -19,8 +19,23 @@ DEBUG := $(PROGRAMS)
 .PHONY: format format-fix clippy-fix build build-sbf generated-client-smoke
 .PHONY: bench-cu bench-tracked compare-tracked test-all nightly-version
 .PHONY: help-kani check-kani kani-lang kani-metadata
+.PHONY: check-policies test-policies check-workspace-lints check-runtime-panics check-workspace-invariants
 
-check: fmt clippy check-features sbf rivals test kani bench-check expansion publish-check
+check: check-policies fmt clippy check-features sbf rivals test kani bench-check expansion publish-check
+
+check-policies: test-policies check-workspace-lints check-runtime-panics check-workspace-invariants
+
+test-policies:
+	python3 .github/scripts/test-policies.py
+
+check-workspace-lints:
+	python3 .github/scripts/check-policies.py workspace-lints
+
+check-runtime-panics:
+	python3 .github/scripts/check-policies.py runtime-panics
+
+check-workspace-invariants:
+	python3 .github/scripts/check-policies.py cli
 
 fmt:
 	cargo fmt --all --check

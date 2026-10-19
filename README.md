@@ -196,10 +196,25 @@ Developer shortcuts:
 | `make help-kani` / `make check-kani` | Show setup instructions / verify the pinned version |
 | `make kani-lang` / `make kani-metadata` | Run one crate's proofs |
 | `make test-all` | Run `make check` and both Miri modes |
+| `make check-policies` | Check workspace lint inheritance, panic exceptions, and CLI conventions |
 | `make nightly-version` | Print the pinned Miri nightly |
 
 `make bench` explicitly updates the benchmark baseline; the reporting shortcuts
 leave it intact. Kani helpers target the crates that currently contain proofs.
+
+`make check` includes the repository policy checks. They can also run separately:
+`make check-workspace-lints`, `make check-runtime-panics`, and
+`make check-workspace-invariants` (CLI conventions). They require Python 3.11+.
+
+The panic check scans `lang`, `spl`, `metadata`, and `derive` for explicit
+`panic!`, `unreachable!`, `todo!`, and `unimplemented!` calls. Reviewed exceptions
+in `.github/scripts/check-policies.py` have exact call text, paths, occurrence
+counts, and reasons; stale exceptions fail too. CLI checks reserve `exit` for
+`cli/src/main.rs` and `sleep` for `cli/src/build_watch.rs`, and reject whitespace
+splitting in favor of structured arguments or quote-aware parsing. Comments and
+string literals are ignored. These are lexical convention checks: they do not
+resolve arbitrary aliases or prove that indexing, arithmetic, or `unwrap()`
+cannot panic. `make test-policies` exercises the checker itself.
 
 CI caches Cargo downloads, Solana/SBF toolchains, and cargo-expand/cargo-hack.
 Changes are classified by `.github/filters.yml`: root documentation-only edits
