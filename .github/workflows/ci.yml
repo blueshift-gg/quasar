@@ -87,6 +87,15 @@ jobs:
         if: steps.solana.outputs.cache-hit != 'true'
         run: |
           sh -c "$(curl -sSfL https://release.anza.xyz/v3.1.14/install)"
+      # cargo-build-sbf asks GitHub for the latest release unless the requested
+      # platform-tools are already installed, and panics if that lookup fails.
+      - name: Install SBF platform-tools v1.56
+        if: steps.solana.outputs.cache-hit != 'true'
+        run: |
+          dir="$HOME/.cache/solana/v1.56/platform-tools"
+          mkdir -p "$dir"
+          curl -sSfL --retry 5 "https://github.com/anza-xyz/platform-tools/releases/download/v1.56/platform-tools-linux-$(uname -m).tar.bz2" \
+            | tar -xj -C "$dir"
       - name: Add Solana tools to PATH
         run: echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
       - name: Cache Cargo helper tools
