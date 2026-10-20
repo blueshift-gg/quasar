@@ -21,6 +21,8 @@ pub struct ProjectConfig {
 pub struct ToolchainConfig {
     #[serde(rename = "type")]
     pub toolchain_type: String,
+    pub tools_version: Option<String>,
+    pub arch: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

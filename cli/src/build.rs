@@ -10,7 +10,7 @@ pub(crate) use watch::watch_loop;
 const PLATFORM_TOOLS_VERSION: &str = "v1.56";
 use {
     crate::{
-        config::QuasarConfig,
+        config::{QuasarConfig, ToolchainConfig},
         error::{CliError, CliResult},
         style, toolchain, utils,
     },
@@ -27,6 +27,19 @@ use {
 enum BuildResult {
     Captured(Output),
     Streamed(ExitStatus),
+}
+
+fn solana_build_command(toolchain: &ToolchainConfig) -> Command {
+    let mut cmd = Command::new("cargo");
+    cmd.args([
+        "build-sbf",
+        "--tools-version",
+        toolchain.tools_version.as_deref().unwrap_or(PLATFORM_TOOLS_VERSION),
+    ]);
+    if let Some(arch) = &toolchain.arch {
+        cmd.args(["--arch", arch]);
+    }
+    cmd
 }
 
 pub fn run(debug: bool, verbose: bool, watch: bool, features: Option<String>) -> CliResult {
@@ -71,8 +84,7 @@ fn run_once(debug: bool, verbose: bool, features: Option<&str>) -> CliResult {
     let scoped = manifest.exists() && crate_root != Path::new(".");
 
     let output = if config.is_solana_toolchain() {
-        let mut cmd = Command::new("cargo");
-        cmd.args(["build-sbf", "--tools-version", PLATFORM_TOOLS_VERSION]);
+        let mut cmd = solana_build_command(&config.toolchain);
         if scoped {
             cmd.args(["--manifest-path", &manifest.to_string_lossy()]);
         }
@@ -242,8 +254,8 @@ pub fn profile_build() -> Result<PathBuf, crate::error::CliError> {
     let scoped = manifest.exists() && crate_root != Path::new(".");
 
     let output = if config.is_solana_toolchain() {
-        let mut cmd = Command::new("cargo");
-        cmd.args(["build-sbf", "--tools-version", PLATFORM_TOOLS_VERSION, "--debug"]);
+        let mut cmd = solana_build_command(&config.toolchain);
+        cmd.arg("--debug");
         if scoped {
             cmd.args(["--manifest-path", &manifest.to_string_lossy()]);
         }
@@ -395,7 +407,26 @@ fn size_entry_matches(line: &str, key: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_size_entry, size_entry_matches};
+    use super::{ToolchainConfig, parse_size_entry, size_entry_matches, solana_build_command};
+
+    #[test]
+    fn solana_build_uses_configured_tools_and_arch_without_changing_legacy_defaults() {
+        for (settings, expected) in [
+            ("", vec!["build-sbf", "--tools-version", "v1.56"]),
+            ("tools_version = 'v1.53'", vec!["build-sbf", "--tools-version", "v1.53"]),
+            ("arch = 'v0'", vec!["build-sbf", "--tools-version", "v1.56", "--arch", "v0"]),
+            (
+                "tools_version = 'v1.53'\narch = 'v3'",
+                vec!["build-sbf", "--tools-version", "v1.53", "--arch", "v3"],
+            ),
+        ] {
+            let config: ToolchainConfig =
+                toml::from_str(&format!("type = 'solana'\n{settings}")).unwrap();
+            let command = solana_build_command(&config);
+            assert_eq!(command.get_program(), "cargo");
+            assert_eq!(command.get_args().collect::<Vec<_>>(), expected);
+        }
+    }
 
     #[test]
     fn size_entry_match_is_exact_even_for_prefix_paths() {

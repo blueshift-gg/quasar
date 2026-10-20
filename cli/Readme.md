@@ -12,7 +12,7 @@ cargo install --path cli --locked
 
 New projects use the typed-core API, explicit instruction discriminators and
 published ZeroPod 0.4.0 through `quasar-lang`. The Solana build uses
-platform-tools v1.56, matching the repository gate. The optional upstream
+platform-tools v1.56 by default, matching the repository gate. The optional upstream
 build uses `cargo +nightly`, `rust-src`, and `sbpf-linker`; its target config
 selects the runtime's on-chain implementation and SBF v0 output.
 
@@ -214,6 +214,9 @@ name = "my-program"
 
 [toolchain]
 type = "solana"
+# Optional overrides for build, test, and profile:
+tools_version = "v1.56"
+arch = "v0"
 
 [testing]
 language = "rust"
@@ -226,6 +229,15 @@ test = { program = "cargo", args = ["test", "tests::"] }
 path = "target/client"
 languages = ["rust"]
 ```
+
+`tools_version` overrides the platform-tools version passed to `cargo build-sbf`.
+If omitted, it defaults to v1.56. `arch` is optional; when omitted, the installed
+`cargo-build-sbf` chooses its default architecture. Set `arch = "v0"` explicitly
+when using tools or a test runtime that require SBPFv0. These settings apply to
+normal, debug, watch, test and profiling builds using the Solana toolchain;
+the upstream toolchain does not use them. The selected compiler validates the
+version/architecture combination. See the
+[Anza migration guide](https://github.com/anza-xyz/cargo-build-sbf#sbfpv3-migration).
 
 ### Global config (`~/.quasar/config.toml`)
 

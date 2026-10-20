@@ -183,6 +183,14 @@ feature powerset without dev-dependency feature unification. To run it locally,
 install `cargo-hack` with `cargo install --locked cargo-hack@0.6.45`.
 `ARCHITECTURE.md` is the map of the code.
 
+Workspace SBF builds default to platform-tools v1.56. Override the version with
+`make sbf PLATFORM_TOOLS_VERSION=v1.53`, or pass explicit build options with
+`make sbf SBF_TOOLS='--tools-version v1.56 --arch v0'`. These overrides also
+apply to comparison-program and profiling builds. Benchmark results depend on
+the compiler, so CI keeps the pinned default. For CLI projects, configure
+`tools_version` and `arch` under `[toolchain]` in `Quasar.toml`; see the
+[CLI guide](cli/Readme.md).
+
 Developer shortcuts:
 
 | Command | Action |
