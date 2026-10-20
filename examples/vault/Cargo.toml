@@ -1,24 +1,17 @@
 [package]
-name = "quasar-vault"
-version = "0.1.0"
-edition = "2021"
+name = "vault"
+version = "0.0.0"
+edition.workspace = true
+publish = false
 
 [lib]
 crate-type = ["cdylib", "lib"]
-doctest = false
+
+[dependencies]
+quasar-lang.workspace = true
+
+[dev-dependencies]
+quasar-test.workspace = true
 
 [lints]
 workspace = true
-
-[features]
-alloc = []
-client = []
-debug = []
-idl-build = ["quasar-lang/idl-build"]
-
-[dependencies]
-quasar-lang = { path = "../../lang" }
-
-[dev-dependencies]
-quasar-vault-client = { path = "client" }
-quasar-svm = { git = "https://github.com/blueshift-gg/quasar-svm" }

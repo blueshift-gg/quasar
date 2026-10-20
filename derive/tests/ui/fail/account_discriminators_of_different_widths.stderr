@@ -1,0 +1,15 @@
+error[E0080]: evaluation panicked: the account kinds a program owns share one discriminator width
+  --> tests/ui/fail/account_discriminators_of_different_widths.rs:20:1
+   |
+20 | #[program]
+   | ^^^^^^^^^^ evaluation of `_` failed inside this call
+   |
+note: inside `one_width`
+  --> $WORKSPACE/lang/src/account.rs
+   |
+   |                       Some(first) => assert!(
+   |  ____________________________________^
+   | |                         first == width,
+   | |                         "the account kinds a program owns share one discriminator width"
+   | |                     ),
+   | |_____________________^ the failure occurred here

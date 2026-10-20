@@ -1,0 +1,7 @@
+error: `#[account]` needs `discriminator = ..`
+ --> tests/ui/fail/missing_account_discriminator.rs:5:1
+  |
+5 | #[account]
+  | ^^^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `account` (in Nightly builds, run with -Z macro-backtrace for more info)

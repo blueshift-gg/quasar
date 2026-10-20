@@ -1,0 +1,5 @@
+error: `has_one` names `depositor`, which is not a field of this struct
+  --> tests/ui/fail/has_one_names_a_missing_field.rs:12:23
+   |
+12 |     #[account(has_one(depositor))]
+   |                       ^^^^^^^^^

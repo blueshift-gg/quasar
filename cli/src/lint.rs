@@ -1,8 +1,9 @@
 use {
     crate::{
+        LintCommand,
         config::QuasarConfig,
         error::{CliError, CliResult},
-        style, utils, LintCommand,
+        style, utils,
     },
     quasar_idl::{
         lint::{self, Diagnostic, LintConfig, LintReport, ProgramSurface, Severity},
@@ -16,22 +17,17 @@ pub fn run(cmd: LintCommand) -> CliResult {
     let crate_root = utils::find_program_crate(&config);
     let idl = crate::idl::build(&crate_root)?;
     let lockfile_exists = lint::lock_path(&crate_root).exists();
-    let previous_lock = if cmd.no_diff {
-        None
-    } else {
-        load_existing_lock(&crate_root)?
-    };
-    let lint_config = LintConfig {
-        strict: cmd.strict,
-        lockfile_present: cmd.update_lock || lockfile_exists,
-    };
+    let previous_lock = if cmd.no_diff { None } else { load_existing_lock(&crate_root)? };
+    let lint_config =
+        LintConfig { strict: cmd.strict, lockfile_present: cmd.update_lock || lockfile_exists };
     let current = ProgramSurface::from_idl(&idl);
 
     let mut report = lint::run(&idl, &lint_config);
-    if !cmd.update_lock && !cmd.no_diff {
-        if let Some(previous) = previous_lock {
-            report.extend(lint::diff(&previous, &current));
-        }
+    if !cmd.update_lock
+        && !cmd.no_diff
+        && let Some(previous) = previous_lock
+    {
+        report.extend(lint::diff(&previous, &current));
     }
 
     print_report(&report);
@@ -53,10 +49,7 @@ pub fn run(cmd: LintCommand) -> CliResult {
 
 pub fn run_for_build(crate_root: &Path, idl: &Idl) -> CliResult {
     let previous_lock = load_existing_lock(crate_root)?;
-    let lint_config = LintConfig {
-        strict: false,
-        lockfile_present: previous_lock.is_some(),
-    };
+    let lint_config = LintConfig { strict: false, lockfile_present: previous_lock.is_some() };
     let mut report = lint::run(idl, &lint_config);
     if let Some(previous) = previous_lock {
         let current = ProgramSurface::from_idl(idl);
@@ -80,9 +73,7 @@ fn load_existing_lock(crate_root: &Path) -> Result<Option<ProgramSurface>, CliEr
     if !path.exists() {
         return Ok(None);
     }
-    lint::load_lockfile(&path)
-        .map(Some)
-        .map_err(|e| CliError::message(e.to_string()))
+    lint::load_lockfile(&path).map(Some).map_err(|e| CliError::message(e.to_string()))
 }
 
 fn print_report(report: &LintReport) {
@@ -103,10 +94,7 @@ fn print_diagnostic(diagnostic: &Diagnostic) {
         Severity::Info => style::step(diagnostic.severity.as_str()),
     };
 
-    eprintln!(
-        "    {label} {} {}: {}",
-        diagnostic.rule, diagnostic.target, diagnostic.message
-    );
+    eprintln!("    {label} {} {}: {}", diagnostic.rule, diagnostic.target, diagnostic.message);
     eprintln!("      {}", diagnostic.rule.title());
     if let Some(suggestion) = &diagnostic.suggestion {
         eprintln!("      fix: {suggestion}");

@@ -10,10 +10,7 @@ use {
 };
 
 fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("workspace root")
-        .to_path_buf()
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().expect("workspace root").to_path_buf()
 }
 
 fn write_file(path: &Path, contents: impl AsRef<str>) -> Result<(), Box<dyn Error>> {
@@ -25,7 +22,7 @@ fn write_file(path: &Path, contents: impl AsRef<str>) -> Result<(), Box<dyn Erro
 }
 
 #[test]
-fn missing_idl_build_feature_reports_actionable_message() -> Result<(), Box<dyn Error>> {
+fn idl_emission_requires_no_opt_in_feature() -> Result<(), Box<dyn Error>> {
     let temp = tempdir()?;
     let program_dir = temp.path().join("programs/missing-idl-build");
 
@@ -62,28 +59,20 @@ declare_id!("11111111111111111111111111111111");
 mod missing_idl_build {
     use super::*;
 
-    pub fn noop(_ctx: Ctx<Noop>) -> Result<(), ProgramError> {
+    #[instruction(0)]
+    pub fn noop(_ctx: Ctx<Noop>) -> Result<()> {
         Ok(())
     }
 }
 
 #[derive(Accounts)]
-pub struct Noop {}
+pub struct Noop { pub payer: Signer }
 "#,
     )?;
 
-    let err = idl::generate(&program_dir, &[], &temp.path().join("clients"))
-        .expect_err("IDL generation should fail without the idl-build feature");
-    let message = err.to_string();
-
-    assert!(
-        !message.contains("Anyhow error"),
-        "missing idl-build feature should not be hidden behind generic Anyhow output: {message}"
-    );
-    assert!(
-        message.contains("idl-build = [\"quasar-lang/idl-build\"]"),
-        "missing idl-build feature should include the Cargo.toml fix: {message}"
-    );
+    let idl = idl::generate(&program_dir, &[], &temp.path().join("clients"))?;
+    assert_eq!(idl.instructions.len(), 1);
+    assert_eq!(idl.instructions[0].discriminator, [0]);
 
     Ok(())
 }
@@ -104,9 +93,6 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "lib"]
 
-[features]
-idl-build = ["quasar-lang/idl-build"]
-
 [dependencies]
 quasar-lang = {{ path = "{}" }}
 "#,
@@ -125,13 +111,14 @@ declare_id!("11111111111111111111111111111111");
 mod dot_path_program {
     use super::*;
 
-    pub fn noop(_ctx: Ctx<Noop>) -> Result<(), ProgramError> {
+    #[instruction(0)]
+    pub fn noop(_ctx: Ctx<Noop>) -> Result<()> {
         Ok(())
     }
 }
 
 #[derive(Accounts)]
-pub struct Noop {}
+pub struct Noop { pub payer: Signer }
 "#,
     )?;
 
@@ -148,9 +135,7 @@ pub struct Noop {}
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(
-        program_dir
-            .join("target/idl/dot_path_program.json")
-            .exists(),
+        program_dir.join("target/idl/dot_path_program.json").exists(),
         "IDL JSON should be written under the crate-local target directory"
     );
 

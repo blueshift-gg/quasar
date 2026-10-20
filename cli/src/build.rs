@@ -6,12 +6,11 @@ mod lockfile;
 mod watch;
 
 pub(crate) use watch::watch_loop;
-/// platform-tools v1.52 ships Cargo 1.89 which supports Cargo.lock v4
-/// and handles edition-2024 crate manifests in the Solana dep tree.
-const PLATFORM_TOOLS_VERSION: &str = "v1.52";
+/// Match the compiler used by the workspace benchmark and verification gate.
+const PLATFORM_TOOLS_VERSION: &str = "v1.56";
 use {
     crate::{
-        config::QuasarConfig,
+        config::{QuasarConfig, ToolchainConfig},
         error::{CliError, CliResult},
         style, toolchain, utils,
     },
@@ -28,6 +27,19 @@ use {
 enum BuildResult {
     Captured(Output),
     Streamed(ExitStatus),
+}
+
+fn solana_build_command(toolchain: &ToolchainConfig) -> Command {
+    let mut cmd = Command::new("cargo");
+    cmd.args([
+        "build-sbf",
+        "--tools-version",
+        toolchain.tools_version.as_deref().unwrap_or(PLATFORM_TOOLS_VERSION),
+    ]);
+    if let Some(arch) = &toolchain.arch {
+        cmd.args(["--arch", arch]);
+    }
+    cmd
 }
 
 pub fn run(debug: bool, verbose: bool, watch: bool, features: Option<String>) -> CliResult {
@@ -47,7 +59,7 @@ fn run_once(debug: bool, verbose: bool, features: Option<&str>) -> CliResult {
     let languages = config.client_languages();
     let crate_root = utils::find_program_crate(&config);
     progress.step("Generating IDL and clients...");
-    let idl = crate::idl::generate(&crate_root, &languages, &clients_path)?;
+    let idl = crate::idl::generate_with_features(&crate_root, &languages, &clients_path, features)?;
     progress.done("Generated IDL and clients");
     progress.step("Linting program surface...");
     crate::lint::run_for_build(&crate_root, &idl)?;
@@ -56,14 +68,10 @@ fn run_once(debug: bool, verbose: bool, features: Option<&str>) -> CliResult {
     if verbose {
         eprintln!("  {}", style::step("Building program..."));
     }
-    let sp = if verbose {
-        indicatif::ProgressBar::hidden()
-    } else {
-        style::spinner("Building...")
-    };
+    let sp = if verbose { indicatif::ProgressBar::hidden() } else { style::spinner("Building...") };
 
     if config.is_solana_toolchain() {
-        toolchain::check_build_sbf_supports(PLATFORM_TOOLS_VERSION).map_err(|e| {
+        toolchain::check_build_sbf().map_err(|e| {
             sp.finish_and_clear();
             CliError::message(e)
         })?;
@@ -76,8 +84,7 @@ fn run_once(debug: bool, verbose: bool, features: Option<&str>) -> CliResult {
     let scoped = manifest.exists() && crate_root != Path::new(".");
 
     let output = if config.is_solana_toolchain() {
-        let mut cmd = Command::new("cargo");
-        cmd.args(["build-sbf", "--tools-version", PLATFORM_TOOLS_VERSION]);
+        let mut cmd = solana_build_command(&config.toolchain);
         if scoped {
             cmd.args(["--manifest-path", &manifest.to_string_lossy()]);
         }
@@ -96,9 +103,11 @@ fn run_once(debug: bool, verbose: bool, features: Option<&str>) -> CliResult {
 
         let mut cmd = Command::new("cargo");
         if debug {
-            cmd.env("RUSTFLAGS", "-C link-arg=--btf -C debuginfo=2");
+            let mut flags = read_target_rustflags();
+            flags.extend(["-C", "link-arg=--btf", "-C", "debuginfo=2"].map(str::to_owned));
+            cmd.env("CARGO_ENCODED_RUSTFLAGS", flags.join("\x1f"));
         }
-        cmd.arg("build-bpf");
+        cmd.args(["+nightly", "build-bpf"]);
         if scoped {
             cmd.args(["--manifest-path", &manifest.to_string_lossy()]);
         }
@@ -150,10 +159,7 @@ fn run_once(debug: bool, verbose: bool, features: Option<&str>) -> CliResult {
                     let new_size = meta.len();
                     let delta = size_delta(&p, new_size);
                     save_last_size(&p, new_size);
-                    Some(format!(
-                        " ({}{delta})",
-                        style::dim(&style::human_size(new_size))
-                    ))
+                    Some(format!(" ({}{delta})", style::dim(&style::human_size(new_size))))
                 })
                 .unwrap_or_default();
 
@@ -202,10 +208,7 @@ fn run_once(debug: bool, verbose: bool, features: Option<&str>) -> CliResult {
                     let new_size = meta.len();
                     let delta = size_delta(&p, new_size);
                     save_last_size(&p, new_size);
-                    Some(format!(
-                        " ({}{delta})",
-                        style::dim(&style::human_size(new_size))
-                    ))
+                    Some(format!(" ({}{delta})", style::dim(&style::human_size(new_size))))
                 })
                 .unwrap_or_default();
 
@@ -219,15 +222,10 @@ fn run_once(debug: bool, verbose: bool, features: Option<&str>) -> CliResult {
             Ok(())
         }
         Ok(BuildResult::Streamed(status)) => Err(CliError::process_failure(
-            format!(
-                "build failed after {}",
-                style::human_duration(start.elapsed())
-            ),
+            format!("build failed after {}", style::human_duration(start.elapsed())),
             status.code().unwrap_or(1),
         )),
-        Err(e) => Err(CliError::message(format!(
-            "failed to run build command: {e}"
-        ))),
+        Err(e) => Err(CliError::message(format!("failed to run build command: {e}"))),
     }
 }
 
@@ -245,7 +243,7 @@ pub fn profile_build() -> Result<PathBuf, crate::error::CliError> {
     let sp = style::spinner("Profile build...");
 
     if config.is_solana_toolchain() {
-        toolchain::check_build_sbf_supports(PLATFORM_TOOLS_VERSION).map_err(|e| {
+        toolchain::check_build_sbf().map_err(|e| {
             sp.finish_and_clear();
             CliError::message(e)
         })?;
@@ -256,13 +254,8 @@ pub fn profile_build() -> Result<PathBuf, crate::error::CliError> {
     let scoped = manifest.exists() && crate_root != Path::new(".");
 
     let output = if config.is_solana_toolchain() {
-        let mut cmd = Command::new("cargo");
-        cmd.args([
-            "build-sbf",
-            "--tools-version",
-            PLATFORM_TOOLS_VERSION,
-            "--debug",
-        ]);
+        let mut cmd = solana_build_command(&config.toolchain);
+        cmd.arg("--debug");
         if scoped {
             cmd.args(["--manifest-path", &manifest.to_string_lossy()]);
         }
@@ -287,7 +280,7 @@ pub fn profile_build() -> Result<PathBuf, crate::error::CliError> {
         let encoded = all_flags.join("\x1f");
         let mut cmd = Command::new("cargo");
         cmd.env("CARGO_ENCODED_RUSTFLAGS", encoded);
-        cmd.arg("build-bpf");
+        cmd.args(["+nightly", "build-bpf"]);
         if scoped {
             cmd.args(["--manifest-path", &manifest.to_string_lossy()]);
         }
@@ -322,10 +315,7 @@ pub fn profile_build() -> Result<PathBuf, crate::error::CliError> {
 
             let dest = profile_dir.join(format!("{}.so", program));
             fs::copy(&src, &dest).map_err(|e| {
-                eprintln!(
-                    "  {}",
-                    style::fail(&format!("failed to copy {}: {e}", src.display()))
-                );
+                eprintln!("  {}", style::fail(&format!("failed to copy {}: {e}", src.display())));
                 e
             })?;
 
@@ -349,9 +339,7 @@ pub fn profile_build() -> Result<PathBuf, crate::error::CliError> {
                 o.status.code().unwrap_or(1),
             ))
         }
-        Err(e) => Err(CliError::message(format!(
-            "failed to run build command: {e}"
-        ))),
+        Err(e) => Err(CliError::message(format!("failed to run build command: {e}"))),
     }
 }
 
@@ -361,10 +349,7 @@ fn run_watch(debug: bool, verbose: bool, features: Option<String>) -> ! {
 
 fn run_build_command(cmd: &mut Command, verbose: bool) -> std::io::Result<BuildResult> {
     if verbose {
-        let status = cmd
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .status()?;
+        let status = cmd.stdout(Stdio::inherit()).stderr(Stdio::inherit()).status()?;
         Ok(BuildResult::Streamed(status))
     } else {
         let output = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output()?;
@@ -378,11 +363,7 @@ fn size_delta(so_path: &Path, new_size: u64) -> String {
     let key = so_path.to_string_lossy();
     let last = fs::read_to_string(LAST_SIZE_FILE)
         .ok()
-        .and_then(|contents| {
-            contents
-                .lines()
-                .find_map(|line| parse_size_entry(line, &key))
-        });
+        .and_then(|contents| contents.lines().find_map(|line| parse_size_entry(line, &key)));
 
     let Some(prev) = last else {
         return String::new();
@@ -394,15 +375,9 @@ fn size_delta(so_path: &Path, new_size: u64) -> String {
 
     let diff = new_size as i64 - prev as i64;
     if diff > 0 {
-        format!(
-            ", {}",
-            style::color(196, &format!("+{}", style::human_size(diff as u64)))
-        )
+        format!(", {}", style::color(196, &format!("+{}", style::human_size(diff as u64))))
     } else {
-        format!(
-            ", {}",
-            style::color(83, &format!("-{}", style::human_size((-diff) as u64)))
-        )
+        format!(", {}", style::color(83, &format!("-{}", style::human_size((-diff) as u64))))
     }
 }
 
@@ -427,13 +402,31 @@ fn parse_size_entry(line: &str, key: &str) -> Option<u64> {
 }
 
 fn size_entry_matches(line: &str, key: &str) -> bool {
-    line.rsplit_once(' ')
-        .is_some_and(|(entry_key, _)| entry_key == key)
+    line.rsplit_once(' ').is_some_and(|(entry_key, _)| entry_key == key)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_size_entry, size_entry_matches};
+    use super::{ToolchainConfig, parse_size_entry, size_entry_matches, solana_build_command};
+
+    #[test]
+    fn solana_build_uses_configured_tools_and_arch_without_changing_legacy_defaults() {
+        for (settings, expected) in [
+            ("", vec!["build-sbf", "--tools-version", "v1.56"]),
+            ("tools_version = 'v1.53'", vec!["build-sbf", "--tools-version", "v1.53"]),
+            ("arch = 'v0'", vec!["build-sbf", "--tools-version", "v1.56", "--arch", "v0"]),
+            (
+                "tools_version = 'v1.53'\narch = 'v3'",
+                vec!["build-sbf", "--tools-version", "v1.53", "--arch", "v3"],
+            ),
+        ] {
+            let config: ToolchainConfig =
+                toml::from_str(&format!("type = 'solana'\n{settings}")).unwrap();
+            let command = solana_build_command(&config);
+            assert_eq!(command.get_program(), "cargo");
+            assert_eq!(command.get_args().collect::<Vec<_>>(), expected);
+        }
+    }
 
     #[test]
     fn size_entry_match_is_exact_even_for_prefix_paths() {

@@ -35,9 +35,7 @@ pub fn run(
         utils::find_in_deploy(&format!("{name}-keypair.json"))
             .or_else(|| utils::find_in_deploy(&format!("{module}-keypair.json")))
             .unwrap_or_else(|| {
-                PathBuf::from("target")
-                    .join("deploy")
-                    .join(format!("{name}-keypair.json"))
+                PathBuf::from("target").join("deploy").join(format!("{name}-keypair.json"))
             })
     });
 
@@ -61,10 +59,7 @@ pub fn run(
     ]);
 
     if let Some(authority) = &upgrade_authority {
-        cmd.args([
-            "--upgrade-authority",
-            authority.to_str().unwrap_or_default(),
-        ]);
+        cmd.args(["--upgrade-authority", authority.to_str().unwrap_or_default()]);
     }
 
     if let Some(payer) = &keypair {
@@ -90,10 +85,7 @@ pub fn run(
                 .map(|s| s.trim())
                 .unwrap_or("(unknown)");
 
-            println!(
-                "\n  {}",
-                style::success(&format!("Deployed to {}", style::bold(program_id)))
-            );
+            println!("\n  {}", style::success(&format!("Deployed to {}", style::bold(program_id))));
             println!();
             Ok(())
         }
@@ -114,10 +106,7 @@ pub fn run(
                 message.push_str("\n\n");
             }
             message.push_str("deploy failed");
-            Err(CliError::process_failure(
-                message,
-                o.status.code().unwrap_or(1),
-            ))
+            Err(CliError::process_failure(message, o.status.code().unwrap_or(1)))
         }
         Err(e) => Err(CliError::message(format!(
             "failed to run solana program deploy: {e}\n\n  Make sure the solana CLI is installed \

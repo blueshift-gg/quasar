@@ -1,28 +1,55 @@
 [workspace]
 resolver = "3"
-members = ["lang", "derive", "spl", "metadata", "idl", "idl/schema", "schema", "profile", "examples/*", "examples/*/client", "tests/programs/*", "tests/suite", "cli"]
-exclude = []
+members = ["bench", "cli", "idl", "idl/schema", "profile", "schema", "derive", "examples/*", "lang", "metadata", "spl", "test", "tests/*"]
+exclude = ["bench/rivals"]
 
 [workspace.package]
-version = "0.0.0"
-edition = "2021"
-license = "MIT"
+version = "0.3.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
 repository = "https://github.com/blueshift-gg/quasar"
-authors = ["Leonardo Donatacci <leo@blueshift.gg>", "Dean Little <dean@blueshift.gg>"]
+
+[workspace.dependencies]
+quasar-lang = { version = "=0.3.0", path = "lang" }
+quasar-test = { version = "=0.3.0", path = "test" }
+quasar-spl = { version = "=0.3.0", path = "spl" }
+quasar-metadata = { version = "=0.3.0", path = "metadata" }
+quasar-derive = { version = "=0.3.0", path = "derive" }
+
+solana-address = { version = "=2.7.0", default-features = false, features = [
+    "copy",
+    "decode",
+] }
+solana-program-error = { version = "=3.0.1", default-features = false }
+solana-sha256-hasher = "=3.1.0"
+solana-define-syscall = { version = "=5.2.0", features = [
+    "unstable-static-syscalls",
+] }
+zeropod = { version = "=0.4.0", features = [
+    "solana-address",
+    "solana-program-error",
+] }
+
+agave-feature-set = "=3.1.14"
+base64 = "0.22"
+solana-svm-log-collector = "=3.1.14"
+mollusk-svm = "=0.10.3"
+solana-account = "=3.4.0"
+solana-instruction = "=3.5.0"
+solana-sdk-ids = "=3.1.0"
+solana-rent = "=3.1.0"
+proptest = "1"
 
 [workspace.lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))', 'cfg(kani)', 'cfg(kani_ra)'] }
+unsafe_op_in_unsafe_fn = "deny"
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(kani)',
+    'cfg(target_os, values("solana"))',
+] }
 
-[workspace.metadata.kani.flags]
-tests = true
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "deny"
 
 [profile.release]
-overflow-checks = true
 lto = "fat"
-codegen-units = 1
-opt-level = 3
-
-[profile.release.build-override]
-opt-level = 3
-incremental = false
 codegen-units = 1

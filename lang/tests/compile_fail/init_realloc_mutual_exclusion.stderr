@@ -1,6 +1,0 @@
-error: `realloc = ...` cannot be used with `init`
-  --> tests/compile_fail/init_realloc_mutual_exclusion.rs:18:5
-   |
-18 | /     #[account(init, payer = payer, realloc = 100)]
-19 | |     pub target: Account<Data>,
-   | |_____________________________^

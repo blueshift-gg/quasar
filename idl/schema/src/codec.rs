@@ -9,28 +9,16 @@ use {
 pub enum IdlCodec {
     /// Fixed-size scalar (u8..u128, i8..i128).
     #[serde(rename = "scalar")]
-    Scalar {
-        format: String,
-        endian: Endian,
-        size: usize,
-    },
+    Scalar { format: String, endian: Endian, size: usize },
     /// Boolean with explicit tag representation.
     #[serde(rename = "bool")]
-    Bool {
-        repr: ScalarRepr,
-        r#false: u8,
-        r#true: u8,
-    },
+    Bool { repr: ScalarRepr, r#false: u8, r#true: u8 },
     /// Fixed byte array.
     #[serde(rename = "fixedBytes")]
     FixedBytes { size: usize },
     /// Fixed-length array repeating item codec.
     #[serde(rename = "array")]
-    Array {
-        length: usize,
-        item: Box<IdlCodecItem>,
-        size: usize,
-    },
+    Array { length: usize, item: Box<IdlCodecItem>, size: usize },
     /// Reference to a defined type's codec.
     #[serde(rename = "defined")]
     Defined { name: String },

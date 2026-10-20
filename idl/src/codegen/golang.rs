@@ -1,5 +1,5 @@
 use {
-    super::model::{go_field_path, ProgramModel},
+    super::model::{ProgramModel, go_field_path},
     crate::types::{Idl, IdlArg, IdlCodec, IdlPdaSeed, IdlResolver, IdlType, IdlTypeDef},
     quasar_schema::{snake_to_pascal, to_camel_case},
     std::fmt::Write,
@@ -39,12 +39,7 @@ pub fn generate_go_client(idl: &Idl) -> String {
     out.push_str(")\n\n");
 
     // Program ID
-    writeln!(
-        out,
-        "var ProgramID = solana.MustPublicKeyFromBase58(\"{}\")\n",
-        idl.address
-    )
-    .unwrap();
+    writeln!(out, "var ProgramID = solana.MustPublicKeyFromBase58(\"{}\")\n", idl.address).unwrap();
 
     // Discriminator variables
     for ix in &idl.instructions {
@@ -96,24 +91,14 @@ pub fn generate_go_client(idl: &Idl) -> String {
     for type_def in &idl.types {
         writeln!(out, "type {} struct {{", type_def.name).unwrap();
         for field in &type_def.fields {
-            writeln!(
-                out,
-                "\t{} {}",
-                snake_to_pascal(&field.name),
-                go_type(&field.ty),
-            )
-            .unwrap();
+            writeln!(out, "\t{} {}", snake_to_pascal(&field.name), go_type(&field.ty),).unwrap();
         }
         out.push_str("}\n\n");
 
         // Decode function
         if !type_def.fields.is_empty() {
-            writeln!(
-                out,
-                "func Decode{}(data []byte) *{} {{",
-                type_def.name, type_def.name
-            )
-            .unwrap();
+            writeln!(out, "func Decode{}(data []byte) *{} {{", type_def.name, type_def.name)
+                .unwrap();
             out.push_str("\toffset := 0\n");
             for field in &type_def.fields {
                 out.push_str(&decode_field_expr(
@@ -149,10 +134,7 @@ pub fn generate_go_client(idl: &Idl) -> String {
         // Input struct
         writeln!(out, "type {}Input struct {{", pascal_name).unwrap();
         for acc in &ix.accounts {
-            if matches!(
-                acc.resolver,
-                IdlResolver::Const { .. } | IdlResolver::Pda { .. }
-            ) {
+            if matches!(acc.resolver, IdlResolver::Const { .. } | IdlResolver::Pda { .. }) {
                 continue;
             }
             writeln!(out, "\t{} solana.PublicKey", snake_to_pascal(&acc.name)).unwrap();
@@ -203,12 +185,7 @@ pub fn generate_go_client(idl: &Idl) -> String {
                                 path
                             ));
                         }
-                        IdlPdaSeed::AccountField {
-                            path,
-                            field,
-                            account,
-                            ..
-                        } => {
+                        IdlPdaSeed::AccountField { path, field, account, .. } => {
                             let ty = account_field_type(idl, account, field);
                             seed_exprs.push(go_pda_seed_expr(
                                 &format!("input.{}", account_field_seed_input_name(path, field)),
@@ -370,11 +347,8 @@ pub fn generate_go_client(idl: &Idl) -> String {
                     writeln!(out, "\tif input.{n} != nil {{", n = name).unwrap();
                 }
                 let pad = if optional { "\t\t" } else { "\t" };
-                let value = if optional {
-                    format!("*input.{name}")
-                } else {
-                    format!("input.{name}")
-                };
+                let value =
+                    if optional { format!("*input.{name}") } else { format!("input.{name}") };
                 match payload_ty {
                     IdlType::Primitive(p) if p == "string" => {
                         if optional {
@@ -513,12 +487,8 @@ pub fn generate_go_client(idl: &Idl) -> String {
             .unwrap();
             if let Some(td) = type_def {
                 if td.fields.is_empty() {
-                    writeln!(
-                        out,
-                        "\t\treturn &DecodedEvent{{Name: \"{}\", Data: nil}}",
-                        ev.name
-                    )
-                    .unwrap();
+                    writeln!(out, "\t\treturn &DecodedEvent{{Name: \"{}\", Data: nil}}", ev.name)
+                        .unwrap();
                 } else {
                     writeln!(
                         out,
@@ -528,12 +498,8 @@ pub fn generate_go_client(idl: &Idl) -> String {
                     .unwrap();
                 }
             } else {
-                writeln!(
-                    out,
-                    "\t\treturn &DecodedEvent{{Name: \"{}\", Data: nil}}",
-                    ev.name
-                )
-                .unwrap();
+                writeln!(out, "\t\treturn &DecodedEvent{{Name: \"{}\", Data: nil}}", ev.name)
+                    .unwrap();
             }
             out.push_str("\t}\n");
         }
@@ -583,9 +549,7 @@ fn go_type(ty: &IdlType) -> String {
         },
         IdlType::Option { option } => format!("*{}", go_type(option)),
         IdlType::Vec { .. } => "[]byte".to_string(),
-        IdlType::Array {
-            array: (_inner, size),
-        } => format!("[{}]byte", size),
+        IdlType::Array { array: (_inner, size) } => format!("[{}]byte", size),
         IdlType::Defined { defined } => defined.name.clone(),
         IdlType::Generic { generic } => {
             panic!("Generic type '{}' not supported in Go codegen", generic)
@@ -595,10 +559,10 @@ fn go_type(ty: &IdlType) -> String {
 
 fn go_arg_type(arg: &IdlArg) -> String {
     if arg.codec.is_some() {
-        if let IdlType::Option { option } = &arg.ty {
-            if let IdlType::Vec { vec } = option.as_ref() {
-                return format!("*[]{}", go_type(vec));
-            }
+        if let IdlType::Option { option } = &arg.ty
+            && let IdlType::Vec { vec } = option.as_ref()
+        {
+            return format!("*[]{}", go_type(vec));
         }
         if let IdlType::Vec { vec } = &arg.ty {
             return format!("[]{}", go_type(vec));
@@ -683,69 +647,68 @@ fn serialize_field_expr(
     types: &[IdlTypeDef],
 ) -> String {
     // Handle dynamic string with codec
-    if let IdlType::Primitive(p) = ty {
-        if p == "string" {
-            if let Some(c) = codec {
-                let prefix_bytes = c.prefix_bytes();
-                return match prefix_bytes {
-                    1 => format!(
-                        "\tdata = append(data, byte(len([]byte(input.{n}))))\n\tdata = \
+    if let IdlType::Primitive(p) = ty
+        && p == "string"
+        && let Some(c) = codec
+    {
+        let prefix_bytes = c.prefix_bytes();
+        return match prefix_bytes {
+            1 => format!(
+                "\tdata = append(data, byte(len([]byte(input.{n}))))\n\tdata = \
                          append(data, []byte(input.{n})...)\n",
-                        n = name,
-                    ),
-                    2 => format!(
-                        "\t{{ b := []byte(input.{n}); var buf [2]byte; \
+                n = name,
+            ),
+            2 => format!(
+                "\t{{ b := []byte(input.{n}); var buf [2]byte; \
                          binary.LittleEndian.PutUint16(buf[:], uint16(len(b))); data = \
                          append(data, buf[:]...); data = append(data, b...) }}\n",
-                        n = name,
-                    ),
-                    4 => format!(
-                        "\t{{ b := []byte(input.{n}); var buf [4]byte; \
+                n = name,
+            ),
+            4 => format!(
+                "\t{{ b := []byte(input.{n}); var buf [4]byte; \
                          binary.LittleEndian.PutUint32(buf[:], uint32(len(b))); data = \
                          append(data, buf[:]...); data = append(data, b...) }}\n",
-                        n = name,
-                    ),
-                    _ => format!(
-                        "\t{{ b := []byte(input.{n}); var buf [8]byte; \
+                n = name,
+            ),
+            _ => format!(
+                "\t{{ b := []byte(input.{n}); var buf [8]byte; \
                          binary.LittleEndian.PutUint64(buf[:], uint64(len(b))); data = \
                          append(data, buf[:]...); data = append(data, b...) }}\n",
-                        n = name,
-                    ),
-                };
-            }
-        }
+                n = name,
+            ),
+        };
     }
 
     // Handle Vec with codec
-    if let IdlType::Vec { .. } = ty {
-        if let Some(c) = codec {
-            let prefix_bytes = c.prefix_bytes();
-            return match prefix_bytes {
-                1 => format!(
-                    "\tdata = append(data, byte(len(input.{n})))\n\tdata = append(data, \
+    if let IdlType::Vec { .. } = ty
+        && let Some(c) = codec
+    {
+        let prefix_bytes = c.prefix_bytes();
+        return match prefix_bytes {
+            1 => format!(
+                "\tdata = append(data, byte(len(input.{n})))\n\tdata = append(data, \
                      input.{n}...)\n",
-                    n = name,
-                ),
-                2 => format!(
-                    "\t{{ var buf [2]byte; binary.LittleEndian.PutUint16(buf[:], \
+                n = name,
+            ),
+            2 => format!(
+                "\t{{ var buf [2]byte; binary.LittleEndian.PutUint16(buf[:], \
                      uint16(len(input.{n}))); data = append(data, buf[:]...); data = append(data, \
                      input.{n}...) }}\n",
-                    n = name,
-                ),
-                4 => format!(
-                    "\t{{ var buf [4]byte; binary.LittleEndian.PutUint32(buf[:], \
+                n = name,
+            ),
+            4 => format!(
+                "\t{{ var buf [4]byte; binary.LittleEndian.PutUint32(buf[:], \
                      uint32(len(input.{n}))); data = append(data, buf[:]...); data = append(data, \
                      input.{n}...) }}\n",
-                    n = name,
-                ),
-                _ => format!(
-                    "\t{{ var buf [8]byte; binary.LittleEndian.PutUint64(buf[:], \
+                n = name,
+            ),
+            _ => format!(
+                "\t{{ var buf [8]byte; binary.LittleEndian.PutUint64(buf[:], \
                      uint64(len(input.{n}))); data = append(data, buf[:]...); data = append(data, \
                      input.{n}...) }}\n",
-                    n = name,
-                ),
-            };
-        }
+                n = name,
+            ),
+        };
     }
 
     match ty {
@@ -841,9 +804,7 @@ fn serialize_field_expr(
                 n = name,
             )
         }
-        IdlType::Array {
-            array: (_inner, _size),
-        } => {
+        IdlType::Array { array: (_inner, _size) } => {
             format!("\tdata = append(data, input.{}[:]...)\n", name)
         }
         IdlType::Generic { generic } => {
@@ -871,86 +832,77 @@ fn decode_field_expr(
     let t = "\t".repeat(depth);
 
     // Handle dynamic string with codec
-    if let IdlType::Primitive(p) = ty {
-        if p == "string" {
-            if let Some(c) = codec {
-                let prefix_bytes = c.prefix_bytes();
-                return match prefix_bytes {
-                    1 => format!(
-                        "{t}{n}Len := int(data[offset])\n{t}offset += 1\n{t}{n} := \
+    if let IdlType::Primitive(p) = ty
+        && p == "string"
+        && let Some(c) = codec
+    {
+        let prefix_bytes = c.prefix_bytes();
+        return match prefix_bytes {
+            1 => format!(
+                "{t}{n}Len := int(data[offset])\n{t}offset += 1\n{t}{n} := \
                          string(data[offset:offset+{n}Len])\n{t}offset += {n}Len\n",
-                        t = t,
-                        n = name,
-                    ),
-                    2 => format!(
-                        "{t}{n}Len := int(binary.LittleEndian.Uint16(data[offset:]))\n{t}offset \
+                t = t,
+                n = name,
+            ),
+            2 => format!(
+                "{t}{n}Len := int(binary.LittleEndian.Uint16(data[offset:]))\n{t}offset \
                          += 2\n{t}{n} := string(data[offset:offset+{n}Len])\n{t}offset += {n}Len\n",
-                        t = t,
-                        n = name,
-                    ),
-                    4 => format!(
-                        "{t}{n}Len := int(binary.LittleEndian.Uint32(data[offset:]))\n{t}offset \
+                t = t,
+                n = name,
+            ),
+            4 => format!(
+                "{t}{n}Len := int(binary.LittleEndian.Uint32(data[offset:]))\n{t}offset \
                          += 4\n{t}{n} := string(data[offset:offset+{n}Len])\n{t}offset += {n}Len\n",
-                        t = t,
-                        n = name,
-                    ),
-                    _ => format!(
-                        "{t}{n}Len := int(binary.LittleEndian.Uint64(data[offset:]))\n{t}offset \
+                t = t,
+                n = name,
+            ),
+            _ => format!(
+                "{t}{n}Len := int(binary.LittleEndian.Uint64(data[offset:]))\n{t}offset \
                          += 8\n{t}{n} := string(data[offset:offset+{n}Len])\n{t}offset += {n}Len\n",
-                        t = t,
-                        n = name,
-                    ),
-                };
-            }
-        }
+                t = t,
+                n = name,
+            ),
+        };
     }
 
     // Handle Vec with codec
-    if let IdlType::Vec { .. } = ty {
-        if let Some(c) = codec {
-            let prefix_bytes = c.prefix_bytes();
-            return match prefix_bytes {
-                1 => format!(
-                    "{t}{n}Len := int(data[offset])\n{t}offset += 1\n{t}{n} := \
+    if let IdlType::Vec { .. } = ty
+        && let Some(c) = codec
+    {
+        let prefix_bytes = c.prefix_bytes();
+        return match prefix_bytes {
+            1 => format!(
+                "{t}{n}Len := int(data[offset])\n{t}offset += 1\n{t}{n} := \
                      data[offset:offset+{n}Len]\n{t}offset += {n}Len\n",
-                    t = t,
-                    n = name,
-                ),
-                2 => format!(
-                    "{t}{n}Len := int(binary.LittleEndian.Uint16(data[offset:]))\n{t}offset += \
+                t = t,
+                n = name,
+            ),
+            2 => format!(
+                "{t}{n}Len := int(binary.LittleEndian.Uint16(data[offset:]))\n{t}offset += \
                      2\n{t}{n} := data[offset:offset+{n}Len]\n{t}offset += {n}Len\n",
-                    t = t,
-                    n = name,
-                ),
-                4 => format!(
-                    "{t}{n}Len := int(binary.LittleEndian.Uint32(data[offset:]))\n{t}offset += \
+                t = t,
+                n = name,
+            ),
+            4 => format!(
+                "{t}{n}Len := int(binary.LittleEndian.Uint32(data[offset:]))\n{t}offset += \
                      4\n{t}{n} := data[offset:offset+{n}Len]\n{t}offset += {n}Len\n",
-                    t = t,
-                    n = name,
-                ),
-                _ => format!(
-                    "{t}{n}Len := int(binary.LittleEndian.Uint64(data[offset:]))\n{t}offset += \
+                t = t,
+                n = name,
+            ),
+            _ => format!(
+                "{t}{n}Len := int(binary.LittleEndian.Uint64(data[offset:]))\n{t}offset += \
                      8\n{t}{n} := data[offset:offset+{n}Len]\n{t}offset += {n}Len\n",
-                    t = t,
-                    n = name,
-                ),
-            };
-        }
+                t = t,
+                n = name,
+            ),
+        };
     }
 
     match ty {
         IdlType::Primitive(p) => match p.as_str() {
-            "bool" => format!(
-                "{t}{n} := data[offset] != 0\n{t}offset += 1\n",
-                t = t,
-                n = name,
-            ),
+            "bool" => format!("{t}{n} := data[offset] != 0\n{t}offset += 1\n", t = t, n = name,),
             "u8" => format!("{t}{n} := data[offset]\n{t}offset += 1\n", t = t, n = name,),
-            "i8" => format!(
-                "{t}{n} := int8(data[offset])\n{t}offset += 1\n",
-                t = t,
-                n = name,
-            ),
+            "i8" => format!("{t}{n} := int8(data[offset])\n{t}offset += 1\n", t = t, n = name,),
             "u16" => format!(
                 "{t}{n} := binary.LittleEndian.Uint16(data[offset:])\n{t}offset += 2\n",
                 t = t,
@@ -1018,9 +970,7 @@ fn decode_field_expr(
                 n = name,
             )
         }
-        IdlType::Array {
-            array: (_inner, size),
-        } => {
+        IdlType::Array { array: (_inner, size) } => {
             format!(
                 "{t}var {n} [{sz}]byte\n{t}copy({n}[:], data[offset:offset+{sz}])\n{t}offset += \
                  {sz}\n",
@@ -1069,11 +1019,7 @@ fn decode_field_expr(
                 result.push_str(&format!("{t}}}\n", t = t));
                 result
             } else {
-                format!(
-                    "{t}{n} := data[offset:] // unknown type\n{t}_ = {n}\n",
-                    t = t,
-                    n = name,
-                )
+                format!("{t}{n} := data[offset:] // unknown type\n{t}_ = {n}\n", t = t, n = name,)
             }
         }
         IdlType::Generic { generic } => {
@@ -1098,12 +1044,7 @@ fn account_field_seed_inputs(
             continue;
         };
         for seed in seeds {
-            let IdlPdaSeed::AccountField {
-                path,
-                account,
-                field,
-            } = seed
-            else {
+            let IdlPdaSeed::AccountField { path, account, field } = seed else {
                 continue;
             };
             if inputs
@@ -1113,11 +1054,7 @@ fn account_field_seed_inputs(
                 continue;
             }
             if let Some(ty) = account_field_type(idl, account, field) {
-                inputs.push(AccountFieldSeedInput {
-                    path: path.clone(),
-                    field: field.clone(),
-                    ty,
-                });
+                inputs.push(AccountFieldSeedInput { path: path.clone(), field: field.clone(), ty });
             }
         }
     }
@@ -1144,11 +1081,7 @@ fn account_field_seed_input_name(path: &str, field: &str) -> String {
     format!(
         "{}{}Seed",
         snake_to_pascal(path),
-        field
-            .split('.')
-            .map(snake_to_pascal)
-            .collect::<Vec<_>>()
-            .join("")
+        field.split('.').map(snake_to_pascal).collect::<Vec<_>>().join("")
     )
 }
 

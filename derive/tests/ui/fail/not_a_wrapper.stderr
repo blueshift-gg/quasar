@@ -1,0 +1,86 @@
+error[E0277]: `u64` is not an account wrapper
+ --> tests/ui/fail/not_a_wrapper.rs:3:10
+  |
+3 | #[derive(Accounts)]
+  |          ^^^^^^^^ fields of an accounts struct are wrappers such as `Signer` or `Account<T>`
+  |
+  = help: the trait `quasar_lang::wrapper::Wrapper` is not implemented for `u64`
+  = help: the following other types implement trait `quasar_lang::wrapper::Wrapper`:
+            Account<K>
+            Interface<I>
+            InterfaceAccount<K>
+            Pda<W, S>
+            Program<P>
+            Signer
+            SystemAccount
+            UncheckedAccount
+            quasar_lang::sysvar::Sysvar<S>
+  = note: required for `u64` to implement `Field`
+  = note: this error originates in the derive macro `Accounts` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: `u64` is not a field of an accounts struct
+ --> tests/ui/fail/not_a_wrapper.rs:5:15
+  |
+5 |     pub user: u64,
+  |               ^^^ fields are wrappers such as `Signer` or `Account<T>`, or `Option<W>` or `Remaining<W>` of one
+  |
+  = help: the trait `quasar_lang::wrapper::Wrapper` is not implemented for `u64`
+  = help: the following other types implement trait `quasar_lang::wrapper::Wrapper`:
+            Account<K>
+            Interface<I>
+            InterfaceAccount<K>
+            Pda<W, S>
+            Program<P>
+            Signer
+            SystemAccount
+            UncheckedAccount
+            quasar_lang::sysvar::Sysvar<S>
+  = note: required for `u64` to implement `Field`
+
+error[E0277]: `u64` is not a field of an accounts struct
+ --> tests/ui/fail/not_a_wrapper.rs:5:15
+  |
+5 |     pub user: u64,
+  |               ^^^ fields are wrappers such as `Signer` or `Account<T>`, or `Option<W>` or `Remaining<W>` of one
+  |
+  = help: the trait `quasar_lang::wrapper::Wrapper` is not implemented for `u64`
+  = help: the following other types implement trait `quasar_lang::wrapper::Wrapper`:
+            Account<K>
+            Interface<I>
+            InterfaceAccount<K>
+            Pda<W, S>
+            Program<P>
+            Signer
+            SystemAccount
+            UncheckedAccount
+            quasar_lang::sysvar::Sysvar<S>
+  = note: required for `u64` to implement `Field`
+note: required by a bound in `CpiAccount::<'a>::readonly_field`
+ --> $WORKSPACE/lang/src/cpi.rs
+  |
+  |     pub fn readonly_field<F: Field, W: Wrapper>(account: &'a W) -> Self {
+  |                              ^^^^^ required by this bound in `CpiAccount::<'a>::readonly_field`
+
+error[E0277]: `u64` is not a field of an accounts struct
+ --> tests/ui/fail/not_a_wrapper.rs:5:15
+  |
+5 |     pub user: u64,
+  |               ^^^ fields are wrappers such as `Signer` or `Account<T>`, or `Option<W>` or `Remaining<W>` of one
+  |
+  = help: the trait `quasar_lang::wrapper::Wrapper` is not implemented for `u64`
+  = help: the following other types implement trait `quasar_lang::wrapper::Wrapper`:
+            Account<K>
+            Interface<I>
+            InterfaceAccount<K>
+            Pda<W, S>
+            Program<P>
+            Signer
+            SystemAccount
+            UncheckedAccount
+            quasar_lang::sysvar::Sysvar<S>
+  = note: required for `u64` to implement `Field`
+note: required by a bound in `waived_field`
+ --> $WORKSPACE/lang/src/cpi.rs
+  |
+  | pub const fn waived_field<F: Field>(vouches: &[(&str, &[Call])], field: &str) -> bool {
+  |                              ^^^^^ required by this bound in `waived_field`

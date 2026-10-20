@@ -5,8 +5,43 @@ The `quasar` binary is a project-aware build tool for Solana programs. It wraps 
 ## Install
 
 ```bash
-cargo install --path cli
+cargo install --path cli --locked
 ```
+
+## Quasar 0.3 compatibility
+
+New projects use the typed-core API, explicit instruction discriminators and
+published ZeroPod 0.4.0 through `quasar-lang`. The Solana build uses
+platform-tools v1.56 by default, matching the repository gate. The optional upstream
+build uses `cargo +nightly`, `rust-src`, and `sbpf-linker`; its target config
+selects the runtime's on-chain implementation and SBF v0 output.
+
+TypeScript scaffolds use the public Kit or Web3.js SDK. Web3.js tests convert
+instructions through QuasarSVM's Kit adapter; its published Web3.js adapter
+requires a separate SDK fork. The generated package overrides that obsolete
+peer dependency with the selected public SDK.
+
+`quasar add --instruction settle` allocates an unused discriminator of the
+existing width. It preserves existing instruction numbers. State and error
+modules added to a minimal project are included in the crate automatically.
+
+`quasar idl` runs the host-only emission test and adapts `idl().to_json()`
+to the public client schema. `quasar client` also accepts that runtime JSON
+directly, alongside existing complete schema IDLs. Rust clients are standalone
+and use the runtime's Borsh-compatible encoding. Fixed-capacity `ArrayString`
+and `ArrayVec` values expose their wire representation as `length` plus
+`storage`; unused slots must be padded.
+
+The runtime IDL currently describes instructions, account flags and account
+fields. It does not describe PDA resolvers, events, errors or custom nested
+type definitions. The adapter does not invent that metadata: callers supply
+account addresses, and an unknown field encoding produces an explicit error.
+Linting still checks the reported interface and compares `quasar.lock.json`;
+its scope is the metadata present in the IDL.
+
+Before 0.3.0 is published, replace the generated `quasar-lang` dependency with
+a path to this checkout's `lang` directory. No local CLI installation publishes
+crates or deploys a program.
 
 ## Commands
 
@@ -135,11 +170,11 @@ quasar deploy --program-keypair ./my-key.json
 
 ### `quasar clean`
 
-Remove build artifacts from `target/deploy/`, `target/profile/`, `target/idl/`, and the configured `clients.path` directory from `Quasar.toml`.
+Remove build artifacts while preserving program keypairs from `target/deploy/`, `target/profile/`, `target/idl/`, and the configured `clients.path` directory from `Quasar.toml`.
 
 ### `quasar idl <path>`
 
-Generate the IDL for a program crate. Produces JSON, TypeScript client, and Rust client module. See [IDL docs](idl.md) for details.
+Generate the IDL for a program crate. Produces JSON, TypeScript client, and Rust client module. No `idl-build` feature is needed: `#[program]` emits a host-only IDL test.
 
 ### `quasar completions <shell>`
 
@@ -179,6 +214,9 @@ name = "my-program"
 
 [toolchain]
 type = "solana"
+# Optional overrides for build, test, and profile:
+tools_version = "v1.56"
+arch = "v0"
 
 [testing]
 language = "rust"
@@ -191,6 +229,15 @@ test = { program = "cargo", args = ["test", "tests::"] }
 path = "target/client"
 languages = ["rust"]
 ```
+
+`tools_version` overrides the platform-tools version passed to `cargo build-sbf`.
+If omitted, it defaults to v1.56. `arch` is optional; when omitted, the installed
+`cargo-build-sbf` chooses its default architecture. Set `arch = "v0"` explicitly
+when using tools or a test runtime that require SBPFv0. These settings apply to
+normal, debug, watch, test and profiling builds using the Solana toolchain;
+the upstream toolchain does not use them. The selected compiler validates the
+version/architecture combination. See the
+[Anza migration guide](https://github.com/anza-xyz/cargo-build-sbf#sbfpv3-migration).
 
 ### Global config (`~/.quasar/config.toml`)
 

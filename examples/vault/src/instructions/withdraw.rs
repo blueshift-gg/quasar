@@ -4,25 +4,16 @@ use {super::deposit::VaultPda, quasar_lang::prelude::*};
 pub struct Withdraw {
     #[account(mut)]
     pub user: Signer,
-    #[account(mut, address = VaultPda::seeds(user.address()))]
-    pub vault: UncheckedAccount,
+    #[account(mut, seeds(user))]
+    pub vault: Pda<UncheckedAccount, VaultPda>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl Withdraw {
     #[inline(always)]
-    pub fn withdraw(&self, amount: u64) -> Result<(), ProgramError> {
-        let vault = self.vault.to_account_view();
-        let user = self.user.to_account_view();
-        let vault_lamports = vault
-            .lamports()
-            .checked_sub(amount)
-            .ok_or(ProgramError::InsufficientFunds)?;
-        let user_lamports = user
-            .lamports()
-            .checked_add(amount)
-            .ok_or(ProgramError::ArithmeticOverflow)?;
-        set_lamports(vault, vault_lamports);
-        set_lamports(user, user_lamports);
-        Ok(())
+    pub fn withdraw(&mut self, amount: u64) -> Result<(), ProgramError> {
+        let user = *self.user.address();
+        let signer = VaultPda::seeds(&user).with_bump(self.vault.bump());
+        self.system_program.transfer(&mut self.vault, &mut self.user, amount).invoke_signed(&signer)
     }
 }

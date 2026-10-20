@@ -1,6 +1,6 @@
 use {
     crate::elf::Symbol,
-    addr2line::{gimli, LookupResult},
+    addr2line::{LookupResult, gimli},
     object::{Object, ObjectSection},
 };
 
@@ -87,11 +87,7 @@ impl<'a> DwarfResolver<'a> {
             }
         }
 
-        if stack.is_empty() {
-            vec!["[unknown]".into()]
-        } else {
-            stack
-        }
+        if stack.is_empty() { vec!["[unknown]".into()] } else { stack }
     }
 }
 
@@ -102,10 +98,7 @@ pub(crate) struct SymbolResolver {
 
 impl SymbolResolver {
     pub(crate) fn new(symbols: &[Symbol]) -> Self {
-        let entries = symbols
-            .iter()
-            .map(|s| (s.addr, s.size, s.name.clone()))
-            .collect();
+        let entries = symbols.iter().map(|s| (s.addr, s.size, s.name.clone())).collect();
         Self { symbols: entries }
     }
 

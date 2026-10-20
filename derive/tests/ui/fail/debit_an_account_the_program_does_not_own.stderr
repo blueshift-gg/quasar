@@ -1,0 +1,17 @@
+error[E0080]: evaluation panicked: only accounts this program owns can be debited
+ --> $WORKSPACE/lang/src/account.rs
+  |
+  |         const { assert!(K::PROGRAM_OWNED, "only accounts this program owns can be debited") };
+  |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `quasar_lang::account::Account::<Tally>::sub_lamports::{constant#0}` failed here
+
+note: erroneous constant encountered
+ --> $WORKSPACE/lang/src/account.rs
+  |
+  |         const { assert!(K::PROGRAM_OWNED, "only accounts this program owns can be debited") };
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: the above error was encountered while instantiating `fn quasar_lang::account::Account::<Tally>::sub_lamports`
+  --> tests/ui/fail/debit_an_account_the_program_does_not_own.rs:23:9
+   |
+23 |         ctx.accounts.tally.sub_lamports(1)
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

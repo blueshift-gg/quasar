@@ -1,0 +1,7 @@
+error[E0560]: struct `quasar_spl::token::Check<'_>` has no field named `owner`
+ --> tests/ui/fail/token_unknown_key.rs:9:21
+  |
+9 |     #[account(token(owner = owner))]
+  |                     ^^^^^ `quasar_spl::token::Check<'_>` does not have this field
+  |
+  = note: all struct fields are already assigned

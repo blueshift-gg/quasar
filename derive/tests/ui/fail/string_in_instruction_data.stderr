@@ -1,0 +1,31 @@
+error[E0080]: evaluation panicked: instruction data has one size: use `ArrayString<N>` or `ArrayVec<T, N>`
+ --> tests/ui/fail/string_in_instruction_data.rs:7:15
+  |
+7 |     pub name: String,
+  |               ^^^^^^ evaluation of `_` failed inside this call
+  |
+note: inside `field_size::<std::string::String>`
+ --> $WORKSPACE/lang/src/data.rs
+  |
+  |         None => panic!("instruction data has one size: use `ArrayString<N>` or `ArrayVec<T, N>`"),
+  |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+
+error[E0080]: evaluation panicked: instruction data has one size: use `ArrayString<N>` or `ArrayVec<T, N>`
+ --> tests/ui/fail/string_in_instruction_data.rs:5:10
+  |
+5 | #[derive(InstructionData)]
+  |          ^^^^^^^^^^^^^^^ evaluation of `<Rename as quasar_lang::InstructionData>::SIZE` failed inside this call
+  |
+note: inside `field_size::<std::string::String>`
+ --> $WORKSPACE/lang/src/data.rs
+  |
+  |         None => panic!("instruction data has one size: use `ArrayString<N>` or `ArrayVec<T, N>`"),
+  |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+
+note: erroneous constant encountered
+ --> tests/ui/fail/string_in_instruction_data.rs:5:10
+  |
+5 | #[derive(InstructionData)]
+  |          ^^^^^^^^^^^^^^^
+  |
+  = note: this note originates in the derive macro `InstructionData` (in Nightly builds, run with -Z macro-backtrace for more info)

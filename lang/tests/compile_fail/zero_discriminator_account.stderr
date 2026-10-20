@@ -1,5 +1,0 @@
-error: discriminator must contain at least one non-zero byte; all-zero discriminators are indistinguishable from uninitialized account data
- --> tests/compile_fail/zero_discriminator_account.rs:5:28
-  |
-5 | #[account(discriminator = [0, 0])]
-  |                            ^

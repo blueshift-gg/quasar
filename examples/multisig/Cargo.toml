@@ -1,26 +1,17 @@
 [package]
-name = "quasar-multisig"
-version = "0.1.0"
-edition = "2021"
+name = "multisig"
+version = "0.0.0"
+edition.workspace = true
+publish = false
 
 [lib]
 crate-type = ["cdylib", "lib"]
-doctest = false
+
+[dependencies]
+quasar-lang.workspace = true
+
+[dev-dependencies]
+quasar-test.workspace = true
 
 [lints]
 workspace = true
-
-[features]
-alloc = []
-client = []
-debug = []
-idl-build = ["quasar-lang/idl-build"]
-
-[dependencies]
-quasar-lang = { path = "../../lang" }
-solana-instruction = { version = "3.2.0" }
-
-[dev-dependencies]
-quasar-multisig-client = { path = "client" }
-wincode = { version = "0.4", features = ["derive"] }
-quasar-svm = { git = "https://github.com/blueshift-gg/quasar-svm" }

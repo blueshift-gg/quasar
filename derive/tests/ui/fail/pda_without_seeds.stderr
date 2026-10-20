@@ -1,0 +1,11 @@
+error[E0080]: evaluation panicked: a `Pda` field needs `seeds(..)`
+  --> tests/ui/fail/pda_without_seeds.rs:14:16
+   |
+14 |     pub vault: Pda<Account<Vault>>,
+   |                ^^^ evaluation of `_` failed inside this call
+   |
+note: inside `not_pda::<quasar_lang::pda::Pda<quasar_lang::account::Account<Vault>, Vault>>`
+  --> $WORKSPACE/lang/src/field.rs
+   |
+   |     assert!(!F::INFO.pda, "a `Pda` field needs `seeds(..)`");
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here

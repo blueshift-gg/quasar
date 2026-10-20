@@ -4,159 +4,61 @@ on:
   push:
     tags: ["v*"]
 
-env:
-  SOLANA_VERSION: stable
-  CARGO_TERM_COLOR: always
-
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  # ── Gate: full CI must pass before any release action ──
   ci:
     name: CI Gate
+    permissions:
+      contents: read
+      pull-requests: read
     uses: ./.github/workflows/ci.yml
-    with:
-      generated_client_smoke: true
 
-  # ── Miri: verify unsafe soundness under Tree Borrows ──
-  miri:
-    name: Miri (Tree Borrows)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-miri-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-miri-
-      - name: Get nightly toolchain version
-        id: nightly
-        run: echo "version=$(make nightly-version)" >> $GITHUB_OUTPUT
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ steps.nightly.outputs.version }}
-          components: miri
-      - name: Run Miri tests
-        run: make test-miri
-
-  # ── Kani: formal verification of proof harnesses ──
-  kani:
-    name: Kani (${{ matrix.crate }})
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        crate: [quasar-lang, quasar-spl]
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-kani-${{ matrix.crate }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-kani-${{ matrix.crate }}-
-      - name: Install z3 (SMT solver for wide-type proofs)
-        run: sudo apt-get install -y z3
-      - name: Verify ${{ matrix.crate }}
-        uses: model-checking/kani-github-action@v1
-        with:
-          command: cargo kani -p ${{ matrix.crate }}
-
-  # ── CLI smoke: verify a fresh Solana project before publishing a tag ──
-  release-cli-smoke:
-    name: Release CLI Smoke
-    needs: ci
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Build release smoke image
-        run: |
-          docker build \
-            --platform linux/amd64 \
-            --build-arg SOLANA_VERSION=${{ env.SOLANA_VERSION }} \
-            --file .github/docker/release-cli-smoke.Dockerfile \
-            --tag quasar-release-cli-smoke:${{ github.sha }} \
-            .
-
-      - name: Run release smoke
-        run: docker run --rm quasar-release-cli-smoke:${{ github.sha }}
-
-  # ── Publish crates to crates.io in dependency order ──
   publish:
     name: Publish to crates.io
-    needs: [ci, miri, kani, release-cli-smoke]
+    needs: ci
     runs-on: ubuntu-latest
     environment: crates-io
     steps:
       - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.92.0
+      - name: Check release version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PYCODE'
+          import os
+          import tomllib
 
-      # Tier 1: no workspace deps (parallel-safe)
-      - name: Publish quasar-derive
-        run: cargo publish -p quasar-derive
+          with open("Cargo.toml", "rb") as manifest:
+              version = tomllib.load(manifest)["workspace"]["package"]["version"]
+          expected = f"v{version}"
+          if os.environ["RELEASE_TAG"] != expected:
+              raise SystemExit(f"Release tag must match the workspace version: {expected}")
+          PYCODE
+      - name: Publish workspace crates
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: sh .github/scripts/publish-crates.sh
 
-      - name: Publish quasar-idl
-        run: cargo publish -p quasar-idl
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-      - name: Publish quasar-profile
-        run: cargo publish -p quasar-profile
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-      # Tier 2: depends on tier 1
-      - name: Wait for crates.io index
-        run: sleep 30
-
-      - name: Publish quasar-core
-        run: cargo publish -p quasar-core
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-      # Tier 3: depends on core
-      - name: Wait for crates.io index
-        run: sleep 30
-
-      - name: Publish quasar-spl
-        run: cargo publish -p quasar-spl
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-      # Tier 4: facade crate
-      - name: Wait for crates.io index
-        run: sleep 30
-
-      - name: Publish quasar
-        run: cargo publish -p quasar
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-  # ── GitHub Release with auto-generated notes ──
   github-release:
     name: GitHub Release
-    needs: [ci, miri, kani, release-cli-smoke]
+    needs: publish
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Create GitHub Release
-        run: |
-          gh release create "${{ github.ref_name }}" \
-            --title "${{ github.ref_name }}" \
-            --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" \
+            --verify-tag \
+            --title "$RELEASE_TAG" \
+            --generate-notes

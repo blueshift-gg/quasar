@@ -1,5 +1,5 @@
 use {
-    super::model::{python_field_path, ProgramModel},
+    super::model::{ProgramModel, python_field_path},
     crate::types::{Idl, IdlArg, IdlCodec, IdlPdaSeed, IdlResolver, IdlType, IdlTypeDef},
     quasar_schema::{camel_to_snake, snake_to_pascal, to_screaming_snake},
     std::fmt::Write,
@@ -14,12 +14,8 @@ pub fn generate_python_client(idl: &Idl) -> String {
     let mut out = String::new();
 
     // Module docstring
-    writeln!(
-        out,
-        r#""""Generated client for the {} program.""""#,
-        model.identity.program_name
-    )
-    .unwrap();
+    writeln!(out, r#""""Generated client for the {} program.""""#, model.identity.program_name)
+        .unwrap();
     out.push_str("from __future__ import annotations\n\n");
 
     // Imports
@@ -39,12 +35,7 @@ pub fn generate_python_client(idl: &Idl) -> String {
     out.push_str("from solders.instruction import Instruction, AccountMeta\n\n");
 
     // Program ID
-    writeln!(
-        out,
-        "PROGRAM_ID = Pubkey.from_string(\"{}\")\n",
-        idl.address
-    )
-    .unwrap();
+    writeln!(out, "PROGRAM_ID = Pubkey.from_string(\"{}\")\n", idl.address).unwrap();
 
     // Discriminator constants
     for ix in &idl.instructions {
@@ -99,13 +90,8 @@ pub fn generate_python_client(idl: &Idl) -> String {
             out.push_str("    pass\n");
         } else {
             for field in &type_def.fields {
-                writeln!(
-                    out,
-                    "    {}: {}",
-                    camel_to_snake(&field.name),
-                    python_type(&field.ty)
-                )
-                .unwrap();
+                writeln!(out, "    {}: {}", camel_to_snake(&field.name), python_type(&field.ty))
+                    .unwrap();
             }
         }
         out.push('\n');
@@ -113,12 +99,7 @@ pub fn generate_python_client(idl: &Idl) -> String {
         // Decode classmethod
         if !type_def.fields.is_empty() {
             writeln!(out, "    @classmethod").unwrap();
-            writeln!(
-                out,
-                "    def decode(cls, data: bytes) -> {}:",
-                type_def.name
-            )
-            .unwrap();
+            writeln!(out, "    def decode(cls, data: bytes) -> {}:", type_def.name).unwrap();
             out.push_str("        offset = 0\n");
             for field in &type_def.fields {
                 out.push_str(&decode_field_expr(
@@ -177,13 +158,7 @@ pub fn generate_python_client(idl: &Idl) -> String {
 
         // Arg fields
         for arg in &ix.args {
-            writeln!(
-                out,
-                "    {}: {}",
-                camel_to_snake(&arg.name),
-                python_type(&arg.ty)
-            )
-            .unwrap();
+            writeln!(out, "    {}: {}", camel_to_snake(&arg.name), python_type(&arg.ty)).unwrap();
             has_any_fields = true;
         }
 
@@ -224,12 +199,7 @@ pub fn generate_python_client(idl: &Idl) -> String {
                         IdlPdaSeed::Account { path } => {
                             seed_exprs.push(format!("bytes(accounts_map[\"{}\"])", path));
                         }
-                        IdlPdaSeed::AccountField {
-                            path,
-                            field,
-                            account,
-                            ..
-                        } => {
+                        IdlPdaSeed::AccountField { path, field, account, .. } => {
                             let ty = account_field_type(idl, account, field);
                             seed_exprs.push(python_pda_seed_expr(
                                 &format!("input.{}", account_field_seed_input_name(path, field)),
@@ -244,10 +214,7 @@ pub fn generate_python_client(idl: &Idl) -> String {
                         }
                     }
                 }
-                format!(
-                    "Pubkey.find_program_address([{}], PROGRAM_ID)[0]",
-                    seed_exprs.join(", ")
-                )
+                format!("Pubkey.find_program_address([{}], PROGRAM_ID)[0]", seed_exprs.join(", "))
             } else {
                 format!("input.{}", camel_to_snake(&acc.name))
             };
@@ -466,12 +433,7 @@ pub fn generate_python_client(idl: &Idl) -> String {
         let fn_name = camel_to_snake(&ix.name);
         let class_name = snake_to_pascal(&ix.name);
         writeln!(out, "    @staticmethod").unwrap();
-        writeln!(
-            out,
-            "    def {}(input: {}Input) -> Instruction:",
-            fn_name, class_name
-        )
-        .unwrap();
+        writeln!(out, "    def {}(input: {}Input) -> Instruction:", fn_name, class_name).unwrap();
         writeln!(out, "        return create_{}_instruction(input)", fn_name).unwrap();
         out.push('\n');
     }
@@ -545,40 +507,39 @@ fn serialize_field_expr(
     types: &[IdlTypeDef],
 ) -> String {
     // Handle dynamic string with codec
-    if let IdlType::Primitive(p) = ty {
-        if p == "string" {
-            if let Some(c) = codec {
-                let (fmt, _sz) = prefix_fmt(c.prefix_bytes());
-                return format!(
-                    "    _b = input.{n}.encode(\"utf-8\")\n    data += struct.pack(\"<{fmt}\", \
+    if let IdlType::Primitive(p) = ty
+        && p == "string"
+        && let Some(c) = codec
+    {
+        let (fmt, _sz) = prefix_fmt(c.prefix_bytes());
+        return format!(
+            "    _b = input.{n}.encode(\"utf-8\")\n    data += struct.pack(\"<{fmt}\", \
                      len(_b))\n    data += _b\n",
-                    n = name,
-                    fmt = fmt,
-                );
-            }
-        }
+            n = name,
+            fmt = fmt,
+        );
     }
 
     // Handle Vec with codec
-    if let IdlType::Vec { ref vec } = ty {
-        if let Some(c) = codec {
-            let (fmt, _sz) = prefix_fmt(c.prefix_bytes());
-            let item_ser = match &**vec {
-                IdlType::Primitive(p) if p == "pubkey" => "bytes(item)".to_string(),
-                IdlType::Primitive(p) => {
-                    let f = struct_format(p);
-                    format!("struct.pack(\"<{}\", item)", f)
-                }
-                _ => "item".to_string(),
-            };
-            return format!(
-                "    data += struct.pack(\"<{fmt}\", len(input.{n}))\n    for item in \
+    if let IdlType::Vec { vec } = ty
+        && let Some(c) = codec
+    {
+        let (fmt, _sz) = prefix_fmt(c.prefix_bytes());
+        let item_ser = match &**vec {
+            IdlType::Primitive(p) if p == "pubkey" => "bytes(item)".to_string(),
+            IdlType::Primitive(p) => {
+                let f = struct_format(p);
+                format!("struct.pack(\"<{}\", item)", f)
+            }
+            _ => "item".to_string(),
+        };
+        return format!(
+            "    data += struct.pack(\"<{fmt}\", len(input.{n}))\n    for item in \
                  input.{n}:\n        data += {ser}\n",
-                n = name,
-                fmt = fmt,
-                ser = item_ser,
-            );
-        }
+            n = name,
+            fmt = fmt,
+            ser = item_ser,
+        );
     }
 
     match ty {
@@ -592,10 +553,9 @@ fn serialize_field_expr(
             "i32" => format!("    data += struct.pack(\"<i\", input.{})\n", name),
             "u64" => format!("    data += struct.pack(\"<Q\", input.{})\n", name),
             "i64" => format!("    data += struct.pack(\"<q\", input.{})\n", name),
-            "u128" => format!(
-                "    data += input.{n}.to_bytes(16, byteorder=\"little\")\n",
-                n = name,
-            ),
+            "u128" => {
+                format!("    data += input.{n}.to_bytes(16, byteorder=\"little\")\n", n = name,)
+            }
             "i128" => format!(
                 "    data += input.{n}.to_bytes(16, byteorder=\"little\", signed=True)\n",
                 n = name,
@@ -639,9 +599,7 @@ fn serialize_field_expr(
                 ser = item_ser,
             )
         }
-        IdlType::Array {
-            array: (_inner, size),
-        } => {
+        IdlType::Array { array: (_inner, size) } => {
             format!("    data += input.{}[:{size}]\n", name)
         }
         IdlType::Defined { defined } => {
@@ -676,52 +634,48 @@ fn decode_field_expr(
     let pad = " ".repeat(indent);
 
     // Handle dynamic string with codec
-    if let IdlType::Primitive(p) = ty {
-        if p == "string" {
-            if let Some(c) = codec {
-                let (fmt, sz) = prefix_fmt(c.prefix_bytes());
-                return format!(
-                    "{pad}_len = struct.unpack_from(\"<{fmt}\", data, offset)[0]\n{pad}offset += \
+    if let IdlType::Primitive(p) = ty
+        && p == "string"
+        && let Some(c) = codec
+    {
+        let (fmt, sz) = prefix_fmt(c.prefix_bytes());
+        return format!(
+            "{pad}_len = struct.unpack_from(\"<{fmt}\", data, offset)[0]\n{pad}offset += \
                      {sz}\n{pad}{n} = data[offset:offset + _len].decode(\"utf-8\")\n{pad}offset \
                      += _len\n",
-                    pad = pad,
-                    n = name,
-                    fmt = fmt,
-                    sz = sz,
-                );
-            }
-        }
+            pad = pad,
+            n = name,
+            fmt = fmt,
+            sz = sz,
+        );
     }
 
     // Handle Vec with codec
-    if let IdlType::Vec { ref vec } = ty {
-        if let Some(c) = codec {
-            let (fmt, sz) = prefix_fmt(c.prefix_bytes());
-            let item_decode = match &**vec {
-                IdlType::Primitive(p) if p == "pubkey" => {
-                    "Pubkey.from_bytes(data[offset:offset + 32]); offset += 32".to_string()
-                }
-                IdlType::Primitive(p) => {
-                    let f = struct_format(p);
-                    let item_sz = primitive_size(p);
-                    format!(
-                        "struct.unpack_from(\"<{}\", data, offset)[0]; offset += {}",
-                        f, item_sz
-                    )
-                }
-                _ => "data[offset:offset + 1]; offset += 1".to_string(),
-            };
-            return format!(
-                "{pad}_count = struct.unpack_from(\"<{fmt}\", data, offset)[0]\n{pad}offset += \
+    if let IdlType::Vec { vec } = ty
+        && let Some(c) = codec
+    {
+        let (fmt, sz) = prefix_fmt(c.prefix_bytes());
+        let item_decode = match &**vec {
+            IdlType::Primitive(p) if p == "pubkey" => {
+                "Pubkey.from_bytes(data[offset:offset + 32]); offset += 32".to_string()
+            }
+            IdlType::Primitive(p) => {
+                let f = struct_format(p);
+                let item_sz = primitive_size(p);
+                format!("struct.unpack_from(\"<{}\", data, offset)[0]; offset += {}", f, item_sz)
+            }
+            _ => "data[offset:offset + 1]; offset += 1".to_string(),
+        };
+        return format!(
+            "{pad}_count = struct.unpack_from(\"<{fmt}\", data, offset)[0]\n{pad}offset += \
                  {sz}\n{pad}{n} = []\n{pad}for _ in range(_count):\n{pad}    _item = \
                  {decode}\n{pad}    {n}.append(_item)\n",
-                pad = pad,
-                n = name,
-                fmt = fmt,
-                sz = sz,
-                decode = item_decode,
-            );
-        }
+            pad = pad,
+            n = name,
+            fmt = fmt,
+            sz = sz,
+            decode = item_decode,
+        );
     }
 
     match ty {
@@ -731,11 +685,7 @@ fn decode_field_expr(
                 pad = pad,
                 n = name,
             ),
-            "u8" => format!(
-                "{pad}{n} = data[offset]\n{pad}offset += 1\n",
-                pad = pad,
-                n = name,
-            ),
+            "u8" => format!("{pad}{n} = data[offset]\n{pad}offset += 1\n", pad = pad, n = name,),
             "i8" => format!(
                 "{pad}{n} = struct.unpack_from(\"<b\", data, offset)[0]\n{pad}offset += 1\n",
                 pad = pad,
@@ -806,9 +756,7 @@ fn decode_field_expr(
                 decode = item_decode,
             )
         }
-        IdlType::Array {
-            array: (_inner, size),
-        } => {
+        IdlType::Array { array: (_inner, size) } => {
             format!(
                 "{pad}{n} = data[offset:offset + {sz}]\n{pad}offset += {sz}\n",
                 pad = pad,
@@ -856,11 +804,7 @@ fn decode_field_expr(
                 ));
                 result
             } else {
-                format!(
-                    "{pad}{n} = data[offset:]  # unknown type\n",
-                    pad = pad,
-                    n = name,
-                )
+                format!("{pad}{n} = data[offset:]  # unknown type\n", pad = pad, n = name,)
             }
         }
         IdlType::Generic { generic } => {
@@ -909,11 +853,7 @@ fn primitive_size(p: &str) -> usize {
 }
 
 fn py_bool(b: bool) -> &'static str {
-    if b {
-        "True"
-    } else {
-        "False"
-    }
+    if b { "True" } else { "False" }
 }
 
 struct AccountFieldSeedInput {
@@ -932,12 +872,7 @@ fn account_field_seed_inputs(
             continue;
         };
         for seed in seeds {
-            let IdlPdaSeed::AccountField {
-                path,
-                account,
-                field,
-            } = seed
-            else {
+            let IdlPdaSeed::AccountField { path, account, field } = seed else {
                 continue;
             };
             if inputs
@@ -947,11 +882,7 @@ fn account_field_seed_inputs(
                 continue;
             }
             if let Some(ty) = account_field_type(idl, account, field) {
-                inputs.push(AccountFieldSeedInput {
-                    path: path.clone(),
-                    field: field.clone(),
-                    ty,
-                });
+                inputs.push(AccountFieldSeedInput { path: path.clone(), field: field.clone(), ty });
             }
         }
     }
@@ -978,11 +909,7 @@ fn account_field_seed_input_name(path: &str, field: &str) -> String {
     format!(
         "{}_{}_seed",
         camel_to_snake(path),
-        field
-            .split('.')
-            .map(camel_to_snake)
-            .collect::<Vec<_>>()
-            .join("_")
+        field.split('.').map(camel_to_snake).collect::<Vec<_>>().join("_")
     )
 }
 
@@ -999,10 +926,9 @@ fn python_pda_seed_expr(expr: &str, ty: Option<&IdlType>) -> String {
             "i32" => format!("struct.pack(\"<i\", {expr})"),
             "u64" => format!("struct.pack(\"<Q\", {expr})"),
             "i64" => format!("struct.pack(\"<q\", {expr})"),
-            "u128" | "i128" => format!(
-                "int({expr}).to_bytes(16, \"little\", signed={})",
-                p.starts_with('i')
-            ),
+            "u128" | "i128" => {
+                format!("int({expr}).to_bytes(16, \"little\", signed={})", p.starts_with('i'))
+            }
             _ => expr.to_string(),
         },
         Some(IdlType::Array { .. }) => format!("bytes({expr})"),

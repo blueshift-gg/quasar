@@ -129,11 +129,7 @@ fn print_deltas(result: &ProfileResult, prev: &HashMap<String, u64>, total: u64)
         .filter_map(|(name, cus)| {
             let prev_cu = prev.get(name).copied().unwrap_or(0);
             let diff = *cus as i64 - prev_cu as i64;
-            if diff != 0 {
-                Some((name.as_str(), diff, *cus))
-            } else {
-                None
-            }
+            if diff != 0 { Some((name.as_str(), diff, *cus)) } else { None }
         })
         .collect();
 
@@ -153,21 +149,13 @@ fn print_deltas(result: &ProfileResult, prev: &HashMap<String, u64>, total: u64)
 
     let show = 10.min(deltas.len());
     for (name, diff, cus) in deltas.iter().take(show) {
-        let cu_str = if *cus > 0 {
-            format_cu(*cus)
-        } else {
-            "removed".to_string()
-        };
+        let cu_str = if *cus > 0 { format_cu(*cus) } else { "removed".to_string() };
         let delta_str = if *diff > 0 {
             red(&format!("(+{})", format_cu(diff.unsigned_abs())))
         } else {
             green(&format!("(-{})", format_cu(diff.unsigned_abs())))
         };
-        let pct = if total > 0 {
-            diff.unsigned_abs() as f64 / total as f64 * 100.0
-        } else {
-            0.0
-        };
+        let pct = if total > 0 { diff.unsigned_abs() as f64 / total as f64 * 100.0 } else { 0.0 };
         println!(
             "  {:>8} {}  {}  {}",
             cu_str,
@@ -178,10 +166,7 @@ fn print_deltas(result: &ProfileResult, prev: &HashMap<String, u64>, total: u64)
     }
 
     if deltas.len() > show {
-        println!(
-            "  {}",
-            dim(&format!("+{} more (--expand)", deltas.len() - show))
-        );
+        println!("  {}", dim(&format!("+{} more (--expand)", deltas.len() - show)));
     }
 }
 
@@ -226,13 +211,7 @@ fn print_full_table(
         );
     }
 
-    println!(
-        "  {}",
-        dim(&format!(
-            "{fn_count} functions, {} CU total",
-            format_cu(total)
-        ))
-    );
+    println!("  {}", dim(&format!("{fn_count} functions, {} CU total", format_cu(total))));
 }
 
 pub(crate) fn print_flamegraph_link(url: &str) {
@@ -341,16 +320,8 @@ fn simplify_name(name: &str) -> String {
         || (simplified.len() == 1 && simplified.chars().next().unwrap().is_uppercase())
     {
         // Grab the last `::segment` from the input name before generics.
-        let last_fn = name
-            .rsplit("::")
-            .next()
-            .unwrap_or(name)
-            .trim_end_matches([')', '(', ' ']);
-        if last_fn.is_empty() || last_fn == name {
-            name.to_string()
-        } else {
-            last_fn.to_string()
-        }
+        let last_fn = name.rsplit("::").next().unwrap_or(name).trim_end_matches([')', '(', ' ']);
+        if last_fn.is_empty() || last_fn == name { name.to_string() } else { last_fn.to_string() }
     } else {
         simplified
     }
@@ -440,17 +411,10 @@ fn frame_tree_from_stacks(result: &ProfileResult) -> FrameNode {
         return to_frame_node(name, node);
     }
 
-    let mut children: Vec<FrameNode> = synthetic
-        .children
-        .into_iter()
-        .map(|(name, node)| to_frame_node(name, node))
-        .collect();
+    let mut children: Vec<FrameNode> =
+        synthetic.children.into_iter().map(|(name, node)| to_frame_node(name, node)).collect();
     children.sort_by(|a, b| b.value.cmp(&a.value).then_with(|| a.name.cmp(&b.name)));
-    FrameNode {
-        name: "all".to_string(),
-        value: result.total_cus,
-        children,
-    }
+    FrameNode { name: "all".to_string(), value: result.total_cus, children }
 }
 
 fn to_frame_node(name: String, mut node: BuildNode) -> FrameNode {
@@ -460,9 +424,5 @@ fn to_frame_node(name: String, mut node: BuildNode) -> FrameNode {
         .map(|(child_name, child)| to_frame_node(child_name, child))
         .collect();
     children.sort_by(|a, b| b.value.cmp(&a.value).then_with(|| a.name.cmp(&b.name)));
-    FrameNode {
-        name,
-        value: node.value,
-        children,
-    }
+    FrameNode { name, value: node.value, children }
 }

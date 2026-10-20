@@ -12,7 +12,7 @@ use crate::types::Idl;
 pub use {
     report::{Diagnostic, LintConfig, LintReport, RuleCode, Severity},
     surface::{
-        load_lockfile, lock_path, save_lockfile, LockfileError, ProgramSurface, LOCK_FILE_NAME,
+        LOCK_FILE_NAME, LockfileError, ProgramSurface, load_lockfile, lock_path, save_lockfile,
     },
 };
 

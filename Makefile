@@ -1,226 +1,152 @@
-SHELL := /usr/bin/env bash
-NIGHTLY_TOOLCHAIN := nightly
+# CI runs `make check` and the two Miri targets in separate jobs.
+
 KANI_VERSION := 0.67.0
-# platform-tools v1.52 ships Cargo 1.89 which supports Cargo.lock v4.
-# v1.51 ships Cargo 1.84 which does not, causing "duplicate lang item" errors.
-PLATFORM_TOOLS := v1.52
+MIRI_TOOLCHAIN := nightly-2026-03-27
+MIRI_FLAGS := -Zmiri-tree-borrows -Zmiri-symbolic-alignment-check
 
-# Test programs that produce SBF binaries
-SBF_TEST_PROGRAMS := tests/programs/test-misc tests/programs/test-errors \
-	tests/programs/test-events tests/programs/test-pda \
-	tests/programs/test-token-cpi tests/programs/test-token-init \
-	tests/programs/test-token-validate tests/programs/test-sysvar \
-	tests/programs/test-one-of tests/programs/test-migrate \
-	tests/programs/test-raw tests/programs/test-metadata-validate
+# Compute units and sizes depend on the compiler, so every SBF build uses one.
+PLATFORM_TOOLS_VERSION ?= v1.56
+SBF_TOOLS ?= --tools-version $(PLATFORM_TOOLS_VERSION)
+export SBF_TOOLS
 
-# Example programs that produce SBF binaries
-SBF_EXAMPLES := examples/vault examples/escrow examples/multisig
+PROGRAMS := $(patsubst %/Cargo.toml,%,$(wildcard tests/*/Cargo.toml examples/*/Cargo.toml))
+# Built a second time with `quasar-lang/debug`: making every check
+# themselves and saying which fails, to compare with the build that leaves
+# checks to the calls that make them.
+DEBUG := $(PROGRAMS)
 
-# All SBF programs
-SBF_ALL := $(SBF_EXAMPLES) $(SBF_TEST_PROGRAMS)
+.PHONY: check fmt clippy check-features sbf rivals test kani bench bench-check idl expansion profile publish-check
+.PHONY: test-miri test-miri-strict miri-version
+.PHONY: format format-fix clippy-fix build build-sbf generated-client-smoke
+.PHONY: bench-cu bench-tracked compare-tracked test-all nightly-version
+.PHONY: help-kani check-kani kani-lang kani-metadata
+.PHONY: check-policies test-policies check-workspace-lints check-runtime-panics check-cli-conventions
 
-.PHONY: format format-fix clippy clippy-fix check-features check-workspace-lints \
-	check-runtime-panics check-workspace-invariants build build-sbf build-upstream test bench-cu \
-	bench-tracked compare-tracked test-miri test-miri-strict test-all nightly-version \
-	generated-client-smoke kani help-kani check-kani kani-lang kani-spl kani-metadata
+check: check-policies fmt clippy check-features sbf rivals test kani bench-check expansion publish-check
 
-# Print the nightly toolchain version for CI
-nightly-version:
-	@echo $(NIGHTLY_TOOLCHAIN)
+check-policies: test-policies check-workspace-lints check-runtime-panics check-cli-conventions
 
-help-kani:
-	@echo "Local Kani verification is optional."
-	@echo "CI installs and runs Kani automatically."
-	@echo ""
-	@echo "Expected local version: kani $(KANI_VERSION)"
-	@echo "Check version:         kani --version"
-	@echo "Run all proofs:        make kani"
-	@echo "Run one crate:         make kani-lang | make kani-spl | make kani-metadata"
-
-check-kani:
-	@command -v kani >/dev/null 2>&1 || { \
-		echo "kani is not installed."; \
-		echo "Normal builds/tests do not require Kani."; \
-		echo "To run proof harnesses locally, install kani $(KANI_VERSION) and re-run."; \
-		echo "Then verify with: kani --version"; \
-		exit 1; \
-	}
-	@version="$$(kani --version 2>/dev/null | awk '{print $$2}')"; \
-	if [[ "$$version" != "$(KANI_VERSION)" ]]; then \
-		echo "unexpected kani version: $$version"; \
-		echo "expected: $(KANI_VERSION)"; \
-		echo "CI uses Kani $(KANI_VERSION); local verification should match."; \
-		exit 1; \
-	fi
-
-format:
-	@cargo +$(NIGHTLY_TOOLCHAIN) fmt --all -- --check
-
-format-fix:
-	@cargo +$(NIGHTLY_TOOLCHAIN) fmt --all
-
-clippy:
-	@cargo +$(NIGHTLY_TOOLCHAIN) clippy --all --all-features --all-targets -- -D warnings
-
-clippy-fix:
-	@cargo +$(NIGHTLY_TOOLCHAIN) clippy --all --all-features --all-targets --fix --allow-dirty --allow-staged -- -D warnings
-
-check-features:
-	@cargo hack --feature-powerset --no-dev-deps check
+test-policies:
+	python3 .github/scripts/test-policies.py
 
 check-workspace-lints:
-	@missing=0; \
-	while IFS= read -r manifest; do \
-	  if ! rg -q '^\[lints\]$$' "$$manifest" || ! rg -q '^workspace = true$$' "$$manifest"; then \
-	    echo "missing workspace lint opt-in: $$manifest" >&2; \
-	    missing=1; \
-	  fi; \
-	done < <( \
-	  cargo metadata --no-deps --format-version 1 \
-	    | rg -o '"manifest_path":"[^"]+"' \
-	    | sed 's/"manifest_path":"//; s/"$$//' \
-	); \
-	if [[ "$$missing" -ne 0 ]]; then exit 1; fi
+	python3 .github/scripts/check-policies.py workspace-lints
 
 check-runtime-panics:
-	@matches="$$( \
-	  rg -n 'panic!|unreachable!|todo!|unimplemented!' \
-	    lang/src spl/src derive/src \
-	    --glob '!**/tests/**' || true \
-	)"; \
-	violations=(); \
-	while IFS= read -r entry; do \
-	  [[ -z "$$entry" ]] && continue; \
-	  code="$${entry#*:*:}"; \
-	  if [[ "$$code" =~ ^[[:space:]]*// ]]; then continue; fi; \
-	  case "$$entry" in \
-	    *'lang/src/lib.rs:'*'panic!("program aborted")'*) continue ;; \
-	    *'derive/src/accounts/evidence.rs:'*) continue ;; \
-	  esac; \
-	  violations+=("$$entry"); \
-	done <<<"$$matches"; \
-	if (($${#violations[@]} > 0)); then \
-	  echo "unexpected panic-style macro in runtime/derive code:" >&2; \
-	  printf '  %s\n' "$${violations[@]}" >&2; \
-	  exit 1; \
-	fi
+	python3 .github/scripts/check-policies.py runtime-panics
 
-check-workspace-invariants:
-	@check_allowed() { \
-	  local desc="$$1" pattern="$$2"; shift 2; \
-	  local allowed=("$$@") matches; \
-	  matches="$$(rg -n "$$pattern" cli/src || true)"; \
-	  while IFS= read -r entry; do \
-	    [[ -z "$$entry" ]] && continue; \
-	    local ok=0; \
-	    for prefix in "$${allowed[@]}"; do \
-	      if [[ "$$entry" == "$$prefix"* ]]; then ok=1; break; fi; \
-	    done; \
-	    if [[ "$$ok" -eq 0 ]]; then \
-	      echo "unexpected $${desc}: $$entry" >&2; \
-	      exit 1; \
-	    fi; \
-	  done <<<"$$matches"; \
-	}; \
-	if [[ ! -x scripts/bench-tracked-programs.sh ]]; then \
-	  echo "expected executable script: scripts/bench-tracked-programs.sh" >&2; \
-	  exit 1; \
-	fi; \
-	check_allowed "process::exit" 'std::process::exit|process::exit' \
-	  'cli/src/main.rs:' 'cli/src/init/banner.rs:'; \
-	check_allowed "polling watch loop sleep" \
-	  'std::thread::sleep\(std::time::Duration::from_secs\(1\)\)' \
-	  'cli/src/build_watch.rs:'; \
-	if rg -n 'split_whitespace\(' cli/src >/dev/null; then \
-	  echo "cli command parsing must not use split_whitespace()" >&2; \
-	  rg -n 'split_whitespace\(' cli/src >&2; \
-	  exit 1; \
-	fi
+check-cli-conventions:
+	python3 .github/scripts/check-policies.py cli
 
-build:
-	@cargo build
+fmt:
+	cargo fmt --all --check
 
-build-sbf:
-	@for dir in $(SBF_EXAMPLES); do \
-		echo "Building $$dir"; \
-		cargo build-sbf --tools-version $(PLATFORM_TOOLS) --manifest-path "$$dir/Cargo.toml"; \
+clippy:
+	cargo clippy --workspace --all-targets -- -D warnings
+
+check-features:
+	cargo hack --workspace --feature-powerset --no-dev-deps check
+
+sbf:
+	@for program in $(PROGRAMS); do \
+		RUSTFLAGS="-D warnings" cargo build-sbf $(SBF_TOOLS) --manifest-path $$program/Cargo.toml || exit 1; \
 	done
-	@for dir in $(SBF_TEST_PROGRAMS); do \
-		echo "Building $$dir (with debug)"; \
-		cargo build-sbf --tools-version $(PLATFORM_TOOLS) --manifest-path "$$dir/Cargo.toml" --features debug,alloc; \
-	done
-	@echo "Building test-heap (alloc only, no debug — tests alloc trap)"
-	cargo build-sbf --tools-version $(PLATFORM_TOOLS) --manifest-path tests/programs/test-heap/Cargo.toml --features alloc
-
-build-upstream:
-	@for dir in $(SBF_EXAMPLES); do \
-		echo "Building $$dir (upstream nightly)"; \
-		(cd "$$dir" && cargo +nightly build-bpf); \
+	@for program in $(DEBUG); do \
+		CARGO_TARGET_DIR=$(CURDIR)/target/debug-checks RUSTFLAGS="-D warnings" \
+			cargo build-sbf $(SBF_TOOLS) --features quasar-lang/debug \
+			--manifest-path $$program/Cargo.toml || exit 1; \
 	done
 
-test:
-	@$(MAKE) build
-	@$(MAKE) build-sbf
-	@TRYBUILD=overwrite cargo test -p quasar-lang -p quasar-derive -p quasar-spl \
-		-p quasar-metadata \
-		-p quasar-vault -p quasar-escrow -p quasar-multisig \
-		-p quasar-test-suite \
-		--all-features
+# Programs built from pinned revisions, for the oracle tests and the benchmark.
+rivals:
+	bench/rivals.sh
 
-generated-client-smoke:
-	@cargo test -p quasar-cli --test generated_clients_smoke -- --nocapture
+test: sbf rivals
+	RUST_LOG=error cargo test --workspace
 
-bench-cu:
-	@$(MAKE) build-sbf
-	@echo "Running vault CU benchmark..."
-	@cargo test -p quasar-vault -- --nocapture --test-threads=1 2>&1 | grep -E '(DEPOSIT|WITHDRAW) CU:'
-	@echo "Running escrow CU benchmark..."
-	@cargo test -p quasar-escrow -- --nocapture --test-threads=1 2>&1 | grep -E '(MAKE|TAKE|REFUND) CU:'
-
-bench-tracked:
-	@bash scripts/bench-tracked-programs.sh capture target/tracked-metrics.env
-	@cat target/tracked-metrics.env
-
-compare-tracked:
-	@bash scripts/bench-tracked-programs.sh compare
-
-test-miri:
-	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check" \
-		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-lang --test miri
-	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check" \
-		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-spl --test miri
-	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check" \
-		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-metadata --test miri
-
-test-miri-strict:
-	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check -Zmiri-strict-provenance" \
-		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-lang --test miri -- --skip remaining
-	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check -Zmiri-strict-provenance" \
-		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-spl --test miri
-	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check -Zmiri-strict-provenance" \
-		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-metadata --test miri
+kani: kani-lang kani-metadata
 
 kani-lang: check-kani
-	@cargo kani -p quasar-lang
-
-kani-spl: check-kani
-	@cargo kani -p quasar-spl
+	cargo kani -p quasar-lang --output-format terse
 
 kani-metadata: check-kani
-	@cargo kani -p quasar-metadata
+	cargo kani -p quasar-metadata --output-format terse
 
-kani: kani-lang kani-spl kani-metadata
+check-kani:
+	@version="$$(cargo kani --version 2>/dev/null)"; \
+	if [ "$$version" != "cargo-kani $(KANI_VERSION)" ]; then \
+		echo "Expected cargo-kani $(KANI_VERSION); install with cargo install --locked kani-verifier@$(KANI_VERSION) && cargo kani setup" >&2; \
+		exit 1; \
+	fi
 
-# Run all checks in sequence
+help-kani:
+	@echo "Install: cargo install --locked kani-verifier@$(KANI_VERSION) && cargo kani setup"
+	@echo "Verify: make check-kani; run proofs: make kani, kani-lang, or kani-metadata"
+
+miri-version:
+	@echo $(MIRI_TOOLCHAIN)
+
+test-miri:
+	MIRIFLAGS="$(MIRI_FLAGS)" cargo +$(MIRI_TOOLCHAIN) miri test --locked -p quasar-lang --lib miri::
+	MIRIFLAGS="$(MIRI_FLAGS)" cargo +$(MIRI_TOOLCHAIN) miri test --locked -p quasar-spl --test miri
+	MIRIFLAGS="$(MIRI_FLAGS)" cargo +$(MIRI_TOOLCHAIN) miri test --locked -p quasar-metadata --lib --test accounts --test wire
+
+test-miri-strict:
+	$(MAKE) test-miri MIRI_FLAGS="$(MIRI_FLAGS) -Zmiri-strict-provenance"
+
+bench: sbf rivals
+	RUST_LOG=error cargo run -q -p bench > bench/RESULTS.md
+
+# Where the escrow's own compute units go, by function: built with debug
+# information, which leaves its code as it is, and run with every
+# instruction recorded.
+profile: rivals
+	CARGO_PROFILE_RELEASE_DEBUG=2 CARGO_TARGET_DIR=$(CURDIR)/target/profile \
+		cargo build-sbf $(SBF_TOOLS) --manifest-path examples/escrow/Cargo.toml
+	RUST_LOG=error cargo run -q -p bench --features profile --bin profile
+
+# Fails when compute units or binary sizes differ from bench/RESULTS.md.
+bench-check: sbf rivals
+	RUST_LOG=error cargo run -q -p bench | diff -u bench/RESULTS.md -
+
+# Rewrites each example's committed `idl.json` from the program.
+idl:
+	QUASAR_BLESS=1 cargo test -q --workspace _the_committed_one
+
+# What the macros generate for `examples/lamport-vault`, committed as a
+# reading aid: any change to generated code shows up in review.
+expansion:
+	cargo expand -p lamport-vault --lib > docs/lamport-vault.expanded.rs
+
+# Verify the registry packages together without uploading or requiring a clean tree.
+publish-check:
+	python3 .github/scripts/test-publish-crates.py
+	cargo publish --dry-run --locked --allow-dirty -p quasar-derive -p quasar-lang -p quasar-spl -p quasar-metadata -p quasar-test -p quasar-schema -p quasar-idl-schema -p quasar-idl -p quasar-profile -p quasar-cli
+
+# Familiar developer commands, using the rewrite's toolchains and gates.
+format: fmt
+
+format-fix:
+	cargo fmt --all
+
+clippy-fix:
+	cargo clippy --workspace --all-targets --fix --allow-dirty --allow-staged -- -D warnings
+
+build:
+	cargo build --workspace
+
+build-sbf: sbf
+
+nightly-version: miri-version
+
+generated-client-smoke:
+	cargo test -p quasar-cli --test generated_clients_smoke -- --nocapture
+
+# Print the current report; `make bench` is the explicit baseline update.
+bench-cu bench-tracked: sbf rivals
+	RUST_LOG=error cargo run -q -p bench
+
+compare-tracked: bench-check
+
 test-all:
-	@echo "Running all checks..."
-	@$(MAKE) format
-	@$(MAKE) clippy
-	@$(MAKE) check-workspace-lints
-	@$(MAKE) check-runtime-panics
-	@$(MAKE) check-workspace-invariants
-	@$(MAKE) build-sbf
-	@$(MAKE) test
-	@$(MAKE) generated-client-smoke
-	@$(MAKE) test-miri
-	@echo "All checks passed!"
+	$(MAKE) -j1 check test-miri test-miri-strict

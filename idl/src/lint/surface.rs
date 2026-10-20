@@ -36,11 +36,7 @@ pub struct AccountSurface {
 pub struct InstructionSurface {
     pub name: String,
     pub discriminator: Vec<u8>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        rename = "discriminatorSource"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "discriminatorSource")]
     pub discriminator_source: Option<String>,
     pub args: Vec<FieldSurface>,
     pub accounts: Vec<AccountMetaSurface>,
@@ -154,26 +150,15 @@ impl InstructionSurface {
             name: instruction.name.clone(),
             discriminator: instruction.discriminator.clone(),
             discriminator_source: discriminator_sources.get(&instruction.name).cloned(),
-            args: instruction
-                .args
-                .iter()
-                .map(FieldSurface::from_arg)
-                .collect(),
-            accounts: instruction
-                .accounts
-                .iter()
-                .map(AccountMetaSurface::from_idl)
-                .collect(),
+            args: instruction.args.iter().map(FieldSurface::from_arg).collect(),
+            accounts: instruction.accounts.iter().map(AccountMetaSurface::from_idl).collect(),
             remaining_accounts: instruction.remaining_accounts.as_ref().map(json_key),
             layout: instruction.layout.as_ref().map(json_key),
         }
     }
 
     pub fn account_names(&self) -> Vec<&str> {
-        self.accounts
-            .iter()
-            .map(|account| account.name.as_str())
-            .collect()
+        self.accounts.iter().map(|account| account.name.as_str()).collect()
     }
 }
 
@@ -186,9 +171,7 @@ fn instruction_discriminator_sources(metadata: &IdlMetadata) -> BTreeMap<String,
             sources
                 .iter()
                 .filter_map(|(name, source)| {
-                    source
-                        .as_str()
-                        .map(|source| (name.clone(), source.to_owned()))
+                    source.as_str().map(|source| (name.clone(), source.to_owned()))
                 })
                 .collect()
         })
@@ -234,11 +217,7 @@ impl VariantSurface {
         Self {
             name: variant.name.clone(),
             value: variant.value,
-            fields: variant
-                .fields
-                .iter()
-                .map(FieldSurface::from_field)
-                .collect(),
+            fields: variant.fields.iter().map(FieldSurface::from_field).collect(),
             layout: variant.layout.as_ref().map(json_key),
         }
     }
@@ -255,11 +234,7 @@ impl EventSurface {
             .map(|ty| ty.fields.iter().map(FieldSurface::from_field).collect())
             .unwrap_or_default();
 
-        Self {
-            name: event.name.clone(),
-            discriminator: event.discriminator.clone(),
-            fields,
-        }
+        Self { name: event.name.clone(), discriminator: event.discriminator.clone(), fields }
     }
 }
 
@@ -298,12 +273,8 @@ fn render_type(ty: &IdlType) -> String {
             if defined.generics.is_empty() {
                 defined.name.clone()
             } else {
-                let generics = defined
-                    .generics
-                    .iter()
-                    .map(render_generic_arg)
-                    .collect::<Vec<_>>()
-                    .join(", ");
+                let generics =
+                    defined.generics.iter().map(render_generic_arg).collect::<Vec<_>>().join(", ");
                 format!("{}<{generics}>", defined.name)
             }
         }
@@ -356,11 +327,7 @@ fn collect_resolver_refs(resolver: &IdlResolver, refs: &mut Vec<String>) {
                 }
             }
         }
-        IdlResolver::AssociatedToken {
-            mint,
-            owner,
-            token_program,
-        } => {
+        IdlResolver::AssociatedToken { mint, owner, token_program } => {
             refs.push(mint.clone());
             refs.push(owner.clone());
             if let Some(token_program) = token_program {
@@ -387,19 +354,9 @@ pub fn lock_path(crate_root: &Path) -> PathBuf {
 
 #[derive(Debug)]
 pub enum LockfileError {
-    Io {
-        path: PathBuf,
-        source: io::Error,
-    },
-    Parse {
-        path: PathBuf,
-        source: serde_json::Error,
-    },
-    VersionMismatch {
-        path: PathBuf,
-        expected: u32,
-        found: u32,
-    },
+    Io { path: PathBuf, source: io::Error },
+    Parse { path: PathBuf, source: serde_json::Error },
+    VersionMismatch { path: PathBuf, expected: u32, found: u32 },
 }
 
 impl fmt::Display for LockfileError {
@@ -411,11 +368,7 @@ impl fmt::Display for LockfileError {
             Self::Parse { path, source } => {
                 write!(f, "failed to parse {}: {source}", path.display())
             }
-            Self::VersionMismatch {
-                path,
-                expected,
-                found,
-            } => write!(
+            Self::VersionMismatch { path, expected, found } => write!(
                 f,
                 "{} has lint surface version {found}, expected {expected}; regenerate it with \
                  `quasar lint --update-lock`",
@@ -428,26 +381,17 @@ impl fmt::Display for LockfileError {
 impl std::error::Error for LockfileError {}
 
 pub fn save_lockfile(path: &Path, surface: &ProgramSurface) -> Result<(), LockfileError> {
-    let json = serde_json::to_string_pretty(surface).map_err(|source| LockfileError::Parse {
-        path: path.to_path_buf(),
-        source,
-    })?;
-    std::fs::write(path, format!("{json}\n")).map_err(|source| LockfileError::Io {
-        path: path.to_path_buf(),
-        source,
-    })
+    let json = serde_json::to_string_pretty(surface)
+        .map_err(|source| LockfileError::Parse { path: path.to_path_buf(), source })?;
+    std::fs::write(path, format!("{json}\n"))
+        .map_err(|source| LockfileError::Io { path: path.to_path_buf(), source })
 }
 
 pub fn load_lockfile(path: &Path) -> Result<ProgramSurface, LockfileError> {
-    let bytes = std::fs::read(path).map_err(|source| LockfileError::Io {
-        path: path.to_path_buf(),
-        source,
-    })?;
-    let surface: ProgramSurface =
-        serde_json::from_slice(&bytes).map_err(|source| LockfileError::Parse {
-            path: path.to_path_buf(),
-            source,
-        })?;
+    let bytes = std::fs::read(path)
+        .map_err(|source| LockfileError::Io { path: path.to_path_buf(), source })?;
+    let surface: ProgramSurface = serde_json::from_slice(&bytes)
+        .map_err(|source| LockfileError::Parse { path: path.to_path_buf(), source })?;
     if surface.version != SURFACE_VERSION {
         return Err(LockfileError::VersionMismatch {
             path: path.to_path_buf(),

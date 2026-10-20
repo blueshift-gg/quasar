@@ -1,0 +1,9 @@
+make.mint_a: spl_token::mint
+make.mint_b: spl_token::mint
+make.maker_ta_a: spl_token::account
+take.mint_a: spl_token::mint
+take.mint_b: spl_token::mint
+take.taker_ta_b: spl_token::account
+take.vault_ta_a: spl_token::account
+refund.mint_a: spl_token::mint
+refund.vault_ta_a: spl_token::account

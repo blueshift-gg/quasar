@@ -62,25 +62,13 @@ pub struct Idl {
 pub struct IdlMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "crateName")]
     pub crate_name: Option<String>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        rename = "packageName"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "packageName")]
     pub package_name: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub features: Vec<String>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        rename = "generatorVersion"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "generatorVersion")]
     pub generator_version: Option<String>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        rename = "schemaVersion"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "schemaVersion")]
     pub schema_version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profile: Option<String>,
@@ -103,11 +91,7 @@ impl IdlMetadata {
     /// Get the client-facing name (prefers crate_name, falls back to program
     /// name).
     pub fn client_name(&self, program_name: &str) -> String {
-        self.crate_name
-            .as_deref()
-            .filter(|s| !s.is_empty())
-            .unwrap_or(program_name)
-            .to_owned()
+        self.crate_name.as_deref().filter(|s| !s.is_empty()).unwrap_or(program_name).to_owned()
     }
 }
 
