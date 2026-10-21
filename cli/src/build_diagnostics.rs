@@ -2,11 +2,15 @@ use crate::style;
 
 /// Extract warning lines from cargo output (for display on success).
 pub(super) fn extract_warnings(stderr: &str) -> Vec<String> {
-    let mut warnings = Vec::new();
+    scan_diagnostics(stderr, false)
+}
+
+fn scan_diagnostics(stderr: &str, include_errors: bool) -> Vec<String> {
+    let mut lines = Vec::new();
     let mut capture = false;
 
     for line in stderr.lines() {
-        if line.starts_with("warning") {
+        if line.starts_with("warning") || (include_errors && line.starts_with("error")) {
             if line.contains("warnings emitted")
                 || line.contains("warning emitted")
                 || line.contains("user-defined alias")
@@ -15,48 +19,27 @@ pub(super) fn extract_warnings(stderr: &str) -> Vec<String> {
                 continue;
             }
             capture = true;
-            warnings.push(line.to_string());
+            lines.push(line.to_string());
         } else if capture {
-            if line.starts_with("  ") || line.starts_with(" -->") || line.is_empty() {
-                warnings.push(line.to_string());
+            if line.starts_with("  ")
+                || line.starts_with(" -->")
+                || (include_errors && line.starts_with("Caused by:"))
+                || line.is_empty()
+            {
+                lines.push(line.to_string());
             } else {
                 capture = false;
             }
         }
     }
 
-    warnings
+    lines
 }
 
 /// Extract and display only the meaningful error/warning lines from cargo
 /// output.
 pub(super) fn format_build_errors(stderr: &str, elapsed: std::time::Duration) -> String {
-    let mut errors: Vec<String> = Vec::new();
-    let mut capture = false;
-
-    for line in stderr.lines() {
-        if line.starts_with("error") || line.starts_with("warning") {
-            if line.contains("warnings emitted")
-                || line.contains("warning emitted")
-                || line.contains("user-defined alias")
-                || line.contains("shadowing")
-            {
-                continue;
-            }
-            capture = true;
-            errors.push(line.to_string());
-        } else if capture {
-            if line.starts_with("  ")
-                || line.starts_with(" -->")
-                || line.starts_with("Caused by:")
-                || line.is_empty()
-            {
-                errors.push(line.to_string());
-            } else {
-                capture = false;
-            }
-        }
-    }
+    let errors = scan_diagnostics(stderr, true);
 
     if errors.is_empty() {
         if !stderr.is_empty() {

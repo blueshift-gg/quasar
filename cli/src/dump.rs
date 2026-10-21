@@ -112,7 +112,7 @@ fn find_so() -> Result<PathBuf, crate::error::CliError> {
 
 /// Find llvm-objdump in Solana platform-tools (newest version first)
 fn find_objdump() -> Option<PathBuf> {
-    let home = dirs::home_dir()?;
+    let home = std::env::home_dir()?;
     let cache = home.join(".cache/solana");
     if !cache.exists() {
         return None;

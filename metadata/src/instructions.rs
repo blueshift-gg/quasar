@@ -41,7 +41,6 @@ pub fn approve_collection_authority<'a>(
 }
 
 /// Metaplex `BurnNft`.
-#[allow(clippy::too_many_arguments)]
 pub fn burn_nft<'a>(
     program: &'a Program<MetadataProgram>,
     metadata: &'a mut impl Wrapper,
@@ -171,7 +170,6 @@ pub fn create_metadata_accounts_v3<'a>(
 }
 
 /// Metaplex `FreezeDelegatedAccount`.
-#[allow(clippy::too_many_arguments)]
 pub fn freeze_delegated_account<'a>(
     program: &'a Program<MetadataProgram>,
     delegate: &'a mut impl Wrapper,
@@ -194,7 +192,6 @@ pub fn freeze_delegated_account<'a>(
 }
 
 /// Metaplex `ThawDelegatedAccount`.
-#[allow(clippy::too_many_arguments)]
 pub fn thaw_delegated_account<'a>(
     program: &'a Program<MetadataProgram>,
     delegate: &'a mut impl Wrapper,
@@ -260,7 +257,6 @@ pub fn mint_new_edition_from_master_edition_via_token<'a>(
 }
 
 /// Metaplex `RemoveCreatorVerification`.
-#[allow(clippy::too_many_arguments)]
 pub fn remove_creator_verification<'a>(
     program: &'a Program<MetadataProgram>,
     metadata: &'a mut impl Wrapper,
@@ -274,7 +270,6 @@ pub fn remove_creator_verification<'a>(
 }
 
 /// Metaplex `RevokeCollectionAuthority`.
-#[allow(clippy::too_many_arguments)]
 pub fn revoke_collection_authority<'a>(
     program: &'a Program<MetadataProgram>,
     collection_authority_record: &'a mut impl Wrapper,
@@ -353,7 +348,6 @@ pub fn set_and_verify_sized_collection_item<'a>(
 }
 
 /// Metaplex `SetCollectionSize`.
-#[allow(clippy::too_many_arguments)]
 pub fn set_collection_size<'a>(
     program: &'a Program<MetadataProgram>,
     collection_metadata: &'a mut impl Wrapper,
@@ -373,7 +367,6 @@ pub fn set_collection_size<'a>(
 }
 
 /// Metaplex `BubblegumSetCollectionSize`.
-#[allow(clippy::too_many_arguments)]
 pub fn bubblegum_set_collection_size<'a>(
     program: &'a Program<MetadataProgram>,
     collection_metadata: &'a mut impl Wrapper,
@@ -395,7 +388,6 @@ pub fn bubblegum_set_collection_size<'a>(
 }
 
 /// Metaplex `SetTokenStandard`.
-#[allow(clippy::too_many_arguments)]
 pub fn set_token_standard<'a>(
     program: &'a Program<MetadataProgram>,
     metadata: &'a mut impl Wrapper,
@@ -414,7 +406,6 @@ pub fn set_token_standard<'a>(
 }
 
 /// Metaplex `SignMetadata`.
-#[allow(clippy::too_many_arguments)]
 pub fn sign_metadata<'a>(
     program: &'a Program<MetadataProgram>,
     metadata: &'a mut impl Wrapper,
@@ -424,7 +415,6 @@ pub fn sign_metadata<'a>(
 }
 
 /// Metaplex `UnverifyCollection`.
-#[allow(clippy::too_many_arguments)]
 pub fn unverify_collection<'a>(
     program: &'a Program<MetadataProgram>,
     metadata: &'a mut impl Wrapper,
@@ -447,7 +437,6 @@ pub fn unverify_collection<'a>(
 }
 
 /// Metaplex `UnverifySizedCollectionItem`.
-#[allow(clippy::too_many_arguments)]
 pub fn unverify_sized_collection_item<'a>(
     program: &'a Program<MetadataProgram>,
     metadata: &'a mut impl Wrapper,
@@ -473,7 +462,6 @@ pub fn unverify_sized_collection_item<'a>(
 }
 
 /// Metaplex `UpdateMetadataAccountV2`.
-#[allow(clippy::too_many_arguments)]
 pub fn update_metadata_accounts_v2<'a>(
     program: &'a Program<MetadataProgram>,
     metadata: &'a mut impl Wrapper,
@@ -493,7 +481,6 @@ pub fn update_metadata_accounts_v2<'a>(
 }
 
 /// Metaplex `UpdatePrimarySaleHappenedViaToken`.
-#[allow(clippy::too_many_arguments)]
 pub fn update_primary_sale_happened_via_token<'a>(
     program: &'a Program<MetadataProgram>,
     metadata: &'a mut impl Wrapper,
@@ -544,7 +531,6 @@ pub fn utilize<'a>(
 }
 
 /// Metaplex `VerifyCollection`.
-#[allow(clippy::too_many_arguments)]
 pub fn verify_collection<'a>(
     program: &'a Program<MetadataProgram>,
     metadata: &'a mut impl Wrapper,
@@ -570,7 +556,6 @@ pub fn verify_collection<'a>(
 }
 
 /// Metaplex `VerifySizedCollectionItem`.
-#[allow(clippy::too_many_arguments)]
 pub fn verify_sized_collection_item<'a>(
     program: &'a Program<MetadataProgram>,
     metadata: &'a mut impl Wrapper,

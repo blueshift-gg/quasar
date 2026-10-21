@@ -28,34 +28,6 @@ pub enum RuleCode {
 }
 
 impl RuleCode {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::L001 => "L001",
-            Self::P001 => "P001",
-            Self::P002 => "P002",
-            Self::P005 => "P005",
-            Self::P006 => "P006",
-            Self::P007 => "P007",
-            Self::P008 => "P008",
-            Self::R001 => "R001",
-            Self::R002 => "R002",
-            Self::R003 => "R003",
-            Self::R004 => "R004",
-            Self::R005 => "R005",
-            Self::R006 => "R006",
-            Self::R007 => "R007",
-            Self::R008 => "R008",
-            Self::R009 => "R009",
-            Self::R010 => "R010",
-            Self::R011 => "R011",
-            Self::R012 => "R012",
-            Self::R013 => "R013",
-            Self::R014 => "R014",
-            Self::R015 => "R015",
-            Self::R016 => "R016",
-        }
-    }
-
     pub fn title(self) -> &'static str {
         match self {
             Self::L001 => "disconnected account graph",
@@ -115,7 +87,7 @@ impl RuleCode {
 
 impl fmt::Display for RuleCode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
+        write!(f, "{self:?}")
     }
 }
 
