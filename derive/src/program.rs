@@ -206,17 +206,11 @@ pub fn program(args: TokenStream, module: ItemMod) -> Result<TokenStream> {
                     kinds,
                 }
             }
-        }
-
-        ::quasar_lang::host_only! {
             #[test]
             fn __quasar_emit_idl() {
                 extern crate std;
                 std::println!("__QUASAR_IDL_JSON_BEGIN__\n{}__QUASAR_IDL_JSON_END__", idl().to_json());
             }
-        }
-
-        ::quasar_lang::host_only! {
             /// Each check an instruction leaves to a call it always makes,
             /// one per line: `instruction.account: check`.
             pub fn elisions() -> ::quasar_lang::client::String {

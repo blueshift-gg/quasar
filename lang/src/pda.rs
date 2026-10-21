@@ -405,16 +405,11 @@ pub const fn find<const N: usize>(seeds: &[&[u8]; N], program: &Address) -> (Add
 /// Whether `bytes` decompress to a point on Ed25519: with `y` the encoded
 /// coordinate, whether `(y² - 1) / (d·y² + 1)` is a square mod p.
 pub const fn is_on_curve(bytes: &[u8; 32]) -> bool {
+    let (limbs, _) = bytes.as_chunks::<8>();
     let mut y = [0u64; 4];
     let mut i = 0;
     while i < 4 {
-        let mut limb = [0u8; 8];
-        let mut j = 0;
-        while j < 8 {
-            limb[j] = bytes[i * 8 + j];
-            j += 1;
-        }
-        y[i] = u64::from_le_bytes(limb);
+        y[i] = u64::from_le_bytes(limbs[i]);
         i += 1;
     }
     y[3] &= (1 << 63) - 1; // the top bit is the sign of x
@@ -478,30 +473,21 @@ const fn reduce(mut a: Field) -> Field {
 }
 
 const fn add(a: Field, b: Field) -> Field {
-    // Both are below p < 2^255, so the sum fits in 256 bits.
+    reduce(add_raw(a, b))
+}
+
+const fn sub(a: Field, b: Field) -> Field {
+    if at_least(a, b) { sub_raw(a, b) } else { sub_raw(add_raw(a, P), b) }
+}
+
+/// `a + b` for operands below 2^255, so the sum fits in 256 bits.
+#[inline(always)]
+const fn add_raw(a: Field, b: Field) -> Field {
     let mut out = [0; 4];
     let mut carry = 0u128;
     let mut i = 0;
     while i < 4 {
         let sum = a[i] as u128 + b[i] as u128 + carry;
-        out[i] = sum as u64;
-        carry = sum >> 64;
-        i += 1;
-    }
-    reduce(out)
-}
-
-const fn sub(a: Field, b: Field) -> Field {
-    if at_least(a, b) { sub_raw(a, b) } else { sub_raw(add_raw_p(a), b) }
-}
-
-/// `a + p`, which fits in 256 bits for `a < p`.
-const fn add_raw_p(a: Field) -> Field {
-    let mut out = [0; 4];
-    let mut carry = 0u128;
-    let mut i = 0;
-    while i < 4 {
-        let sum = a[i] as u128 + P[i] as u128 + carry;
         out[i] = sum as u64;
         carry = sum >> 64;
         i += 1;

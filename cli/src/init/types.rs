@@ -1,7 +1,7 @@
 use std::fmt;
 
-#[derive(Debug, Clone, Copy)]
-pub(super) enum Toolchain {
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum Toolchain {
     Solana,
     Upstream,
 }
@@ -15,10 +15,11 @@ impl fmt::Display for Toolchain {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(super) enum TestLanguage {
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum TestLanguage {
     None,
     Rust,
+    #[value(name = "typescript")]
     TypeScript,
 }
 
@@ -32,8 +33,9 @@ impl fmt::Display for TestLanguage {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(super) enum RustFramework {
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum RustFramework {
+    #[value(name = "quasar-svm")]
     QuasarSVM,
     Mollusk,
 }
@@ -47,9 +49,10 @@ impl fmt::Display for RustFramework {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(super) enum TypeScriptSdk {
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum TypeScriptSdk {
     Kit,
+    #[value(name = "web3.js")]
     Web3js,
 }
 
@@ -62,8 +65,8 @@ impl fmt::Display for TypeScriptSdk {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(super) enum Template {
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum Template {
     Minimal,
     Full,
 }

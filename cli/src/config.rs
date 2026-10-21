@@ -189,7 +189,10 @@ impl Default for UiConfig {
 
 impl GlobalConfig {
     pub fn path() -> PathBuf {
-        dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")).join(".quasar").join("config.toml")
+        std::env::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(".quasar")
+            .join("config.toml")
     }
 
     pub fn load() -> Result<Self, CliError> {

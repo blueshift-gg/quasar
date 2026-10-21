@@ -1,4 +1,3 @@
-mod banner;
 mod git;
 mod scaffold;
 mod schema;
@@ -11,12 +10,13 @@ use {
         error::{CliError, CliResult},
         style, toolchain,
     },
+    clap::ValueEnum,
     dialoguer::{Input, MultiSelect, Select, theme::ColorfulTheme},
     git::maybe_initialize_git_repo,
-    types::{
-        GitSetup, PackageManager, RustFramework, Template, TestLanguage, Toolchain, TypeScriptSdk,
-    },
+    types::{GitSetup, PackageManager},
 };
+
+pub use types::{RustFramework, Template, TestLanguage, Toolchain, TypeScriptSdk};
 
 pub fn run(cmd: crate::InitCommand) -> CliResult {
     let globals = GlobalConfig::load()?;
@@ -33,43 +33,8 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
     // Only skip prompts when --yes is explicitly set
     let skip_prompts = cmd.yes;
 
-    // Validate explicit flag values before proceeding
-    if let Some(ref t) = test_language_override
-        && !matches!(t.as_str(), "none" | "rust" | "typescript")
-    {
-        return Err(CliError::message(format!(
-            "unknown test language: {t}\n  valid: none, rust, typescript"
-        )));
-    }
-    if let Some(ref f) = rust_framework_override
-        && !matches!(f.as_str(), "quasar-svm" | "mollusk")
-    {
-        return Err(CliError::message(format!(
-            "unknown rust framework: {f}\n  valid: quasar-svm, mollusk"
-        )));
-    }
-    if let Some(ref s) = ts_sdk_override
-        && !matches!(s.as_str(), "kit" | "web3.js")
-    {
-        return Err(CliError::message(format!(
-            "unknown TypeScript SDK: {s}\n  valid: kit, web3.js"
-        )));
-    }
-    if let Some(ref t) = template_override
-        && !matches!(t.as_str(), "minimal" | "full")
-    {
-        return Err(CliError::message(format!("unknown template: {t}\n  valid: minimal, full")));
-    }
-    if let Some(ref t) = toolchain_override
-        && !matches!(t.as_str(), "solana" | "upstream")
-    {
-        return Err(CliError::message(format!(
-            "unknown toolchain: {t}\n  valid: solana, upstream"
-        )));
-    }
-
     if globals.ui.animation && !skip_prompts {
-        banner::print_banner();
+        println!("\n  Quasar\n  Build programs that execute at the speed of light\n");
     }
 
     let theme = ColorfulTheme::default();
@@ -101,11 +66,11 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
     scaffold::validate_target_dir(&name)?;
 
     // Toolchain
-    let toolchain_default =
-        match toolchain_override.as_deref().or(globals.defaults.toolchain.as_deref()) {
-            Some("upstream") => 1,
-            _ => 0,
-        };
+    let toolchain_default = toolchain_override
+        .or_else(|| {
+            globals.defaults.toolchain.as_deref().and_then(|s| Toolchain::from_str(s, false).ok())
+        })
+        .unwrap_or(Toolchain::Solana) as usize;
     let toolchain_idx = if skip_prompts {
         toolchain_default
     } else {
@@ -129,21 +94,29 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
         ));
     }
 
-    let lang_default =
-        match test_language_override.as_deref().or(globals.defaults.test_language.as_deref()) {
-            Some("none") => 0,
-            Some("typescript") => 2,
-            _ => 1, // rust default
-        };
-    let rust_fw_default =
-        match rust_framework_override.as_deref().or(globals.defaults.rust_framework.as_deref()) {
-            Some("mollusk") => 1,
-            _ => 0, // quasar-svm default
-        };
-    let ts_sdk_default = match ts_sdk_override.as_deref().or(globals.defaults.ts_sdk.as_deref()) {
-        Some("web3.js") => 1,
-        _ => 0, // kit default
-    };
+    let lang_default = test_language_override
+        .or_else(|| {
+            globals
+                .defaults
+                .test_language
+                .as_deref()
+                .and_then(|s| TestLanguage::from_str(s, false).ok())
+        })
+        .unwrap_or(TestLanguage::Rust) as usize;
+    let rust_fw_default = rust_framework_override
+        .or_else(|| {
+            globals
+                .defaults
+                .rust_framework
+                .as_deref()
+                .and_then(|s| RustFramework::from_str(s, false).ok())
+        })
+        .unwrap_or(RustFramework::QuasarSVM) as usize;
+    let ts_sdk_default = ts_sdk_override
+        .or_else(|| {
+            globals.defaults.ts_sdk.as_deref().and_then(|s| TypeScriptSdk::from_str(s, false).ok())
+        })
+        .unwrap_or(TypeScriptSdk::Kit) as usize;
 
     // Test language
     let test_lang_idx = if skip_prompts {
@@ -292,11 +265,11 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
     };
 
     // Template
-    let template_default =
-        match template_override.as_deref().or(globals.defaults.template.as_deref()) {
-            Some("full") => 1,
-            _ => 0,
-        };
+    let template_default = template_override
+        .or_else(|| {
+            globals.defaults.template.as_deref().and_then(|s| Template::from_str(s, false).ok())
+        })
+        .unwrap_or(Template::Minimal) as usize;
     let template_idx = if skip_prompts {
         template_default
     } else {
@@ -462,16 +435,47 @@ fn validate_project_name(name: &str) -> CliResult {
 mod tests {
     use super::*;
 
+    #[test]
+    fn init_flags_accept_existing_spellings_and_reject_unknown_values() {
+        use clap::Parser;
+
+        for (flag, values) in [
+            ("--test-language", &["none", "rust", "typescript"][..]),
+            ("--rust-framework", &["quasar-svm", "mollusk"][..]),
+            ("--ts-sdk", &["kit", "web3.js"][..]),
+            ("--template", &["minimal", "full"][..]),
+            ("--toolchain", &["solana", "upstream"][..]),
+        ] {
+            for value in values {
+                let cli = crate::Cli::try_parse_from(["quasar", "init", "example", flag, value])
+                    .expect("existing flag spelling must parse");
+                let crate::Command::Init(cmd) = cli.command else { unreachable!() };
+                let parsed = match flag {
+                    "--test-language" => cmd.test_language.unwrap().to_string(),
+                    "--rust-framework" => cmd.rust_framework.unwrap().to_string(),
+                    "--ts-sdk" => cmd.ts_sdk.unwrap().to_string(),
+                    "--template" => cmd.template.unwrap().to_string(),
+                    "--toolchain" => cmd.toolchain.unwrap().to_string(),
+                    _ => unreachable!(),
+                };
+                assert_eq!(parsed, *value);
+            }
+            let error = crate::Cli::try_parse_from(["quasar", "init", "example", flag, "invalid"])
+                .expect_err("unknown flag values must fail before init runs");
+            assert_eq!(error.kind(), clap::error::ErrorKind::InvalidValue);
+        }
+    }
+
     fn init_command(name: &str) -> crate::InitCommand {
         crate::InitCommand {
             name: Some(name.to_string()),
             yes: true,
             no_git: true,
-            test_language: Some("none".to_string()),
+            test_language: Some(TestLanguage::None),
             rust_framework: None,
             ts_sdk: None,
-            template: Some("minimal".to_string()),
-            toolchain: Some("upstream".to_string()),
+            template: Some(Template::Minimal),
+            toolchain: Some(Toolchain::Upstream),
             verbose: false,
         }
     }

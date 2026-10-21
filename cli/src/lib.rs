@@ -81,24 +81,24 @@ pub struct InitCommand {
     pub no_git: bool,
 
     /// Test language (none, rust, typescript)
-    #[arg(long)]
-    pub test_language: Option<String>,
+    #[arg(long, value_enum)]
+    pub test_language: Option<init::TestLanguage>,
 
     /// Rust test framework (quasar-svm, mollusk)
-    #[arg(long)]
-    pub rust_framework: Option<String>,
+    #[arg(long, value_enum)]
+    pub rust_framework: Option<init::RustFramework>,
 
     /// TypeScript SDK (kit, web3.js)
-    #[arg(long)]
-    pub ts_sdk: Option<String>,
+    #[arg(long, value_enum)]
+    pub ts_sdk: Option<init::TypeScriptSdk>,
 
     /// Project template (minimal, full)
-    #[arg(long)]
-    pub template: Option<String>,
+    #[arg(long, value_enum)]
+    pub template: Option<init::Template>,
 
     /// Toolchain (solana, upstream)
-    #[arg(long)]
-    pub toolchain: Option<String>,
+    #[arg(long, value_enum)]
+    pub toolchain: Option<init::Toolchain>,
 
     /// Show each scaffold step as it runs
     #[arg(long, action = ArgAction::SetTrue)]
