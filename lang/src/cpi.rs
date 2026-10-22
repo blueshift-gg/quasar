@@ -494,6 +494,7 @@ impl<'a, P: ProgramIds, const N: usize, const D: usize> Cpi<'a, P, N, D> {
         }
     }
 
+    #[inline(always)]
     pub fn invoke(self) -> Result {
         let rechecks = self.rechecks();
         // SAFETY: no signer seeds.
@@ -502,6 +503,7 @@ impl<'a, P: ProgramIds, const N: usize, const D: usize> Cpi<'a, P, N, D> {
     }
 
     /// Invokes with `signer` signing for its PDA.
+    #[inline(always)]
     pub fn invoke_signed<const S: usize>(self, signer: &SignerSeeds<'_, S>) -> Result {
         let seeds = SignerSlices {
             seeds: signer.seeds.map(RawSlice::new),

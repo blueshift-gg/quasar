@@ -146,6 +146,10 @@ fn resize_uses_only_its_reserve_and_zeroes_regrowth() {
             assert!(entry.data().iter().all(|byte| *byte == 0));
             assert_eq!(entry.resize(limit + 1), Err(ProgramError::InvalidRealloc));
             assert_eq!(entry.data().len(), limit);
+            // `clear` leaves the growth stale, which only tightens the limit.
+            entry.clear();
+            assert!(entry.data().is_empty());
+            assert_eq!(entry.resize(limit + 1), Err(ProgramError::InvalidRealloc));
             assert_eq!(second.data(), &[0x5a]);
             assert_eq!(second.lamports(), 100);
         });

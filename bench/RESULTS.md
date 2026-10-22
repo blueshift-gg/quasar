@@ -40,8 +40,8 @@ A by `take`.
 
 | Implementation | make (CU) | take (CU) | refund (CU) | binary (bytes) |
 |---|---:|---:|---:|---:|
-| Quasar, this repository | 20984 | 22874 | 10609 | 28496 |
-| the same, built with `debug` | 22105 | 24060 | 11216 | 99968 |
+| Quasar, this repository | 20960 | 22733 | 10489 | 28008 |
+| the same, built with `debug` | 22101 | 24026 | 11178 | 99096 |
 | Quasar master (b0de7db) | 20990 | 22849 | 10556 | 44064 |
 
 ## Multisig
@@ -52,7 +52,7 @@ sizes the configuration to its content.
 
 | Implementation | create (CU) | deposit (CU) | execute (CU) | binary (bytes) |
 |---|---:|---:|---:|---:|
-| Quasar, this repository | 2027 | 1960 | 2385 | 25760 |
+| Quasar, this repository | 2028 | 1960 | 2345 | 25816 |
 | Quasar master (b0de7db) | 3370 | 1948 | 2455 | 26536 |
 
 ## AMM
@@ -63,8 +63,8 @@ LP mint; the deposit is the first.
 
 | Implementation | initialize (CU) | deposit (CU) | swap (CU) | withdraw (CU) | binary (bytes) |
 |---|---:|---:|---:|---:|---:|
-| Quasar, this repository | 20044 | 17724 | 12116 | 17950 | 43112 |
-| the same, built with `debug` | 21282 | 19058 | 13031 | 19226 | 120696 |
+| Quasar, this repository | 20067 | 17599 | 12021 | 17820 | 44832 |
+| the same, built with `debug` | 21274 | 19051 | 13024 | 19219 | 120656 |
 
 ## On p-token
 
@@ -76,7 +76,7 @@ do associated token accounts go through it.
 
 | Implementation | make (CU) | take (CU) | refund (CU) | binary (bytes) |
 |---|---:|---:|---:|---:|
-| Quasar, this repository | 8513 | 6888 | 3143 | 28496 |
+| Quasar, this repository | 8489 | 6747 | 3023 | 28008 |
 | Quasar master (b0de7db) | 8519 | 6863 | 3090 | 44064 |
 
 What each instruction's compute units go to: the programs it calls, the
@@ -85,9 +85,9 @@ instruction, and what is left: the program's own code and its syscalls.
 
 | Instruction | total | called programs | calls | calls (CU) | System | left |
 |---|---:|---:|---:|---:|---:|---:|
-| Quasar, this repository, make | 8513 | 550 | 6 | 5676 | 450 | 1837 |
-| Quasar, this repository, take | 6888 | 507 | 5 | 4730 | 150 | 1501 |
-| Quasar, this repository, refund | 3143 | 194 | 2 | 1892 | 0 | 1057 |
+| Quasar, this repository, make | 8489 | 550 | 6 | 5676 | 450 | 1813 |
+| Quasar, this repository, take | 6747 | 507 | 5 | 4730 | 150 | 1360 |
+| Quasar, this repository, refund | 3023 | 194 | 2 | 1892 | 0 | 937 |
 | Quasar master (b0de7db), make | 8519 | 550 | 6 | 5676 | 450 | 1843 |
 | Quasar master (b0de7db), take | 6863 | 507 | 5 | 4730 | 150 | 1476 |
 | Quasar master (b0de7db), refund | 3090 | 194 | 2 | 1892 | 0 | 1004 |

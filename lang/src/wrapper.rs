@@ -284,6 +284,7 @@ impl<I: ProgramIds> Callee for Interface<I> {
 impl<I: ProgramIds> Wrapper for Interface<I> {
     const REQUIRES: Privileges = Privileges::EXECUTABLE;
 
+    #[inline(always)]
     fn from_entry(entry: Entry, _: Checked) -> Result<Self> {
         if I::IDS.contains(entry.key()) {
             Ok(Self(entry, PhantomData))
