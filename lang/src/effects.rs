@@ -4,13 +4,13 @@
 use core::cmp::Ordering;
 
 use crate::{
-    Address, ProgramError, Result,
+    ProgramError, Result,
     cpi::{Cpi, CpiAccount},
     input::Entry,
     syscalls,
     system::transfer_data,
     sysvar::RentSource,
-    wrapper::{Program, SystemProgram, UncheckedAccount, Wrapper, flush},
+    wrapper::{Program, ProgramId, SystemProgram, UncheckedAccount, Wrapper, flush},
 };
 
 impl UncheckedAccount {
@@ -145,15 +145,11 @@ impl Close {
     }
 
     pub fn run(mut self) -> Result {
-        let destination = self
-            .destination
-            .lamports()
-            .checked_add(self.account.lamports())
-            .ok_or(ProgramError::ArithmeticOverflow)?;
+        let destination = self.destination.lamports().wrapping_add(self.account.lamports());
         self.destination.set_lamports(destination);
         self.account.set_lamports(0);
-        self.account.resize(0)?;
-        self.account.set_owner(Address::default());
+        self.account.clear();
+        self.account.set_owner(SystemProgram::ID);
         Ok(())
     }
 }
