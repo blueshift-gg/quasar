@@ -42,8 +42,8 @@ A by `take`.
 
 | Implementation | make (CU) | take (CU) | refund (CU) | binary (bytes) |
 |---|---:|---:|---:|---:|
-| Quasar, this repository | 20971 | 22865 | 10606 | 27048 |
-| the same, built with `debug` | 22089 | 24049 | 11211 | 92952 |
+| Quasar, this repository | 20970 | 22837 | 10579 | 26600 |
+| the same, built with `debug` | 22089 | 24029 | 11191 | 92760 |
 | Quasar master (b0de7db) | 20981 | 22846 | 10556 | 42088 |
 
 ## Multisig
@@ -78,7 +78,7 @@ do associated token accounts go through it.
 
 | Implementation | make (CU) | take (CU) | refund (CU) | binary (bytes) |
 |---|---:|---:|---:|---:|
-| Quasar, this repository | 8492 | 6875 | 3140 | 27048 |
+| Quasar, this repository | 8491 | 6847 | 3113 | 26600 |
 | Quasar master (b0de7db) | 8502 | 6856 | 3090 | 42088 |
 
 What each instruction's compute units go to: the programs it calls, the
@@ -87,9 +87,9 @@ instruction, and what is left: the program's own code and its syscalls.
 
 | Instruction | total | called programs | calls | calls (CU) | System | left |
 |---|---:|---:|---:|---:|---:|---:|
-| Quasar, this repository, make | 8492 | 542 | 6 | 5676 | 450 | 1824 |
-| Quasar, this repository, take | 6875 | 503 | 5 | 4730 | 150 | 1492 |
-| Quasar, this repository, refund | 3140 | 194 | 2 | 1892 | 0 | 1054 |
+| Quasar, this repository, make | 8491 | 542 | 6 | 5676 | 450 | 1823 |
+| Quasar, this repository, take | 6847 | 503 | 5 | 4730 | 150 | 1464 |
+| Quasar, this repository, refund | 3113 | 194 | 2 | 1892 | 0 | 1027 |
 | Quasar master (b0de7db), make | 8502 | 542 | 6 | 5676 | 450 | 1834 |
 | Quasar master (b0de7db), take | 6856 | 503 | 5 | 4730 | 150 | 1473 |
 | Quasar master (b0de7db), refund | 3090 | 194 | 2 | 1892 | 0 | 1004 |

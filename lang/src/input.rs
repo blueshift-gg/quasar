@@ -262,6 +262,11 @@ impl Entry {
         Ok(())
     }
 
+    /// Empties the data of an account being closed; nothing resizes it after.
+    pub(crate) fn clear(&mut self) {
+        self.header_mut().data_len = 0;
+    }
+
     /// Changes the data length and nothing else, for a writer that already
     /// filled any new bytes through `data_up_to`.
     pub(crate) fn set_len(&mut self, len: usize) -> Result {
