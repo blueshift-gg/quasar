@@ -108,7 +108,7 @@ const ITEMS: &[ConfigItem] = &[
     ConfigItem {
         key: "defaults.rust_framework",
         label: "Rust test framework",
-        kind: ConfigKind::Choice(&["quasar-svm", "mollusk"]),
+        kind: ConfigKind::Choice(&["mollusk"]),
     },
     ConfigItem {
         key: "defaults.ts_sdk",
@@ -285,7 +285,7 @@ fn validate_value(key: &str, value: &str) -> Result<(), &'static str> {
             if matches!(value, "quasar-svm" | "mollusk" | "none" | "null" | "") {
                 Ok(())
             } else {
-                Err("quasar-svm, mollusk")
+                Err("mollusk")
             }
         }
         "defaults.ts_sdk" => {

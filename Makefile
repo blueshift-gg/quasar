@@ -6,7 +6,7 @@ MIRI_FLAGS := -Zmiri-tree-borrows -Zmiri-symbolic-alignment-check
 
 # Compute units and sizes depend on the compiler, so every SBF build uses one.
 PLATFORM_TOOLS_VERSION ?= v1.56
-SBF_TOOLS ?= --tools-version $(PLATFORM_TOOLS_VERSION)
+SBF_TOOLS ?= --tools-version $(PLATFORM_TOOLS_VERSION) --arch v3
 export SBF_TOOLS
 
 PROGRAMS := $(patsubst %/Cargo.toml,%,$(wildcard tests/*/Cargo.toml examples/*/Cargo.toml))
@@ -59,6 +59,7 @@ sbf:
 
 # Programs built from pinned revisions, for the oracle tests and the benchmark.
 rivals:
+	python3 .github/scripts/test-rivals.py
 	bench/rivals.sh
 
 test: sbf rivals

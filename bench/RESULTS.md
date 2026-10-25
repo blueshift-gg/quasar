@@ -6,17 +6,18 @@ bump, so the frameworks that check it prove its bump canonical: each candidate
 from 255 down is hashed and curve-checked until one is off the curve. Quasar,
 Quasar master and the Pinocchio version, which calls `find_program_address`,
 do; anchor-next accepts any bump that gives the address.
-Agave 3.1.14 through Mollusk 0.10.3, every feature enabled; `bench/rivals.sh` pins
-the other revisions. Compute units include the System Program call. Every run
+Agave 4.3.2 through Mollusk 0.16.2, every feature enabled; `bench/rivals.sh` pins
+the other revisions. Programs use SBPFv3 except the pinned Quasar master multisig,
+which requires SBPFv0. Compute units include the System Program call. Every run
 uses the same user, whose vault's canonical bump is 253, so a search from 255
 tries 3 bumps.
 
 | Implementation | deposit (CU) | withdraw (CU) | binary (bytes) |
 |---|---:|---:|---:|
-| Quasar, this repository | 2189 | 2216 | 5608 |
-| Quasar master (b0de7db) | 2198 | 2215 | 6440 |
-| anchor-next v2 (dbb5bae) | 2280 | 2331 | 9584 |
-| Pinocchio 0.11, by hand | 5877 | 5890 | 6344 |
+| Quasar, this repository | 2190 | 2218 | 4656 |
+| Quasar master (b0de7db) | 2214 | 2231 | 6024 |
+| anchor-next v2 (dbb5bae) | 2275 | 2336 | 8656 |
+| Pinocchio 0.11, by hand | 5877 | 5890 | 5472 |
 
 ## A vault the program owns
 
@@ -26,23 +27,24 @@ the program owns, and withdrawals take lamports straight out, with no call.
 
 | Implementation | deposit (CU) | withdraw (CU) | binary (bytes) |
 |---|---:|---:|---:|
-| Quasar, this repository | 2187 | 1035 | 4920 |
-| Quasar master (b0de7db) | 2198 | 1035 | 5520 |
+| Quasar, this repository | 2187 | 1035 | 3968 |
+| Quasar master (b0de7db) | 2214 | 1052 | 5168 |
 
 ## Escrow
 
 Quasar master's escrow example, unmodified, and the same escrow written here
-(`examples/escrow`), on the SPL Token program: make, then take; and make, then
-refund. Both log the same events; the rewrite also accepts Token-2022 accounts.
+(`examples/escrow`), on classic SPL Token (the pinned ELF in `test/programs`):
+make, then take; and make, then refund. Both log the same events; the rewrite
+also accepts Token-2022 accounts.
 The maker's token account
 for mint B and the vault are created by `make`; the taker's account for mint
 A by `take`.
 
 | Implementation | make (CU) | take (CU) | refund (CU) | binary (bytes) |
 |---|---:|---:|---:|---:|
-| Quasar, this repository | 20984 | 22874 | 10609 | 28496 |
-| the same, built with `debug` | 22105 | 24060 | 11216 | 99968 |
-| Quasar master (b0de7db) | 20990 | 22849 | 10556 | 44064 |
+| Quasar, this repository | 20971 | 22865 | 10606 | 27048 |
+| the same, built with `debug` | 22089 | 24049 | 11211 | 92952 |
+| Quasar master (b0de7db) | 20981 | 22846 | 10556 | 42088 |
 
 ## Multisig
 
@@ -52,19 +54,19 @@ sizes the configuration to its content.
 
 | Implementation | create (CU) | deposit (CU) | execute (CU) | binary (bytes) |
 |---|---:|---:|---:|---:|
-| Quasar, this repository | 2027 | 1960 | 2385 | 25760 |
-| Quasar master (b0de7db) | 3370 | 1948 | 2455 | 26536 |
+| Quasar, this repository | 2021 | 1960 | 2385 | 24152 |
+| Quasar master (b0de7db) | 3369 | 1948 | 2455 | 26536 |
 
 ## AMM
 
-`examples/amm`, a constant-product pool on the SPL Token program; no other
-framework here has one. Initialize creates the pool, its two vaults and its
+`examples/amm`, a constant-product pool on the same classic SPL Token ELF;
+no other framework here has one. Initialize creates the pool, its two vaults and its
 LP mint; the deposit is the first.
 
 | Implementation | initialize (CU) | deposit (CU) | swap (CU) | withdraw (CU) | binary (bytes) |
 |---|---:|---:|---:|---:|---:|
-| Quasar, this repository | 20044 | 17724 | 12116 | 17950 | 43112 |
-| the same, built with `debug` | 21282 | 19058 | 13031 | 19226 | 120696 |
+| Quasar, this repository | 20029 | 17724 | 12116 | 17950 | 41528 |
+| the same, built with `debug` | 21255 | 19059 | 13031 | 19226 | 113768 |
 
 ## On p-token
 
@@ -76,8 +78,8 @@ do associated token accounts go through it.
 
 | Implementation | make (CU) | take (CU) | refund (CU) | binary (bytes) |
 |---|---:|---:|---:|---:|
-| Quasar, this repository | 8513 | 6888 | 3143 | 28496 |
-| Quasar master (b0de7db) | 8519 | 6863 | 3090 | 44064 |
+| Quasar, this repository | 8492 | 6875 | 3140 | 27048 |
+| Quasar master (b0de7db) | 8502 | 6856 | 3090 | 42088 |
 
 What each instruction's compute units go to: the programs it calls, the
 calls themselves at 946 each, the System Program at 150 an
@@ -85,9 +87,9 @@ instruction, and what is left: the program's own code and its syscalls.
 
 | Instruction | total | called programs | calls | calls (CU) | System | left |
 |---|---:|---:|---:|---:|---:|---:|
-| Quasar, this repository, make | 8513 | 550 | 6 | 5676 | 450 | 1837 |
-| Quasar, this repository, take | 6888 | 507 | 5 | 4730 | 150 | 1501 |
-| Quasar, this repository, refund | 3143 | 194 | 2 | 1892 | 0 | 1057 |
-| Quasar master (b0de7db), make | 8519 | 550 | 6 | 5676 | 450 | 1843 |
-| Quasar master (b0de7db), take | 6863 | 507 | 5 | 4730 | 150 | 1476 |
+| Quasar, this repository, make | 8492 | 542 | 6 | 5676 | 450 | 1824 |
+| Quasar, this repository, take | 6875 | 503 | 5 | 4730 | 150 | 1492 |
+| Quasar, this repository, refund | 3140 | 194 | 2 | 1892 | 0 | 1054 |
+| Quasar master (b0de7db), make | 8502 | 542 | 6 | 5676 | 450 | 1834 |
+| Quasar master (b0de7db), take | 6856 | 503 | 5 | 4730 | 150 | 1473 |
 | Quasar master (b0de7db), refund | 3090 | 194 | 2 | 1892 | 0 | 1004 |

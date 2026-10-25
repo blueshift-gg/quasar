@@ -35,15 +35,13 @@ impl fmt::Display for TestLanguage {
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 pub enum RustFramework {
-    #[value(name = "quasar-svm")]
-    QuasarSVM,
+    #[value(alias = "quasar-svm")]
     Mollusk,
 }
 
 impl fmt::Display for RustFramework {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            RustFramework::QuasarSVM => write!(f, "quasar-svm"),
             RustFramework::Mollusk => write!(f, "mollusk"),
         }
     }

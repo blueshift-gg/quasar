@@ -5,7 +5,12 @@ error[E0080]: evaluation panicked: only accounts this program owns can be closed
   |                 ^^^^^^^^^^^^^ evaluation of `_` failed inside this call
   |
 note: inside `closable::<quasar_lang::wrapper::SystemAccount>`
- --> $WORKSPACE/lang/src/effects.rs
+ --> $RUST/core/src/panic.rs
+  |
+  |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+  |
+ ::: $WORKSPACE/lang/src/effects.rs
   |
   |     assert!(W::PROGRAM_OWNED, "only accounts this program owns can be closed");
-  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+  |     -------------------------------------------------------------------------- in this macro invocation

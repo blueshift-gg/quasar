@@ -27,7 +27,7 @@ rustflags = [
 "-C", "link-arg=--llvm-args=--bpf-stack-size=4096",
 "-C", "link-arg=--disable-expand-memcpy-in-order=true",
 "-C", "link-arg=--export=entrypoint",
-"-C", "link-arg=--arch=v0",
+"-C", "link-arg=--arch=v3",
 "-C", "target-cpu=v2",
 "-C", "overflow-checks=off",
 ]

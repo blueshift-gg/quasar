@@ -1,4 +1,4 @@
-//! Runs a program's SBF build under the pinned runtime profile: Agave 3.1.14
+//! Runs a program's SBF build under the pinned runtime profile: Agave 4.3.2
 //! through Mollusk, with every feature of that release enabled.
 
 use std::{cell::RefCell, path::PathBuf, rc::Rc};
@@ -63,6 +63,11 @@ impl Test {
         test
     }
 
+    /// Classic SPL Token, pinned independently of the runtime; see `programs/README.md`.
+    pub fn spl_token_elf() -> &'static [u8] {
+        include_bytes!("../programs/spl_token.so")
+    }
+
     /// p-token, built from a pinned revision by `bench/rivals.sh`.
     pub fn p_token_elf() -> Vec<u8> {
         let elf = target_dir().join("rivals/pinocchio_token_program.so");
@@ -76,7 +81,7 @@ impl Test {
 
     fn empty() -> Self {
         let mut runtime = Mollusk::default();
-        runtime.feature_set = FeatureSet::all_enabled();
+        runtime.feature_set = FeatureSet::all_enabled().runtime_features();
         runtime.program_cache =
             ProgramCache::new(&runtime.feature_set, &runtime.compute_budget, tracing());
         let sysvars = &runtime.sysvars;
@@ -372,5 +377,16 @@ impl Outcome {
 
     pub fn compute_units(&self) -> u64 {
         self.result.compute_units_consumed
+    }
+}
+
+#[cfg(test)]
+mod token_fixture_tests {
+    #[test]
+    fn classic_token_keeps_spl_instruction_logs() {
+        let elf = super::Test::spl_token_elf();
+        let marker = b"Instruction: Transfer";
+        assert!(elf.windows(marker.len()).any(|bytes| bytes == marker));
+        assert!(!elf.windows(b"pinocchio".len()).any(|bytes| bytes == b"pinocchio"));
     }
 }

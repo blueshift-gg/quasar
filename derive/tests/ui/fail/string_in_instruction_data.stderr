@@ -5,10 +5,15 @@ error[E0080]: evaluation panicked: instruction data has one size: use `ArrayStri
   |               ^^^^^^ evaluation of `_` failed inside this call
   |
 note: inside `field_size::<std::string::String>`
- --> $WORKSPACE/lang/src/data.rs
+ --> $RUST/core/src/panic.rs
+  |
+  |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+  |
+ ::: $WORKSPACE/lang/src/data.rs
   |
   |         None => panic!("instruction data has one size: use `ArrayString<N>` or `ArrayVec<T, N>`"),
-  |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+  |                 --------------------------------------------------------------------------------- in this macro invocation
 
 error[E0080]: evaluation panicked: instruction data has one size: use `ArrayString<N>` or `ArrayVec<T, N>`
  --> tests/ui/fail/string_in_instruction_data.rs:5:10
@@ -17,10 +22,15 @@ error[E0080]: evaluation panicked: instruction data has one size: use `ArrayStri
   |          ^^^^^^^^^^^^^^^ evaluation of `<Rename as quasar_lang::InstructionData>::SIZE` failed inside this call
   |
 note: inside `field_size::<std::string::String>`
- --> $WORKSPACE/lang/src/data.rs
+ --> $RUST/core/src/panic.rs
+  |
+  |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+  |
+ ::: $WORKSPACE/lang/src/data.rs
   |
   |         None => panic!("instruction data has one size: use `ArrayString<N>` or `ArrayVec<T, N>`"),
-  |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+  |                 --------------------------------------------------------------------------------- in this macro invocation
 
 note: erroneous constant encountered
  --> tests/ui/fail/string_in_instruction_data.rs:5:10

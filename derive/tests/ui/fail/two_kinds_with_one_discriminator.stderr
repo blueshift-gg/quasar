@@ -1,4 +1,4 @@
-error[E0119]: conflicting implementations of trait `UniqueDiscriminator<1, 1>` for type `__Kinds`
+error[E0119]: conflicting implementations of trait `quasar_lang::account::UniqueDiscriminator<1, 1>` for type `__Kinds`
   --> tests/ui/fail/two_kinds_with_one_discriminator.rs:10:1
    |
  5 | #[account(discriminator = 1)]

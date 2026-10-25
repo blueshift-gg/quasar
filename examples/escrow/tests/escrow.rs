@@ -1,4 +1,4 @@
-//! The escrow on the real SPL Token program, and against public Quasar master's
+//! The escrow on classic SPL Token, and against public Quasar master's
 //! escrow, built from a pinned revision by `bench/rivals.sh`: the same
 //! instructions from the same state must succeed or fail alike and leave the
 //! same accounts.
@@ -32,9 +32,9 @@ fn escrow_of(maker: &Address) -> Address {
 /// `program`: Token or Token-2022.
 fn prepare(mut t: Test, program: Address) -> Test {
     let elf = if program == Token::ID {
-        mollusk_svm_programs_token::token::ELF
+        Test::spl_token_elf()
     } else {
-        mollusk_svm_programs_token::token2022::ELF
+        mollusk_svm_programs_token_2022::ELF
     };
     t.add_elf(program, elf);
     for user in [MAKER, TAKER] {

@@ -5,11 +5,16 @@ error[E0080]: evaluation panicked: the account kinds a program owns share one di
    | ^^^^^^^^^^ evaluation of `_` failed inside this call
    |
 note: inside `one_width`
-  --> $WORKSPACE/lang/src/account.rs
+  --> $RUST/core/src/panic.rs
+   |
+   |           $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+   |
+  ::: $WORKSPACE/lang/src/account.rs
    |
    |                       Some(first) => assert!(
-   |  ____________________________________^
+   |  ____________________________________-
    | |                         first == width,
    | |                         "the account kinds a program owns share one discriminator width"
    | |                     ),
-   | |_____________________^ the failure occurred here
+   | |_____________________- in this macro invocation

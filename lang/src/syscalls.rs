@@ -51,6 +51,13 @@ mod sbf {
         unsafe { abort() }
     }
 
+    // Unoptimized compiler paths call the C abort symbol.
+    #[cfg(target_feature = "static-syscalls")]
+    #[unsafe(export_name = "abort")]
+    extern "C" fn abort_symbol() -> ! {
+        end()
+    }
+
     pub fn set_return_data(data: &[u8]) {
         // SAFETY: the syscall reads `data.len()` bytes from `data`.
         unsafe { sol_set_return_data(data.as_ptr(), data.len() as u64) }
