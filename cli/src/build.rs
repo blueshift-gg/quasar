@@ -35,10 +35,9 @@ fn solana_build_command(toolchain: &ToolchainConfig) -> Command {
         "build-sbf",
         "--tools-version",
         toolchain.tools_version.as_deref().unwrap_or(PLATFORM_TOOLS_VERSION),
+        "--arch",
+        toolchain.arch.as_deref().unwrap_or("v3"),
     ]);
-    if let Some(arch) = &toolchain.arch {
-        cmd.args(["--arch", arch]);
-    }
     cmd
 }
 
@@ -410,10 +409,13 @@ mod tests {
     use super::{ToolchainConfig, parse_size_entry, size_entry_matches, solana_build_command};
 
     #[test]
-    fn solana_build_uses_configured_tools_and_arch_without_changing_legacy_defaults() {
+    fn solana_build_defaults_to_v3_and_honors_tools_and_arch_overrides() {
         for (settings, expected) in [
-            ("", vec!["build-sbf", "--tools-version", "v1.56"]),
-            ("tools_version = 'v1.53'", vec!["build-sbf", "--tools-version", "v1.53"]),
+            ("", vec!["build-sbf", "--tools-version", "v1.56", "--arch", "v3"]),
+            (
+                "tools_version = 'v1.53'",
+                vec!["build-sbf", "--tools-version", "v1.53", "--arch", "v3"],
+            ),
             ("arch = 'v0'", vec!["build-sbf", "--tools-version", "v1.56", "--arch", "v0"]),
             (
                 "tools_version = 'v1.53'\narch = 'v3'",

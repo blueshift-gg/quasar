@@ -80,11 +80,11 @@ fn only_the_owning_program_can_take_lamports_out() {
     let mut t = Test::new(ID, "features");
     let owned = t.set(Address::new_unique(), ID, 1_000_000, vec![]);
     let wallet = t.wallet(1_000_000);
-    let to = t.wallet(0);
+    let to = t.wallet(1_000_000);
 
     t.run(features::drain::instruction((owned, to), Amount { amount: 400 })).succeeds();
     t.run(features::drain::instruction((wallet, to), Amount { amount: 400 }))
         .rejected(InstructionError::ExternalAccountLamportSpend);
 
-    assert_eq!(t.lamports(&to), 400);
+    assert_eq!(t.lamports(&to), 1_000_400);
 }

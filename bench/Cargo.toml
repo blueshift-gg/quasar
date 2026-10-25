@@ -19,12 +19,11 @@ object = { version = "0.37", optional = true }
 amm = { path = "../examples/amm" }
 escrow = { path = "../examples/escrow" }
 multisig = { path = "../examples/multisig" }
-mollusk-svm-programs-token = { version = "=0.10.3", default-features = false, features = ["token"] }
 quasar-lang.workspace = true
 quasar-test.workspace = true
 lamport-vault = { path = "../examples/lamport-vault" }
 quasar-spl.workspace = true
-solana-program-pack = "=3.0.0"
+solana-program-pack = "=3.1.0"
 spl-token-interface = "=2.0.0"
 vault = { path = "../examples/vault" }
 

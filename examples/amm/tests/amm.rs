@@ -32,7 +32,7 @@ fn token_account_of(owner: &Address, mint: &Address) -> Address {
 /// account; the pool is initialized with a 0.3% fee.
 fn prepare() -> Test {
     let mut t = Test::new(ID, "amm");
-    t.add_elf(Token::ID, mollusk_svm_programs_token::token::ELF);
+    t.add_elf(Token::ID, Test::spl_token_elf());
     for account in [PAYER, ALICE, BOB] {
         t.set(account, SYSTEM, 10_000_000_000, vec![]);
     }

@@ -1,8 +1,13 @@
 error[E0080]: evaluation panicked: only accounts this program owns can be debited
- --> $WORKSPACE/lang/src/account.rs
+ --> $RUST/core/src/panic.rs
+  |
+  |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `quasar_lang::account::Account::<Tally>::sub_lamports::{constant#0}` failed here
+  |
+ ::: $WORKSPACE/lang/src/account.rs
   |
   |         const { assert!(K::PROGRAM_OWNED, "only accounts this program owns can be debited") };
-  |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `quasar_lang::account::Account::<Tally>::sub_lamports::{constant#0}` failed here
+  |                 --------------------------------------------------------------------------- in this macro invocation
 
 note: erroneous constant encountered
  --> $WORKSPACE/lang/src/account.rs

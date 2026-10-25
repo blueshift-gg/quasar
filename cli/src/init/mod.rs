@@ -24,7 +24,6 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
     let name = cmd.name;
     let no_git = cmd.no_git;
     let test_language_override = cmd.test_language;
-    let rust_framework_override = cmd.rust_framework;
     let ts_sdk_override = cmd.ts_sdk;
     let template_override = cmd.template;
     let toolchain_override = cmd.toolchain;
@@ -103,15 +102,6 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
                 .and_then(|s| TestLanguage::from_str(s, false).ok())
         })
         .unwrap_or(TestLanguage::Rust) as usize;
-    let rust_fw_default = rust_framework_override
-        .or_else(|| {
-            globals
-                .defaults
-                .rust_framework
-                .as_deref()
-                .and_then(|s| RustFramework::from_str(s, false).ok())
-        })
-        .unwrap_or(RustFramework::QuasarSVM) as usize;
     let ts_sdk_default = ts_sdk_override
         .or_else(|| {
             globals.defaults.ts_sdk.as_deref().and_then(|s| TypeScriptSdk::from_str(s, false).ok())
@@ -135,25 +125,8 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
         _ => TestLanguage::None,
     };
 
-    // Rust test framework (only if Rust)
-    let rust_framework = if matches!(test_language, TestLanguage::Rust) {
-        let idx = if skip_prompts {
-            rust_fw_default
-        } else {
-            let items = &["QuasarSVM", "Mollusk"];
-            Select::with_theme(&theme)
-                .with_prompt("Rust test framework")
-                .items(items)
-                .default(rust_fw_default)
-                .interact()?
-        };
-        Some(match idx {
-            1 => RustFramework::Mollusk,
-            _ => RustFramework::QuasarSVM,
-        })
-    } else {
-        None
-    };
+    let rust_framework =
+        matches!(test_language, TestLanguage::Rust).then_some(RustFramework::Mollusk);
 
     // TypeScript SDK (only if TypeScript)
     let ts_sdk = if matches!(test_language, TestLanguage::TypeScript) {
@@ -439,9 +412,20 @@ mod tests {
     fn init_flags_accept_existing_spellings_and_reject_unknown_values() {
         use clap::Parser;
 
+        let cli = crate::Cli::try_parse_from([
+            "quasar",
+            "init",
+            "example",
+            "--rust-framework",
+            "quasar-svm",
+        ])
+        .expect("legacy framework spelling remains an alias");
+        let crate::Command::Init(cmd) = cli.command else { unreachable!() };
+        assert_eq!(cmd.rust_framework.unwrap().to_string(), "mollusk");
+
         for (flag, values) in [
             ("--test-language", &["none", "rust", "typescript"][..]),
-            ("--rust-framework", &["quasar-svm", "mollusk"][..]),
+            ("--rust-framework", &["mollusk"][..]),
             ("--ts-sdk", &["kit", "web3.js"][..]),
             ("--template", &["minimal", "full"][..]),
             ("--toolchain", &["solana", "upstream"][..]),

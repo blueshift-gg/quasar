@@ -88,7 +88,7 @@ and configuration.
 
 ## Build and test a program
 
-You need Rust 1.92 and the Solana 3.1.14 tools, which `cargo build-sbf`
+You need Rust 1.97.1 and the Solana 4.3.2 tools, which `cargo build-sbf`
 comes with. The crates are not published yet, so a program depends on them
 by path:
 
@@ -151,7 +151,7 @@ error[HasOne]: account `purse` stores `holder` = 1115..XQs, but the account pass
 
 ## Benchmarks
 
-Measured by `make bench` under Agave 3.1.14 through Mollusk: the same
+Measured by `make bench` under Agave 4.3.2 through Mollusk: the same
 program in each framework. Full tables and method in `bench/RESULTS.md`.
 
 A system-owned PDA such as this vault can be funded at the address of any bump,
@@ -162,10 +162,10 @@ the canonical bump.
 
 | Vault (deposit / withdraw CU, binary bytes) | |
 |---|---|
-| Quasar, this repository | 2189 / 2216, 5608 |
-| Quasar master | 2198 / 2215, 6440 |
-| anchor-next v2 | 2280 / 2331, 9584 |
-| Pinocchio, by hand | 5877 / 5890, 6344 |
+| Quasar, this repository | 2190 / 2218, 4656 |
+| Quasar master | 2214 / 2231, 6024 |
+| anchor-next v2 | 2275 / 2336, 8656 |
+| Pinocchio, by hand | 5877 / 5890, 5472 |
 
 ## Documentation
 
@@ -183,11 +183,13 @@ feature powerset without dev-dependency feature unification. To run it locally,
 install `cargo-hack` with `cargo install --locked cargo-hack@0.6.45`.
 `ARCHITECTURE.md` is the map of the code.
 
-Workspace SBF builds default to platform-tools v1.56. Override the version with
-`make sbf PLATFORM_TOOLS_VERSION=v1.53`, or pass explicit build options with
+Workspace SBF builds default to platform-tools v1.56 and the v3 architecture.
+Override the version with `make sbf PLATFORM_TOOLS_VERSION=v1.53`, or pass
+explicit build options with
 `make sbf SBF_TOOLS='--tools-version v1.56 --arch v0'`. These overrides also
 apply to comparison-program and profiling builds. Benchmark results depend on
-the compiler, so CI keeps the pinned default. For CLI projects, configure
+the compiler, so CI keeps the pinned default. The pinned upstream multisig still
+uses v0 because that revision cannot link v3. For CLI projects, configure
 `tools_version` and `arch` under `[toolchain]` in `Quasar.toml`; see the
 [CLI guide](cli/Readme.md).
 

@@ -14,7 +14,7 @@ mod escrow_bench;
 
 use std::{collections::HashMap, path::Path};
 
-use object::{Object, ObjectSection};
+use object::{FileFlags, Object, ObjectSection};
 use quasar_test::{Test, target_dir};
 
 /// The build `make profile` makes: under `target/profile`, with debug information.
@@ -27,7 +27,16 @@ fn main() {
     // SAFETY: nothing else runs yet. The runtime reads the variable as each
     // test is made.
     unsafe { std::env::set_var("SBF_TRACE_DIR", &traces) };
-    let elf = target_dir().join(BUILD).join("sbpf-solana-solana/release/escrow.so");
+    let build_dir = target_dir().join(BUILD);
+    let deployed = std::fs::read(build_dir.join("deploy/escrow.so"))
+        .expect("the deployed escrow ELF; run `make profile`");
+    // Read the running ELF's architecture so an old build cannot supply its symbols.
+    let target = match object::File::parse(&*deployed).expect("an ELF").flags() {
+        FileFlags::Elf { e_flags: 0, .. } => "sbpf-solana-solana".to_owned(),
+        FileFlags::Elf { e_flags, .. } => format!("sbpfv{e_flags}-solana-solana"),
+        flags => panic!("unsupported SBF ELF flags: {flags:?}"),
+    };
+    let elf = build_dir.join(target).join("release/escrow.so");
     let symbols = Symbols::new(&elf);
     let p_token = Test::p_token_elf();
     let build = || escrow_bench::prepare_on(Test::built_in(BUILD, escrow::ID, "escrow"), &p_token);

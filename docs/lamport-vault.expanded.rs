@@ -3,7 +3,6 @@
 //! withdrawals take lamports straight out, with no call. Blueshift Quasar's
 //! vault example, written here.
 #![no_std]
-#[macro_use]
 extern crate core;
 #[prelude_import]
 use core::prelude::rust_2024::*;

@@ -63,9 +63,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.92.0
+      - uses: dtolnay/rust-toolchain@1.97.1
         with:
-          components: rustfmt, clippy
+          components: rustfmt, clippy, rust-src
       - name: Cache Cargo dependencies
         uses: actions/cache@v4
         with:
@@ -82,11 +82,11 @@ jobs:
           path: |
             ~/.local/share/solana/
             ~/.cache/solana/
-          key: ${{ runner.os }}-${{ runner.arch }}-solana-3.1.14-sbf-1.56
+          key: ${{ runner.os }}-${{ runner.arch }}-solana-4.3.2-sbf-1.56
       - name: Install the Solana toolchain
         if: steps.solana.outputs.cache-hit != 'true'
         run: |
-          sh -c "$(curl -sSfL https://release.anza.xyz/v3.1.14/install)"
+          sh -c "$(curl -sSfL https://release.anza.xyz/v4.3.2/install)"
       # cargo-build-sbf asks GitHub for the latest release unless the requested
       # platform-tools are already installed, and panics if that lookup fails.
       - name: Install SBF platform-tools v1.56
@@ -105,7 +105,7 @@ jobs:
           path: |
             ~/.cargo/bin/cargo-expand
             ~/.cargo/bin/cargo-hack
-          key: ${{ runner.os }}-${{ runner.arch }}-tools-rust-1.92.0-expand-1.0.121-hack-0.6.45
+          key: ${{ runner.os }}-${{ runner.arch }}-tools-rust-1.97.1-expand-1.0.121-hack-0.6.45
       - name: Install Kani
         run: cargo install --locked kani-verifier@0.67.0 && cargo kani setup
       - name: Install cargo-expand

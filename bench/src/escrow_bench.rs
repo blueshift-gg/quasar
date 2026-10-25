@@ -25,7 +25,7 @@ fn escrow() -> Address {
 }
 
 pub fn prepare(t: Test) -> Test {
-    prepare_on(t, mollusk_svm_programs_token::token::ELF)
+    prepare_on(t, Test::spl_token_elf())
 }
 
 /// As `prepare`, with `token` as the Token program.

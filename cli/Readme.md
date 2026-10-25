@@ -12,14 +12,14 @@ cargo install --path cli --locked
 
 New projects use the typed-core API, explicit instruction discriminators and
 published ZeroPod 0.4.0 through `quasar-lang`. The Solana build uses
-platform-tools v1.56 by default, matching the repository gate. The optional upstream
-build uses `cargo +nightly`, `rust-src`, and `sbpf-linker`; its target config
-selects the runtime's on-chain implementation and SBF v0 output.
+platform-tools v1.56 and the v3 architecture by default, matching the repository
+gate. The optional upstream build uses `cargo +nightly`, `rust-src`, and
+`sbpf-linker`; its target config selects the runtime's on-chain implementation
+and SBPFv3 output.
 
-TypeScript scaffolds use the public Kit or Web3.js SDK. Web3.js tests convert
-instructions through QuasarSVM's Kit adapter; its published Web3.js adapter
-requires a separate SDK fork. The generated package overrides that obsolete
-peer dependency with the selected public SDK.
+Rust scaffolds use Mollusk. TypeScript scaffolds use LiteSVM with the public
+Kit or Web3.js SDK. Both run SBPFv3 programs. The legacy
+`--rust-framework quasar-svm` spelling is accepted as an alias for `mollusk`.
 
 `quasar add --instruction settle` allocates an unused discriminator of the
 existing width. It preserves existing instruction numbers. State and error
@@ -51,7 +51,7 @@ Scaffold a new Quasar project. Without `--yes`, this launches an interactive wiz
 
 - **Project name**: becomes the crate name and `Quasar.toml` project name
 - **Toolchain**: `solana` (cargo build-sbf) or `upstream` (cargo +nightly build-bpf)
-- **Testing framework**: None, Mollusk, QuasarSVM/Rust, QuasarSVM/Web3.js, or QuasarSVM/Kit
+- **Testing framework**: None, Mollusk/Rust, LiteSVM/Web3.js, or LiteSVM/Kit
 - **Template**: Minimal (single instruction) or Full (state, events, instruction files)
 - **Git setup**: Initialize + Commit, Initialize, or Skip
 
@@ -62,7 +62,7 @@ The wizard generates a complete project directory with `Cargo.toml`, `Quasar.tom
 | `-y, --yes` | Explicitly skip prompts and use saved defaults |
 | `--no-git` | Skip git repo setup |
 | `--test-language` | Set `none`, `rust`, or `typescript` |
-| `--rust-framework` | Set `quasar-svm` or `mollusk` for Rust tests |
+| `--rust-framework` | Set `mollusk` for Rust tests |
 | `--ts-sdk` | Set `kit` or `web3.js` for TypeScript tests |
 | `--template` | Set `minimal` or `full` |
 | `--toolchain` | Set `solana` or `upstream` |
@@ -216,13 +216,13 @@ name = "my-program"
 type = "solana"
 # Optional overrides for build, test, and profile:
 tools_version = "v1.56"
-arch = "v0"
+arch = "v3"
 
 [testing]
 language = "rust"
 
 [testing.rust]
-framework = "quasar-svm"
+framework = "mollusk"
 test = { program = "cargo", args = ["test", "tests::"] }
 
 [clients]
@@ -231,9 +231,8 @@ languages = ["rust"]
 ```
 
 `tools_version` overrides the platform-tools version passed to `cargo build-sbf`.
-If omitted, it defaults to v1.56. `arch` is optional; when omitted, the installed
-`cargo-build-sbf` chooses its default architecture. Set `arch = "v0"` explicitly
-when using tools or a test runtime that require SBPFv0. These settings apply to
+If omitted, it defaults to v1.56. `arch` defaults to `"v3"`. Set `arch = "v0"`
+when using a test runtime that requires SBPFv0. These settings apply to
 normal, debug, watch, test and profiling builds using the Solana toolchain;
 the upstream toolchain does not use them. The selected compiler validates the
 version/architecture combination. See the

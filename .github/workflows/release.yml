@@ -22,7 +22,7 @@ jobs:
     environment: crates-io
     steps:
       - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@1.92.0
+      - uses: dtolnay/rust-toolchain@1.97.1
       - name: Check release version
         env:
           RELEASE_TAG: ${{ github.ref_name }}

@@ -12,10 +12,9 @@ quasar-lang.workspace = true
 quasar-spl.workspace = true
 
 [dev-dependencies]
-mollusk-svm-programs-token = { version = "=0.10.3", default-features = false, features = ["token"] }
 proptest.workspace = true
 quasar-test.workspace = true
-solana-program-pack = "=3.0.0"
+solana-program-pack = "=3.1.0"
 spl-token-interface = "=2.0.0"
 
 [lints]

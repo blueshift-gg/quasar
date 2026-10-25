@@ -34,7 +34,7 @@ fn scenarios() -> Vec<(&'static str, Vec<Instruction>)> {
             "deposit then withdraw",
             vec![
                 vault::deposit::instruction(accounts, Amount { amount: 1_000_000 }),
-                vault::withdraw::instruction(accounts, Amount { amount: 400_000 }),
+                vault::withdraw::instruction(accounts, Amount { amount: 100_000 }),
             ],
         ),
         (

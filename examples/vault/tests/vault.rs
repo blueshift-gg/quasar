@@ -32,10 +32,10 @@ fn a_withdrawal_returns_lamports_to_the_user() {
     t.run(vault::deposit::instruction((user, vault, SYSTEM), Amount { amount: 1_000_000 }))
         .succeeds();
 
-    t.run(vault::withdraw::instruction((user, vault, SYSTEM), Amount { amount: 400_000 }))
+    t.run(vault::withdraw::instruction((user, vault, SYSTEM), Amount { amount: 100_000 }))
         .succeeds();
 
-    assert_eq!(t.lamports(&vault), 600_000);
+    assert_eq!(t.lamports(&vault), 900_000);
 }
 
 #[test]

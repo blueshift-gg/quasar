@@ -5,8 +5,18 @@ error[E0277]: `&'static str` cannot be stored by zeropod
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ use an integer, `bool`, a byte array, `String`, `Vec`, `Option`, an array type, or a type deriving `ZeroPod`
   |
   = help: the trait `ZeroPod` is not implemented for `&'static str`
-  = help: the trait `ZeroPod` is implemented for `String`
-  = note: this error originates in the derive macro `::quasar_lang::zeropod::ZeroPod` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: the trait `ZeroPod` is implemented for `String`
+ --> $CARGO/zeropod-$VERSION/src/heap.rs
+  |
+  |           unsafe impl<$($bounds)*> ZeroPod for $ty {
+  |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+  | / string! {
+  | |     [] String, u32;
+  | |     [P: Prefix] SmallStr<P>, P;
+  | | }
+  | |_- in this macro invocation
+  = note: this error originates in the derive macro `::quasar_lang::zeropod::ZeroPod` which comes from the expansion of the macro `string` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: `&'static str` cannot be stored by zeropod
  --> tests/ui/fail/unstorable_field.rs:7:15
@@ -18,12 +28,23 @@ error[E0277]: `&'static str` cannot be stored by zeropod
   |               ^^^^^^^^^^^^ use an integer, `bool`, a byte array, `String`, `Vec`, `Option`, an array type, or a type deriving `ZeroPod`
   |
   = help: the trait `ZeroPod` is not implemented for `&'static str`
-  = help: the trait `ZeroPod` is implemented for `String`
+help: the trait `ZeroPod` is implemented for `String`
+ --> $CARGO/zeropod-$VERSION/src/heap.rs
+  |
+  |           unsafe impl<$($bounds)*> ZeroPod for $ty {
+  |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+  | / string! {
+  | |     [] String, u32;
+  | |     [P: Prefix] SmallStr<P>, P;
+  | | }
+  | |_- in this macro invocation
 note: required by a bound in `Edit::<'a, T>::project`
  --> $CARGO/zeropod-$VERSION/src/edit.rs
   |
   |     pub unsafe fn project<U: ZeroPod>(self, at: usize, with_limits: WithLimits) -> Edit<'a, U> {
   |                              ^^^^^^^ required by this bound in `Edit::<'a, T>::project`
+  = note: this error originates in the macro `string` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: `&'static str` cannot be stored by zeropod
  --> tests/ui/fail/unstorable_field.rs:7:15
@@ -32,7 +53,18 @@ error[E0277]: `&'static str` cannot be stored by zeropod
   |               ^^^^^^^^^^^^ use an integer, `bool`, a byte array, `String`, `Vec`, `Option`, an array type, or a type deriving `ZeroPod`
   |
   = help: the trait `ZeroPod` is not implemented for `&'static str`
-  = help: the trait `ZeroPod` is implemented for `String`
+help: the trait `ZeroPod` is implemented for `String`
+ --> $CARGO/zeropod-$VERSION/src/heap.rs
+  |
+  |           unsafe impl<$($bounds)*> ZeroPod for $ty {
+  |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+  | / string! {
+  | |     [] String, u32;
+  | |     [P: Prefix] SmallStr<P>, P;
+  | | }
+  | |_- in this macro invocation
+  = note: this error originates in the macro `string` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: `&str` cannot be stored by zeropod
  --> tests/ui/fail/unstorable_field.rs:5:1
@@ -41,8 +73,18 @@ error[E0277]: `&str` cannot be stored by zeropod
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ use an integer, `bool`, a byte array, `String`, `Vec`, `Option`, an array type, or a type deriving `ZeroPod`
   |
   = help: the trait `ZeroPod` is not implemented for `&str`
-  = help: the trait `ZeroPod` is implemented for `String`
-  = note: this error originates in the attribute macro `account` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: the trait `ZeroPod` is implemented for `String`
+ --> $CARGO/zeropod-$VERSION/src/heap.rs
+  |
+  |           unsafe impl<$($bounds)*> ZeroPod for $ty {
+  |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+  | / string! {
+  | |     [] String, u32;
+  | |     [P: Prefix] SmallStr<P>, P;
+  | | }
+  | |_- in this macro invocation
+  = note: this error originates in the attribute macro `account` which comes from the expansion of the macro `string` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0599]: the method `name` exists for reference `&ProfileView`, but its trait bounds were not satisfied
  --> tests/ui/fail/unstorable_field.rs:7:9
@@ -60,12 +102,23 @@ error[E0277]: `&'static str` cannot be stored by zeropod
   |               ^^^^^^^^^^^^ use an integer, `bool`, a byte array, `String`, `Vec`, `Option`, an array type, or a type deriving `ZeroPod`
   |
   = help: the trait `ZeroPod` is not implemented for `&'static str`
-  = help: the trait `ZeroPod` is implemented for `String`
+help: the trait `ZeroPod` is implemented for `String`
+ --> $CARGO/zeropod-$VERSION/src/heap.rs
+  |
+  |           unsafe impl<$($bounds)*> ZeroPod for $ty {
+  |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+  | / string! {
+  | |     [] String, u32;
+  | |     [P: Prefix] SmallStr<P>, P;
+  | | }
+  | |_- in this macro invocation
 note: required by a bound in `quasar_lang::zeropod::__private::replace`
  --> $CARGO/zeropod-$VERSION/src/__private.rs
   |
   | pub unsafe fn replace<T: ZeroPod>(
   |                          ^^^^^^^ required by this bound in `replace`
+  = note: this error originates in the macro `string` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: `&'static str` cannot be stored by zeropod
  --> tests/ui/fail/unstorable_field.rs:5:1
@@ -74,5 +127,15 @@ error[E0277]: `&'static str` cannot be stored by zeropod
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ use an integer, `bool`, a byte array, `String`, `Vec`, `Option`, an array type, or a type deriving `ZeroPod`
   |
   = help: the trait `ZeroPod` is not implemented for `&'static str`
-  = help: the trait `ZeroPod` is implemented for `String`
-  = note: this error originates in the attribute macro `account` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: the trait `ZeroPod` is implemented for `String`
+ --> $CARGO/zeropod-$VERSION/src/heap.rs
+  |
+  |           unsafe impl<$($bounds)*> ZeroPod for $ty {
+  |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+  | / string! {
+  | |     [] String, u32;
+  | |     [P: Prefix] SmallStr<P>, P;
+  | | }
+  | |_- in this macro invocation
+  = note: this error originates in the attribute macro `account` which comes from the expansion of the macro `string` (in Nightly builds, run with -Z macro-backtrace for more info)

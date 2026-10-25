@@ -37,5 +37,9 @@ build "$root/bench/rivals/anchor-next-vault/Cargo.toml" anchor_next_vault
 build "$root/bench/rivals/blueshift-vault/Cargo.toml" blueshift_vault
 build "$out/src/blueshift/examples/vault/Cargo.toml" quasar_vault
 build "$out/src/blueshift/examples/escrow/Cargo.toml" quasar_escrow
-build "$out/src/blueshift/examples/multisig/Cargo.toml" quasar_multisig
+# shortcut: this pinned multisig cannot link SBPFv3; remove after updating its revision.
+# shellcheck disable=SC2086
+multisig_tools=$(printf '%s ' $SBF_TOOLS | sed -E 's/(^|[[:space:]])--arch(=|[[:space:]]+)[^[:space:]]+//g')
+(SBF_TOOLS="$multisig_tools --arch v0" \
+    build "$out/src/blueshift/examples/multisig/Cargo.toml" quasar_multisig)
 build "$out/src/token/pinocchio/program/Cargo.toml" pinocchio_token_program

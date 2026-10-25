@@ -5,7 +5,12 @@ error[E0080]: evaluation panicked: `Remaining` is the last field
   |          ^^^^^^^^ evaluation of `_` failed inside this call
   |
 note: inside `required`
- --> $WORKSPACE/lang/src/field.rs
+ --> $RUST/core/src/panic.rs
+  |
+  |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+  |
+ ::: $WORKSPACE/lang/src/field.rs
   |
   |             assert!(index + 1 == fields.len(), "`Remaining` is the last field");
-  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+  |             ------------------------------------------------------------------- in this macro invocation

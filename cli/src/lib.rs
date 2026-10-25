@@ -84,7 +84,7 @@ pub struct InitCommand {
     #[arg(long, value_enum)]
     pub test_language: Option<init::TestLanguage>,
 
-    /// Rust test framework (quasar-svm, mollusk)
+    /// Rust test framework (mollusk)
     #[arg(long, value_enum)]
     pub rust_framework: Option<init::RustFramework>,
 

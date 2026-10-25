@@ -37,8 +37,9 @@ bump, so the frameworks that check it prove its bump canonical: each candidate
 from 255 down is hashed and curve-checked until one is off the curve. Quasar,
 Quasar master and the Pinocchio version, which calls `find_program_address`,
 do; anchor-next accepts any bump that gives the address.
-Agave 3.1.14 through Mollusk 0.10.3, every feature enabled; `bench/rivals.sh` pins
-the other revisions. Compute units include the System Program call. Every run
+Agave 4.3.2 through Mollusk 0.16.2, every feature enabled; `bench/rivals.sh` pins
+the other revisions. Programs use SBPFv3 except the pinned Quasar master multisig,
+which requires SBPFv0. Compute units include the System Program call. Every run
 uses the same user, whose vault's canonical bump is {bump}, so a search from 255
 tries {tries} bumps.
 
@@ -54,7 +55,7 @@ tries {tries} bumps.
         };
         let accounts = (USER, vault(), SYSTEM);
         let deposit = vault::deposit::instruction(accounts, vault::Amount { amount: 1_000_000 });
-        let withdraw = vault::withdraw::instruction(accounts, vault::Amount { amount: 400_000 });
+        let withdraw = vault::withdraw::instruction(accounts, vault::Amount { amount: 100_000 });
         row(name, t, SYSTEM, [deposit, withdraw], &path);
     }
 
@@ -80,7 +81,7 @@ the program owns, and withdrawals take lamports straight out, with no call.
         );
         let withdraw = lamport_vault::withdraw::instruction(
             (USER, vault()),
-            lamport_vault::Amount { amount: 400_000 },
+            lamport_vault::Amount { amount: 100_000 },
         );
         row(name, t, ID, [deposit, withdraw], path);
     }
@@ -90,8 +91,9 @@ the program owns, and withdrawals take lamports straight out, with no call.
 ## Escrow
 
 Quasar master's escrow example, unmodified, and the same escrow written here
-(`examples/escrow`), on the SPL Token program: make, then take; and make, then
-refund. Both log the same events; the rewrite also accepts Token-2022 accounts.
+(`examples/escrow`), on classic SPL Token (the pinned ELF in `test/programs`):
+make, then take; and make, then refund. Both log the same events; the rewrite
+also accepts Token-2022 accounts.
 The maker's token account
 for mint B and the vault are created by `make`; the taker's account for mint
 A by `take`.
@@ -238,8 +240,8 @@ fn amm_rows() {
         r#"
 ## AMM
 
-`examples/amm`, a constant-product pool on the SPL Token program; no other
-framework here has one. Initialize creates the pool, its two vaults and its
+`examples/amm`, a constant-product pool on the same classic SPL Token ELF;
+no other framework here has one. Initialize creates the pool, its two vaults and its
 LP mint; the deposit is the first.
 
 | Implementation | initialize (CU) | deposit (CU) | swap (CU) | withdraw (CU) | binary (bytes) |
@@ -250,7 +252,7 @@ LP mint; the deposit is the first.
         ("Quasar, this repository", Test::new(ID, "amm"), "deploy/amm"),
         (EVERY_CHECK, Test::debug(ID, "amm"), "debug-checks/deploy/amm"),
     ] {
-        t.add_elf(Token::ID, mollusk_svm_programs_token::token::ELF);
+        t.add_elf(Token::ID, Test::spl_token_elf());
         let [owner, mint_a, mint_b, vault_a, vault_b, lp_mint, owner_a, owner_b, owner_lp] =
             [1, 4, 5, 6, 7, 8, 9, 10, 11].map(|byte| Address::new_from_array([byte; 32]));
         let pool =
@@ -346,12 +348,12 @@ sizes the configuration to its content.
         );
         let deposit = multisig::deposit::instruction(
             (creator, config, vault, SYSTEM),
-            Amount { amount: 5_000 },
+            Amount { amount: 5_000_000 },
         );
         let approvals = vec![members[0], members[2]];
         let execute = multisig::execute_transfer::instruction(
             (config, creator, vault, recipient, SYSTEM, approvals),
-            Amount { amount: 3_000 },
+            Amount { amount: 3_000_000 },
         );
         let [create, deposit, execute] =
             [create, deposit, execute].map(|ix| t.run(ix).succeeds().compute_units());

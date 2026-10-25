@@ -7,8 +7,8 @@ error[E0277]: `u64` cannot be a seed declared `quasar_lang::Address`
 20 |     #[account(seeds(data.amount))]
    |                     ^^^^^^^^^^^ an `Address` seed takes an address or an account; other seeds, a value of their type
    |
-   = help: the trait `quasar_lang::wrapper::Wrapper` is not implemented for `u64`
-   = help: the following other types implement trait `quasar_lang::wrapper::Wrapper`:
+   = help: the trait `Wrapper` is not implemented for `u64`
+   = help: the following other types implement trait `Wrapper`:
              Interface<I>
              InterfaceAccount<K>
              Program<P>

@@ -30,11 +30,11 @@ zeropod = { version = "=0.4.0", features = [
     "solana-program-error",
 ] }
 
-agave-feature-set = "=3.1.14"
+agave-feature-set = { version = "=4.3.2", features = ["agave-unstable-api"] }
 base64 = "0.22"
-solana-svm-log-collector = "=3.1.14"
-mollusk-svm = "=0.10.3"
-solana-account = "=3.4.0"
+solana-svm-log-collector = "=4.3.2"
+mollusk-svm = "=0.16.2"
+solana-account = "=4.5.0"
 solana-instruction = "=3.5.0"
 solana-sdk-ids = "=3.1.0"
 solana-rent = "=3.1.0"

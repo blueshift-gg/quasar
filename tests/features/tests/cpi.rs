@@ -178,12 +178,12 @@ fn creating_at_an_address_that_is_not_the_pda_fails() {
 fn lamports_move_from_a_signer_through_the_system_program() {
     let mut t = Test::new(ID, "features");
     let from = t.wallet(1_000_000);
-    let to = t.wallet(0);
+    let to = t.wallet(1_000_000);
 
     t.run(features::fund::instruction((from, to, Address::default()), Amount { amount: 400 }))
         .succeeds();
 
-    assert_eq!((t.lamports(&from), t.lamports(&to)), (999_600, 400));
+    assert_eq!((t.lamports(&from), t.lamports(&to)), (999_600, 1_000_400));
 }
 
 #[test]

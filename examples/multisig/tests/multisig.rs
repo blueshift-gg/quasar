@@ -60,11 +60,11 @@ fn members(indices: impl IntoIterator<Item = u8>) -> Vec<Address> {
 fn a_threshold_of_members_can_pay_out() {
     let mut t = prepare(Test::new(ID, "multisig"));
     t.run(create(3, 2)).succeeds();
-    t.run(deposit(5_000)).succeeds();
+    t.run(deposit(5_000_000)).succeeds();
 
-    t.run(execute(&members([0, 2]), 3_000)).succeeds();
+    t.run(execute(&members([0, 2]), 3_000_000)).succeeds();
 
-    assert_eq!(t.lamports(&RECIPIENT), 1_003_000);
+    assert_eq!(t.lamports(&RECIPIENT), 4_000_000);
     let stored = t.read::<MultisigConfig>(&config());
     assert_eq!((stored.threshold, stored.members), (2, members(0..3)));
 }
@@ -73,7 +73,7 @@ fn a_threshold_of_members_can_pay_out() {
 fn fewer_approvals_than_the_threshold_are_refused() {
     let mut t = prepare(Test::new(ID, "multisig"));
     t.run(create(3, 2)).succeeds();
-    t.run(deposit(5_000)).succeeds();
+    t.run(deposit(5_000_000)).succeeds();
 
     t.run(execute(&members([1]), 1)).fails(ProgramError::MissingRequiredSignature);
     t.run(execute(&[], 1)).fails(ProgramError::MissingRequiredSignature);
@@ -85,7 +85,7 @@ fn fewer_approvals_than_the_threshold_are_refused() {
 fn a_member_cannot_approve_twice() {
     let mut t = prepare(Test::new(ID, "multisig"));
     t.run(create(3, 2)).succeeds();
-    t.run(deposit(5_000)).succeeds();
+    t.run(deposit(5_000_000)).succeeds();
 
     t.run(execute(&members([1, 1]), 1)).fails(Error::DuplicateAccount);
 }
@@ -142,7 +142,11 @@ fn the_configuration_grows_and_shrinks_with_its_label_and_stays_rent_exempt() {
 
 fn scenarios() -> Vec<(&'static str, Vec<Instruction>)> {
     let paid = |approvals: &[u8]| {
-        vec![create(3, 2), deposit(5_000), execute(&members(approvals.iter().copied()), 3_000)]
+        vec![
+            create(3, 2),
+            deposit(5_000_000),
+            execute(&members(approvals.iter().copied()), 3_000_000),
+        ]
     };
     vec![
         ("create", vec![create(3, 2)]),
