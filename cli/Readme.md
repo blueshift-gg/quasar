@@ -8,7 +8,7 @@ The `quasar` binary is a project-aware build tool for Solana programs. It wraps 
 cargo install --path cli --locked
 ```
 
-## Quasar 0.3 compatibility
+## Quasar 0.2 compatibility
 
 New projects use the typed-core API, explicit instruction discriminators and
 published ZeroPod 0.4.0 through `quasar-lang`. The Solana build uses
@@ -39,7 +39,7 @@ account addresses, and an unknown field encoding produces an explicit error.
 Linting still checks the reported interface and compares `quasar.lock.json`;
 its scope is the metadata present in the IDL.
 
-Before 0.3.0 is published, replace the generated `quasar-lang` dependency with
+Before 0.2.0 is published, replace the generated `quasar-lang` dependency with
 a path to this checkout's `lang` directory. No local CLI installation publishes
 crates or deploys a program.
 

@@ -81,8 +81,8 @@ quasar build
 quasar test
 ```
 
-The templates target Quasar 0.3.0. Until those crates are released, replace
-the generated `quasar-lang = "=0.3.0"` dependency with a path to this
+The templates target Quasar 0.2.0. Until those crates are released, replace
+the generated `quasar-lang = "=0.2.0"` dependency with a path to this
 checkout's `lang` directory. See the [CLI guide](cli/Readme.md) for commands
 and configuration.
 
@@ -240,7 +240,7 @@ also run in ordinary Cargo tests. Miri complements Kani proofs and SVM tests:
 it checks the host paths exercised by these tests, including simulated CPI
 memory access, rather than executing Solana syscalls.
 
-Tags matching the workspace version (for example, `v0.3.0`) run the same gate,
+Tags matching the workspace version (for example, `v0.2.0`) run the same gate,
 including `make publish-check`, which builds the registry packages without
 uploading. The release workflow publishes the framework, CLI, IDL/schema
 and profiling crates in dependency order before creating a GitHub release.

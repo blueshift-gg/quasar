@@ -42,7 +42,7 @@ sys.exit(1 if sys.argv[6] == os.environ.get('FAIL_PACKAGE') else 0)
         env = {
             **os.environ,
             "PATH": str(root) + os.pathsep + os.environ["PATH"],
-            "RELEASE_TAG": "v0.3.0",
+            "RELEASE_TAG": "v0.2.0",
             "UPLOAD_LOG": str(log),
             **settings,
         }
