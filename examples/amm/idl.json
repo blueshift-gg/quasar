@@ -1,0 +1,71 @@
+{
+  "address": "AMM1111111111111111111111111111111111111111",
+  "name": "amm",
+  "instructions": [
+    {
+      "name": "initialize",
+      "discriminator": [0],
+      "accounts": [
+        { "name": "payer", "writable": true, "signer": true, "optional": false, "remaining": false },
+        { "name": "mint_a", "writable": false, "signer": false, "optional": false, "remaining": false },
+        { "name": "mint_b", "writable": false, "signer": false, "optional": false, "remaining": false },
+        { "name": "pool", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "vault_a", "writable": true, "signer": true, "optional": false, "remaining": false },
+        { "name": "vault_b", "writable": true, "signer": true, "optional": false, "remaining": false },
+        { "name": "lp_mint", "writable": true, "signer": true, "optional": false, "remaining": false },
+        { "name": "token_program", "writable": false, "signer": false, "optional": false, "remaining": false },
+        { "name": "system_program", "writable": false, "signer": false, "optional": false, "remaining": false }
+      ],
+      "args": [{ "name": "fee_bps", "type": "u16" }]
+    },
+    {
+      "name": "deposit",
+      "discriminator": [1],
+      "accounts": [
+        { "name": "owner", "writable": false, "signer": true, "optional": false, "remaining": false },
+        { "name": "pool", "writable": false, "signer": false, "optional": false, "remaining": false },
+        { "name": "lp_mint", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "owner_a", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "owner_b", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "owner_lp", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "vault_a", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "vault_b", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "token_program", "writable": false, "signer": false, "optional": false, "remaining": false }
+      ],
+      "args": [{ "name": "max_a", "type": "u64" }, { "name": "max_b", "type": "u64" }, { "name": "min_shares", "type": "u64" }]
+    },
+    {
+      "name": "withdraw",
+      "discriminator": [2],
+      "accounts": [
+        { "name": "owner", "writable": false, "signer": true, "optional": false, "remaining": false },
+        { "name": "pool", "writable": false, "signer": false, "optional": false, "remaining": false },
+        { "name": "lp_mint", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "owner_a", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "owner_b", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "owner_lp", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "vault_a", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "vault_b", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "token_program", "writable": false, "signer": false, "optional": false, "remaining": false }
+      ],
+      "args": [{ "name": "shares", "type": "u64" }, { "name": "min_a", "type": "u64" }, { "name": "min_b", "type": "u64" }]
+    },
+    {
+      "name": "swap",
+      "discriminator": [3],
+      "accounts": [
+        { "name": "owner", "writable": false, "signer": true, "optional": false, "remaining": false },
+        { "name": "pool", "writable": false, "signer": false, "optional": false, "remaining": false },
+        { "name": "owner_a", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "owner_b", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "vault_a", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "vault_b", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "token_program", "writable": false, "signer": false, "optional": false, "remaining": false }
+      ],
+      "args": [{ "name": "amount_in", "type": "u64" }, { "name": "min_out", "type": "u64" }, { "name": "a_for_b", "type": "bool" }]
+    }
+  ],
+  "accounts": [
+    { "name": "Pool", "discriminator": [1], "size": 164, "fields": [{ "name": "mint_a", "type": "Address" }, { "name": "mint_b", "type": "Address" }, { "name": "vault_a", "type": "Address" }, { "name": "vault_b", "type": "Address" }, { "name": "lp_mint", "type": "Address" }, { "name": "fee_bps", "type": "u16" }, { "name": "bump", "type": "u8" }] }
+  ]
+}

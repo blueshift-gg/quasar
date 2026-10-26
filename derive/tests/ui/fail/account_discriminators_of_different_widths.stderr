@@ -1,0 +1,20 @@
+error[E0080]: evaluation panicked: the account kinds a program owns share one discriminator width
+  --> tests/ui/fail/account_discriminators_of_different_widths.rs:20:1
+   |
+20 | #[program]
+   | ^^^^^^^^^^ evaluation of `_` failed inside this call
+   |
+note: inside `one_width`
+  --> $RUST/core/src/panic.rs
+   |
+   |           $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+   |
+  ::: $WORKSPACE/lang/src/account.rs
+   |
+   |                       Some(first) => assert!(
+   |  ____________________________________-
+   | |                         first == width,
+   | |                         "the account kinds a program owns share one discriminator width"
+   | |                     ),
+   | |_____________________- in this macro invocation

@@ -1,10 +1,11 @@
 use {
     crate::{
+        ConfigAction,
         config::GlobalConfig,
         error::{CliError, CliResult},
-        style, ConfigAction,
+        style,
     },
-    dialoguer::{theme::ColorfulTheme, Select},
+    dialoguer::{Select, theme::ColorfulTheme},
 };
 
 pub fn run(action: Option<ConfigAction>) -> CliResult {
@@ -64,38 +65,18 @@ fn print_all(config: &GlobalConfig) {
     println!("  {}", style::dim(&format!("config: {}", path.display())));
     println!();
     println!("  [defaults]");
-    println!(
-        "    toolchain  = {}",
-        config.defaults.toolchain.as_deref().unwrap_or("(not set)")
-    );
+    println!("    toolchain  = {}", config.defaults.toolchain.as_deref().unwrap_or("(not set)"));
     println!(
         "    test_language    = {}",
-        config
-            .defaults
-            .test_language
-            .as_deref()
-            .unwrap_or("(not set)")
+        config.defaults.test_language.as_deref().unwrap_or("(not set)")
     );
     println!(
         "    rust_framework  = {}",
-        config
-            .defaults
-            .rust_framework
-            .as_deref()
-            .unwrap_or("(not set)")
+        config.defaults.rust_framework.as_deref().unwrap_or("(not set)")
     );
-    println!(
-        "    ts_sdk          = {}",
-        config.defaults.ts_sdk.as_deref().unwrap_or("(not set)")
-    );
-    println!(
-        "    template   = {}",
-        config.defaults.template.as_deref().unwrap_or("(not set)")
-    );
-    println!(
-        "    git        = {}",
-        config.defaults.git.as_deref().unwrap_or("(not set)")
-    );
+    println!("    ts_sdk          = {}", config.defaults.ts_sdk.as_deref().unwrap_or("(not set)"));
+    println!("    template   = {}", config.defaults.template.as_deref().unwrap_or("(not set)"));
+    println!("    git        = {}", config.defaults.git.as_deref().unwrap_or("(not set)"));
     println!();
     println!("  [ui]");
     println!("    animation  = {}", config.ui.animation);
@@ -127,7 +108,7 @@ const ITEMS: &[ConfigItem] = &[
     ConfigItem {
         key: "defaults.rust_framework",
         label: "Rust test framework",
-        kind: ConfigKind::Choice(&["quasar-svm", "mollusk"]),
+        kind: ConfigKind::Choice(&["mollusk"]),
     },
     ConfigItem {
         key: "defaults.ts_sdk",
@@ -144,16 +125,8 @@ const ITEMS: &[ConfigItem] = &[
         label: "Default git setup",
         kind: ConfigKind::Choice(&["commit", "init", "skip"]),
     },
-    ConfigItem {
-        key: "ui.animation",
-        label: "Show init animation",
-        kind: ConfigKind::Bool,
-    },
-    ConfigItem {
-        key: "ui.color",
-        label: "Colored output",
-        kind: ConfigKind::Bool,
-    },
+    ConfigItem { key: "ui.animation", label: "Show init animation", kind: ConfigKind::Bool },
+    ConfigItem { key: "ui.color", label: "Colored output", kind: ConfigKind::Bool },
 ];
 
 fn run_interactive(config: &mut GlobalConfig) -> CliResult {
@@ -254,54 +227,22 @@ fn pick_choice(
 
 fn get_value(config: &GlobalConfig, key: &str) -> Option<String> {
     match key {
-        "defaults.toolchain" => Some(
-            config
-                .defaults
-                .toolchain
-                .as_deref()
-                .unwrap_or("(not set)")
-                .to_string(),
-        ),
-        "defaults.test_language" => Some(
-            config
-                .defaults
-                .test_language
-                .as_deref()
-                .unwrap_or("(not set)")
-                .to_string(),
-        ),
-        "defaults.rust_framework" => Some(
-            config
-                .defaults
-                .rust_framework
-                .as_deref()
-                .unwrap_or("(not set)")
-                .to_string(),
-        ),
-        "defaults.ts_sdk" => Some(
-            config
-                .defaults
-                .ts_sdk
-                .as_deref()
-                .unwrap_or("(not set)")
-                .to_string(),
-        ),
-        "defaults.template" => Some(
-            config
-                .defaults
-                .template
-                .as_deref()
-                .unwrap_or("(not set)")
-                .to_string(),
-        ),
-        "defaults.git" => Some(
-            config
-                .defaults
-                .git
-                .as_deref()
-                .unwrap_or("(not set)")
-                .to_string(),
-        ),
+        "defaults.toolchain" => {
+            Some(config.defaults.toolchain.as_deref().unwrap_or("(not set)").to_string())
+        }
+        "defaults.test_language" => {
+            Some(config.defaults.test_language.as_deref().unwrap_or("(not set)").to_string())
+        }
+        "defaults.rust_framework" => {
+            Some(config.defaults.rust_framework.as_deref().unwrap_or("(not set)").to_string())
+        }
+        "defaults.ts_sdk" => {
+            Some(config.defaults.ts_sdk.as_deref().unwrap_or("(not set)").to_string())
+        }
+        "defaults.template" => {
+            Some(config.defaults.template.as_deref().unwrap_or("(not set)").to_string())
+        }
+        "defaults.git" => Some(config.defaults.git.as_deref().unwrap_or("(not set)").to_string()),
         "ui.animation" => Some(config.ui.animation.to_string()),
         "ui.color" => Some(config.ui.color.to_string()),
         _ => None,
@@ -344,7 +285,7 @@ fn validate_value(key: &str, value: &str) -> Result<(), &'static str> {
             if matches!(value, "quasar-svm" | "mollusk" | "none" | "null" | "") {
                 Ok(())
             } else {
-                Err("quasar-svm, mollusk")
+                Err("mollusk")
             }
         }
         "defaults.ts_sdk" => {
@@ -369,10 +310,7 @@ fn validate_value(key: &str, value: &str) -> Result<(), &'static str> {
             }
         }
         "ui.animation" | "ui.color" => {
-            if matches!(
-                value,
-                "true" | "false" | "1" | "0" | "yes" | "no" | "on" | "off"
-            ) {
+            if matches!(value, "true" | "false" | "1" | "0" | "yes" | "no" | "on" | "off") {
                 Ok(())
             } else {
                 Err("true, false")
@@ -383,11 +321,7 @@ fn validate_value(key: &str, value: &str) -> Result<(), &'static str> {
 }
 
 fn some_or_none(s: &str) -> Option<String> {
-    if s.is_empty() || s == "none" || s == "null" {
-        None
-    } else {
-        Some(s.to_string())
-    }
+    if s.is_empty() || s == "none" || s == "null" { None } else { Some(s.to_string()) }
 }
 
 fn parse_bool(s: &str) -> bool {

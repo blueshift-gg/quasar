@@ -1,0 +1,5 @@
+error: unexpected end of input, expected nested attribute
+  --> tests/ui/fail/init_without_a_payer.rs:12:20
+   |
+12 |     #[account(init())]
+   |                    ^

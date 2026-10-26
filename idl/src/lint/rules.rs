@@ -60,10 +60,7 @@ fn preflight_accounts(surface: &ProgramSurface, report: &mut LintReport) {
             report.push(Diagnostic::new(
                 RuleCode::P002,
                 account.name.clone(),
-                format!(
-                    "account `{}` has no trailing `_reserved: [u8; N]` padding",
-                    account.name
-                ),
+                format!("account `{}` has no trailing `_reserved: [u8; N]` padding", account.name),
                 "reserve trailing bytes before deployment to make small future appends \
                  migration-free",
             ));
@@ -150,10 +147,7 @@ fn preflight_instructions(surface: &ProgramSurface, config: &LintConfig, report:
 }
 
 fn instruction_has_signer(instruction: &InstructionSurface) -> bool {
-    instruction
-        .accounts
-        .iter()
-        .any(AccountMetaSurface::signer_required)
+    instruction.accounts.iter().any(AccountMetaSurface::signer_required)
         || instruction
             .remaining_accounts
             .as_deref()
@@ -206,14 +200,8 @@ fn connected_components(instruction: &InstructionSurface) -> Vec<Vec<String>> {
         edges.entry(account.name.as_str()).or_default();
         for reference in &account.resolver_refs {
             if names.contains(reference.as_str()) {
-                edges
-                    .entry(account.name.as_str())
-                    .or_default()
-                    .insert(reference.as_str());
-                edges
-                    .entry(reference.as_str())
-                    .or_default()
-                    .insert(account.name.as_str());
+                edges.entry(account.name.as_str()).or_default().insert(reference.as_str());
+                edges.entry(reference.as_str()).or_default().insert(account.name.as_str());
             }
         }
     }
@@ -240,11 +228,7 @@ fn connected_components(instruction: &InstructionSurface) -> Vec<Vec<String>> {
         components.push(component);
     }
 
-    if components.len() > 1 {
-        components
-    } else {
-        Vec::new()
-    }
+    if components.len() > 1 { components } else { Vec::new() }
 }
 
 fn is_graph_relevant(account: &AccountMetaSurface) -> bool {
@@ -255,10 +239,8 @@ fn is_graph_relevant(account: &AccountMetaSurface) -> bool {
 
 fn diff_accounts(old: &ProgramSurface, new: &ProgramSurface, report: &mut LintReport) {
     for old_account in &old.accounts {
-        let Some(new_account) = new
-            .accounts
-            .iter()
-            .find(|account| account.name == old_account.name)
+        let Some(new_account) =
+            new.accounts.iter().find(|account| account.name == old_account.name)
         else {
             report.push(Diagnostic::new(
                 RuleCode::R015,
@@ -294,16 +276,8 @@ fn diff_account_fields(
     new_account: &AccountSurface,
     report: &mut LintReport,
 ) {
-    let old_names = old_account
-        .fields
-        .iter()
-        .map(|field| field.name.as_str())
-        .collect::<Vec<_>>();
-    let new_names = new_account
-        .fields
-        .iter()
-        .map(|field| field.name.as_str())
-        .collect::<Vec<_>>();
+    let old_names = old_account.fields.iter().map(|field| field.name.as_str()).collect::<Vec<_>>();
+    let new_names = new_account.fields.iter().map(|field| field.name.as_str()).collect::<Vec<_>>();
 
     if old_names != new_names && same_set(&old_names, &new_names) {
         report.push(Diagnostic::new(
@@ -318,11 +292,7 @@ fn diff_account_fields(
     }
 
     for old_field in &old_account.fields {
-        match new_account
-            .fields
-            .iter()
-            .find(|field| field.name == old_field.name)
-        {
+        match new_account.fields.iter().find(|field| field.name == old_field.name) {
             Some(new_field) if field_shape(old_field) != field_shape(new_field) => {
                 report.push(Diagnostic::new(
                     RuleCode::R002,
@@ -397,10 +367,8 @@ fn field_shape(field: &FieldSurface) -> (&str, Option<&str>) {
 
 fn diff_instructions(old: &ProgramSurface, new: &ProgramSurface, report: &mut LintReport) {
     for old_instruction in &old.instructions {
-        let Some(new_instruction) = new
-            .instructions
-            .iter()
-            .find(|instruction| instruction.name == old_instruction.name)
+        let Some(new_instruction) =
+            new.instructions.iter().find(|instruction| instruction.name == old_instruction.name)
         else {
             report.push(Diagnostic::new(
                 RuleCode::R007,
@@ -444,10 +412,8 @@ fn diff_instructions(old: &ProgramSurface, new: &ProgramSurface, report: &mut Li
         }
 
         for old_account in &old_instruction.accounts {
-            let Some(new_account) = new_instruction
-                .accounts
-                .iter()
-                .find(|account| account.name == old_account.name)
+            let Some(new_account) =
+                new_instruction.accounts.iter().find(|account| account.name == old_account.name)
             else {
                 continue;
             };
@@ -513,10 +479,7 @@ fn render_fields(fields: &[FieldSurface]) -> String {
 
 fn diff_enums(old: &ProgramSurface, new: &ProgramSurface, report: &mut LintReport) {
     for old_type in old.types.iter().filter(|ty| is_enum(ty)) {
-        let Some(new_type) = new
-            .types
-            .iter()
-            .find(|ty| ty.name == old_type.name && is_enum(ty))
+        let Some(new_type) = new.types.iter().find(|ty| ty.name == old_type.name && is_enum(ty))
         else {
             continue;
         };
@@ -561,12 +524,7 @@ fn variant_keys(ty: &TypeSurface) -> Vec<String> {
     ty.variants
         .iter()
         .map(|variant| {
-            format!(
-                "{}={}:{}",
-                variant.name,
-                variant.value,
-                render_fields(&variant.fields)
-            )
+            format!("{}={}:{}", variant.name, variant.value, render_fields(&variant.fields))
         })
         .collect()
 }

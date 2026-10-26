@@ -7,7 +7,6 @@ mod walk;
 
 use {
     crate::elf::DebugLevel,
-    memmap2::Mmap,
     sha2::{Digest, Sha256},
     std::{
         collections::HashSet,
@@ -50,13 +49,8 @@ pub fn run(command: ProfileCommand) {
         std::process::exit(1);
     }
 
-    let file = std::fs::File::open(&elf_path).unwrap_or_else(|e| {
-        eprintln!("Error: failed to open {}: {}", elf_path.display(), e);
-        std::process::exit(1);
-    });
-
-    let mmap = unsafe { Mmap::map(&file) }.unwrap_or_else(|e| {
-        eprintln!("Error: failed to mmap {}: {}", elf_path.display(), e);
+    let mmap = fs::read(&elf_path).unwrap_or_else(|e| {
+        eprintln!("Error: failed to read {}: {}", elf_path.display(), e);
         std::process::exit(1);
     });
 
@@ -85,20 +79,13 @@ pub fn run(command: ProfileCommand) {
         }
     };
 
-    let program_name = elf_path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("unknown");
+    let program_name = elf_path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown");
     let version = resolve_program_version(&elf_path, program_name);
     let binary_size = fs::metadata(&elf_path).map(|m| m.len()).unwrap_or(0);
     let profile_root = profile_web_root();
     let profiles_dir = profile_root.join("profiles");
     fs::create_dir_all(&profiles_dir).unwrap_or_else(|e| {
-        eprintln!(
-            "Error: failed to create profile directory {}: {}",
-            profiles_dir.display(),
-            e
-        );
+        eprintln!("Error: failed to create profile directory {}: {}", profiles_dir.display(), e);
         std::process::exit(1);
     });
 
@@ -136,10 +123,7 @@ pub fn run(command: ProfileCommand) {
 
     // Start the flamegraph server in the background.
     if has_frontend_assets(&profile_root) {
-        let url = format!(
-            "http://{}:{}/?program={}",
-            SERVER_HOST, SERVER_PORT, program_name
-        );
+        let url = format!("http://{}:{}/?program={}", SERVER_HOST, SERVER_PORT, program_name);
         match serve::serve_background(&profile_root, SERVER_PORT, program_name) {
             Ok(_) => output::print_flamegraph_link(&url),
             Err(_) => {
@@ -155,10 +139,7 @@ pub fn run(command: ProfileCommand) {
 fn run_diff(program: String) {
     let profile_root = profile_web_root();
     ensure_frontend_assets(&profile_root);
-    println!(
-        "http://{}:{}/?program={}&view=diff",
-        SERVER_HOST, SERVER_PORT, program
-    );
+    println!("http://{}:{}/?program={}&view=diff", SERVER_HOST, SERVER_PORT, program);
     eprintln!("Press Ctrl-C to stop the profiler server.");
     serve::serve_blocking(&profile_root, SERVER_PORT).unwrap_or_else(|e| {
         eprintln!("Error: failed to start local profiler server: {}", e);
@@ -172,31 +153,20 @@ fn has_frontend_assets(profile_root: &Path) -> bool {
 
 fn ensure_frontend_assets(profile_root: &Path) {
     fs::create_dir_all(profile_root).unwrap_or_else(|e| {
-        eprintln!(
-            "Error: failed to create profiler web root {}: {}",
-            profile_root.display(),
-            e
-        );
+        eprintln!("Error: failed to create profiler web root {}: {}", profile_root.display(), e);
         std::process::exit(1);
     });
 
     let root_index = profile_root.join("index.html");
     if !root_index.exists() {
-        eprintln!(
-            "Error: missing frontend artifact at {}",
-            root_index.display()
-        );
+        eprintln!("Error: missing frontend artifact at {}", root_index.display());
         eprintln!("Add the compiled single-file frontend index.html to quasar/profile/.");
         std::process::exit(1);
     }
 
     let profiles_dir = profile_root.join("profiles");
     fs::create_dir_all(&profiles_dir).unwrap_or_else(|e| {
-        eprintln!(
-            "Error: failed to create profile directory {}: {}",
-            profiles_dir.display(),
-            e
-        );
+        eprintln!("Error: failed to create profile directory {}: {}", profiles_dir.display(), e);
         std::process::exit(1);
     });
 }
@@ -206,11 +176,8 @@ fn profile_web_root() -> PathBuf {
 }
 
 fn resolve_program_version(elf_path: &std::path::Path, program_name: &str) -> String {
-    let workspace_root = find_workspace_root(elf_path).or_else(|| {
-        std::env::current_dir()
-            .ok()
-            .and_then(|cwd| find_workspace_root(&cwd))
-    });
+    let workspace_root = find_workspace_root(elf_path)
+        .or_else(|| std::env::current_dir().ok().and_then(|cwd| find_workspace_root(&cwd)));
 
     let Some(workspace_root) = workspace_root else {
         return "unknown".to_string();
@@ -253,12 +220,7 @@ fn ensure_gh_installed() {
 
 fn create_gist(path: &Path, desc: &str) -> String {
     let mut cmd = Command::new("gh");
-    cmd.arg("gist")
-        .arg("create")
-        .arg(path)
-        .arg("--desc")
-        .arg(desc)
-        .arg("--public");
+    cmd.arg("gist").arg("create").arg(path).arg("--desc").arg(desc).arg("--public");
 
     let output = cmd.output().unwrap_or_else(|e| {
         eprintln!("Error: failed to run gh gist create: {}", e);
@@ -284,22 +246,16 @@ fn create_gist(path: &Path, desc: &str) -> String {
 }
 
 fn find_workspace_root(start: &std::path::Path) -> Option<PathBuf> {
-    let mut cur = if start.is_dir() {
-        start.to_path_buf()
-    } else {
-        start.parent()?.to_path_buf()
-    };
+    let mut cur = if start.is_dir() { start.to_path_buf() } else { start.parent()?.to_path_buf() };
 
     loop {
         let cargo = cur.join("Cargo.toml");
-        if cargo.exists() {
-            if let Ok(content) = fs::read_to_string(&cargo) {
-                if let Ok(value) = content.parse::<Value>() {
-                    if value.get("workspace").is_some() {
-                        return Some(cur);
-                    }
-                }
-            }
+        if cargo.exists()
+            && let Ok(content) = fs::read_to_string(&cargo)
+            && let Ok(value) = content.parse::<Value>()
+            && value.get("workspace").is_some()
+        {
+            return Some(cur);
         }
         if !cur.pop() {
             return None;
@@ -366,12 +322,7 @@ fn read_workspace_version(workspace_root: &std::path::Path) -> Option<String> {
     let cargo = workspace_root.join("Cargo.toml");
     let content = fs::read_to_string(cargo).ok()?;
     let value: Value = content.parse().ok()?;
-    value
-        .get("workspace")?
-        .get("package")?
-        .get("version")?
-        .as_str()
-        .map(ToString::to_string)
+    value.get("workspace")?.get("package")?.get("version")?.as_str().map(ToString::to_string)
 }
 
 fn sha256_file(path: &Path) -> io::Result<String> {

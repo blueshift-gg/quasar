@@ -1,0 +1,27 @@
+[package]
+name = "quasar-test"
+description = "Runs Quasar programs in tests, on their SBF build"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+# Record each program's instructions as it runs, into `SBF_TRACE_DIR`, for
+# `bench`'s profile.
+trace = ["mollusk-svm/register-tracing"]
+
+[dependencies]
+agave-feature-set.workspace = true
+base64.workspace = true
+mollusk-svm.workspace = true
+quasar-lang.workspace = true
+solana-account.workspace = true
+solana-address.workspace = true
+solana-instruction.workspace = true
+solana-program-error.workspace = true
+solana-sdk-ids.workspace = true
+solana-svm-log-collector.workspace = true
+
+[lints]
+workspace = true

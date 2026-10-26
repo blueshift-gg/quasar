@@ -1,8 +1,0 @@
-error[E0599]: no method named `value` found for struct `ArgsBuilder` in the current scope
-  --> tests/compile_fail/missing_builder_method.rs:49:28
-   |
-17 |     pub struct ArgsBuilder;
-   |     ---------------------- method `value` not found for this struct
-...
-49 |     #[account(bad_behavior(value = 42u64))]
-   |                            ^^^^^ method not found in `ArgsBuilder`

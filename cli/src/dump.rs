@@ -18,10 +18,7 @@ pub fn run(elf_path: Option<PathBuf>, function: Option<String>, source: bool) ->
     };
 
     if !so_path.exists() {
-        return Err(CliError::message(format!(
-            "file not found: {}",
-            so_path.display()
-        )));
+        return Err(CliError::message(format!("file not found: {}", so_path.display())));
     }
 
     let Some(objdump) = find_objdump() else {
@@ -96,15 +93,9 @@ pub fn run(elf_path: Option<PathBuf>, function: Option<String>, source: bool) ->
             } else {
                 format!("llvm-objdump failed\n{}", stderr.trim())
             };
-            Err(CliError::process_failure(
-                message,
-                o.status.code().unwrap_or(1),
-            ))
+            Err(CliError::process_failure(message, o.status.code().unwrap_or(1)))
         }
-        Err(e) => Err(CliError::message(format!(
-            "failed to run {}: {e}",
-            objdump.display()
-        ))),
+        Err(e) => Err(CliError::message(format!("failed to run {}: {e}", objdump.display()))),
     }
 }
 
@@ -121,7 +112,7 @@ fn find_so() -> Result<PathBuf, crate::error::CliError> {
 
 /// Find llvm-objdump in Solana platform-tools (newest version first)
 fn find_objdump() -> Option<PathBuf> {
-    let home = dirs::home_dir()?;
+    let home = std::env::home_dir()?;
     let cache = home.join(".cache/solana");
     if !cache.exists() {
         return None;
@@ -135,11 +126,7 @@ fn find_objdump() -> Option<PathBuf> {
             let name = path.file_name()?.to_str()?;
             let version = parse_toolchain_version(name)?;
             let objdump = path.join("platform-tools/llvm/bin/llvm-objdump");
-            if objdump.exists() {
-                Some((version, objdump))
-            } else {
-                None
-            }
+            if objdump.exists() { Some((version, objdump)) } else { None }
         })
         .collect();
     versions.sort_by(|a, b| b.0.cmp(&a.0));
@@ -173,32 +160,20 @@ impl PartialOrd for ToolchainVersion {
 
 fn parse_toolchain_version(name: &str) -> Option<ToolchainVersion> {
     let version = name.strip_prefix('v')?;
-    let parts = version
-        .split('.')
-        .map(|part| part.parse::<u64>().ok())
-        .collect::<Option<Vec<_>>>()?;
+    let parts =
+        version.split('.').map(|part| part.parse::<u64>().ok()).collect::<Option<Vec<_>>>()?;
 
-    if parts.is_empty() {
-        None
-    } else {
-        Some(ToolchainVersion(parts))
-    }
+    if parts.is_empty() { None } else { Some(ToolchainVersion(parts)) }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_toolchain_version, ToolchainVersion};
+    use super::{ToolchainVersion, parse_toolchain_version};
 
     #[test]
     fn parses_semver_style_versions() {
-        assert_eq!(
-            parse_toolchain_version("v1.18.22"),
-            Some(ToolchainVersion(vec![1, 18, 22]))
-        );
-        assert_eq!(
-            parse_toolchain_version("v2.0"),
-            Some(ToolchainVersion(vec![2, 0]))
-        );
+        assert_eq!(parse_toolchain_version("v1.18.22"), Some(ToolchainVersion(vec![1, 18, 22])));
+        assert_eq!(parse_toolchain_version("v2.0"), Some(ToolchainVersion(vec![2, 0])));
         assert_eq!(parse_toolchain_version("1.18.22"), None);
         assert_eq!(parse_toolchain_version("v1.18.beta"), None);
     }

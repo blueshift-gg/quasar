@@ -1,491 +1,126 @@
-name: CI
-
+name: ci
 on:
   push:
-    branches: [master]
+    branches: ["**"]
   pull_request:
-    branches: [master]
   workflow_call:
     inputs:
-      generated_client_smoke:
-        description: Run generated client smoke coverage.
-        required: false
+      full_check:
+        description: Run all gates when invoked by another workflow.
         type: boolean
         default: true
 
-env:
-  SOLANA_VERSION: stable
-  CARGO_TERM_COLOR: always
+permissions:
+  contents: read
 
 jobs:
-  kani_scope:
-    name: Kani Scope
-    runs-on: ubuntu-latest
-    outputs:
-      should_run: ${{ steps.scope.outputs.should_run }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - id: changed
-        if: github.event_name != 'workflow_call'
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            kani:
-              - 'lang/**'
-              - 'spl/**'
-              - 'Cargo.lock'
-              - 'Cargo.toml'
-              - '.github/workflows/ci.yml'
-              - '.github/workflows/release.yml'
-              - 'Makefile'
-      - id: scope
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_call" ]; then
-            echo "should_run=false" >> "$GITHUB_OUTPUT"
-          elif [ "${{ steps.changed.outputs.kani }}" = "true" ]; then
-            echo "should_run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "should_run=false" >> "$GITHUB_OUTPUT"
-          fi
-
-  generated_client_scope:
-    name: Generated Client Scope
-    runs-on: ubuntu-latest
-    outputs:
-      should_run: ${{ steps.scope.outputs.should_run }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - id: changed
-        if: github.event_name != 'workflow_call'
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            client_codegen:
-              - 'cli/**'
-              - 'derive/**'
-              - 'idl/**'
-              - 'lang/**'
-              - 'schema/**'
-              - 'examples/multisig/**'
-              - 'Cargo.lock'
-              - 'Cargo.toml'
-              - '.github/workflows/ci.yml'
-              - 'Makefile'
-      - id: scope
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_call" ]; then
-            echo "should_run=${{ inputs.generated_client_smoke }}" >> "$GITHUB_OUTPUT"
-          elif [ "${{ steps.changed.outputs.client_codegen }}" = "true" ]; then
-            echo "should_run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "should_run=false" >> "$GITHUB_OUTPUT"
-          fi
-
-  rust_fmt:
-    name: Rustfmt
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - name: Get nightly toolchain version
-        id: nightly
-        run: echo "version=$(make nightly-version)" >> $GITHUB_OUTPUT
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ steps.nightly.outputs.version }}
-          components: rustfmt
-      - name: Run format
-        run: make format
-
-  rust_clippy:
-    name: Clippy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-clippy-
-      - name: Get nightly toolchain version
-        id: nightly
-        run: echo "version=$(make nightly-version)" >> $GITHUB_OUTPUT
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ steps.nightly.outputs.version }}
-          components: clippy
-      - name: Run clippy
-        run: make clippy
-
-  check_features:
-    name: Check Features
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-hack-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-hack-
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-hack
-      - name: Check all feature combinations
-        run: make check-features
-
-  workspace_policy:
-    name: Workspace Policy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Verify workspace lint opt-in
-        run: make check-workspace-lints
-      - name: Verify workspace invariants
-        run: make check-workspace-invariants
-      - name: Verify runtime panic policy
-        run: make check-runtime-panics
-
-  cargo_test:
-    name: Build & Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - name: Cache Solana tools
-        uses: actions/cache@v5
-        with:
-          path: ~/.local/share/solana
-          key: ${{ runner.os }}-solana-${{ env.SOLANA_VERSION }}
-      - name: Install Solana tools (cargo-build-sbf)
-        run: |
-          if [ ! -f "$HOME/.local/share/solana/install/active_release/bin/cargo-build-sbf" ]; then
-            sh -c "$(curl -sSfL https://release.anza.xyz/${{ env.SOLANA_VERSION }}/install)"
-          fi
-          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
-      - uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-test-
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Build SBF programs
-        run: make build-sbf
-      - name: Test
-        run: make test
-
-  generated_client_smoke:
-    name: Generated Client Smoke
-    needs: generated_client_scope
-    if: needs.generated_client_scope.outputs.should_run == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-client-smoke-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-client-smoke-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.25'
-          cache: false
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Run generated client smoke test
-        run: make generated-client-smoke
-
-  miri:
-    name: Miri (Tree Borrows)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-miri-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-miri-
-      - name: Get nightly toolchain version
-        id: nightly
-        run: echo "version=$(make nightly-version)" >> $GITHUB_OUTPUT
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ steps.nightly.outputs.version }}
-          components: miri
-      - name: Run Miri tests
-        run: make test-miri
-
-  kani:
-    name: Kani (${{ matrix.crate }})
-    needs: kani_scope
-    if: needs.kani_scope.outputs.should_run == 'true'
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        crate: [quasar-lang, quasar-spl]
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-kani-${{ matrix.crate }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-kani-${{ matrix.crate }}-
-      - name: Install z3 (SMT solver for wide-type proofs)
-        run: sudo apt-get install -y z3
-      - name: Verify ${{ matrix.crate }}
-        uses: model-checking/kani-github-action@v1
-        with:
-          command: cargo kani -p ${{ matrix.crate }}
-
-  cu_benchmark_pr:
-    name: CU Benchmark Guard (PR)
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - name: Cache Solana tools
-        uses: actions/cache@v5
-        with:
-          path: ~/.local/share/solana
-          key: ${{ runner.os }}-solana-${{ env.SOLANA_VERSION }}
-      - name: Install Solana tools
-        run: |
-          if [ ! -f "$HOME/.local/share/solana/install/active_release/bin/cargo-build-sbf" ]; then
-            sh -c "$(curl -sSfL https://release.anza.xyz/${{ env.SOLANA_VERSION }}/install)"
-          fi
-          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
-      - uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-bench-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Preserve benchmark harness
-        run: |
-          cp scripts/bench-tracked-programs.sh /tmp/bench-tracked-programs.sh
-          mkdir -p \
-            /tmp/benchmark-inputs/examples/vault/src \
-            /tmp/benchmark-inputs/examples/escrow/src \
-            /tmp/benchmark-inputs/examples/multisig/src
-          cp examples/vault/src/tests.rs /tmp/benchmark-inputs/examples/vault/src/tests.rs
-          cp examples/escrow/src/tests.rs /tmp/benchmark-inputs/examples/escrow/src/tests.rs
-          cp examples/multisig/src/tests.rs /tmp/benchmark-inputs/examples/multisig/src/tests.rs
-
-      - name: Capture base metrics
-        run: |
-          git checkout -f ${{ github.event.pull_request.base.sha }}
-          cp /tmp/benchmark-inputs/examples/vault/src/tests.rs examples/vault/src/tests.rs
-          cp /tmp/benchmark-inputs/examples/escrow/src/tests.rs examples/escrow/src/tests.rs
-          cp /tmp/benchmark-inputs/examples/multisig/src/tests.rs examples/multisig/src/tests.rs
-          bash /tmp/bench-tracked-programs.sh capture /tmp/base_metrics.env
-
-      - name: Capture PR metrics
-        run: |
-          git checkout -f ${{ github.event.pull_request.head.sha }}
-          bash /tmp/bench-tracked-programs.sh capture /tmp/pr_metrics.env
-
-      - name: Fail on tracked metric regression
-        id: perf_guard
-        run: |
-          bash /tmp/bench-tracked-programs.sh compare-files /tmp/base_metrics.env /tmp/pr_metrics.env
-
-      - name: Post benchmark comment
-        if: always()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-
-            function readEnv(path) {
-              const env = {};
-              for (const line of fs.readFileSync(path, 'utf8').split('\n')) {
-                if (!line || line.startsWith('#')) continue;
-                const idx = line.indexOf('=');
-                if (idx === -1) continue;
-                env[line.slice(0, idx)] = line.slice(idx + 1);
-              }
-              return env;
-            }
-
-            const base = readEnv('/tmp/base_metrics.env');
-            const pr = readEnv('/tmp/pr_metrics.env');
-            function delta(base, pr) {
-              const d = pr - base;
-              if (d === 0) return '0 ⚪';
-              return d > 0 ? `+${d} 🔴` : `${d} 🟢`;
-            }
-
-            function fmtNum(n) {
-              return n.toLocaleString('en-US');
-            }
-
-            function metric(key, source) {
-              return parseInt(source[key] || '0', 10);
-            }
-
-            const body = `## Benchmark
-
-            ### Vault
-
-            | Instruction | Base | PR | Delta |
-            |-------------|------|-----|-------|
-            | Deposit | ${fmtNum(metric('VAULT_DEPOSIT_CU', base))} | ${fmtNum(metric('VAULT_DEPOSIT_CU', pr))} | ${delta(metric('VAULT_DEPOSIT_CU', base), metric('VAULT_DEPOSIT_CU', pr))} |
-            | Withdraw | ${fmtNum(metric('VAULT_WITHDRAW_CU', base))} | ${fmtNum(metric('VAULT_WITHDRAW_CU', pr))} | ${delta(metric('VAULT_WITHDRAW_CU', base), metric('VAULT_WITHDRAW_CU', pr))} |
-            | Binary size | ${fmtNum(metric('VAULT_SIZE', base))} | ${fmtNum(metric('VAULT_SIZE', pr))} | ${delta(metric('VAULT_SIZE', base), metric('VAULT_SIZE', pr))} bytes |
-
-            ### Escrow
-
-            | Instruction | Base | PR | Delta |
-            |-------------|------|-----|-------|
-            | Make | ${fmtNum(metric('ESCROW_MAKE_CU', base))} | ${fmtNum(metric('ESCROW_MAKE_CU', pr))} | ${delta(metric('ESCROW_MAKE_CU', base), metric('ESCROW_MAKE_CU', pr))} |
-            | Take | ${fmtNum(metric('ESCROW_TAKE_CU', base))} | ${fmtNum(metric('ESCROW_TAKE_CU', pr))} | ${delta(metric('ESCROW_TAKE_CU', base), metric('ESCROW_TAKE_CU', pr))} |
-            | Refund | ${fmtNum(metric('ESCROW_REFUND_CU', base))} | ${fmtNum(metric('ESCROW_REFUND_CU', pr))} | ${delta(metric('ESCROW_REFUND_CU', base), metric('ESCROW_REFUND_CU', pr))} |
-            | Binary size | ${fmtNum(metric('ESCROW_SIZE', base))} | ${fmtNum(metric('ESCROW_SIZE', pr))} | ${delta(metric('ESCROW_SIZE', base), metric('ESCROW_SIZE', pr))} bytes |
-
-            ### Multisig
-
-            | Instruction | Base | PR | Delta |
-            |-------------|------|-----|-------|
-            | Create | ${fmtNum(metric('MULTISIG_CREATE_CU', base))} | ${fmtNum(metric('MULTISIG_CREATE_CU', pr))} | ${delta(metric('MULTISIG_CREATE_CU', base), metric('MULTISIG_CREATE_CU', pr))} |
-            | Deposit | ${fmtNum(metric('MULTISIG_DEPOSIT_CU', base))} | ${fmtNum(metric('MULTISIG_DEPOSIT_CU', pr))} | ${delta(metric('MULTISIG_DEPOSIT_CU', base), metric('MULTISIG_DEPOSIT_CU', pr))} |
-            | Set label | ${fmtNum(metric('MULTISIG_SET_LABEL_CU', base))} | ${fmtNum(metric('MULTISIG_SET_LABEL_CU', pr))} | ${delta(metric('MULTISIG_SET_LABEL_CU', base), metric('MULTISIG_SET_LABEL_CU', pr))} |
-            | Execute transfer | ${fmtNum(metric('MULTISIG_EXECUTE_TRANSFER_CU', base))} | ${fmtNum(metric('MULTISIG_EXECUTE_TRANSFER_CU', pr))} | ${delta(metric('MULTISIG_EXECUTE_TRANSFER_CU', base), metric('MULTISIG_EXECUTE_TRANSFER_CU', pr))} |
-            | Binary size | ${fmtNum(metric('MULTISIG_SIZE', base))} | ${fmtNum(metric('MULTISIG_SIZE', pr))} | ${delta(metric('MULTISIG_SIZE', base), metric('MULTISIG_SIZE', pr))} bytes`.replace(/^            /gm, '');
-
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
-            const existing = comments.find(c => c.body.includes('## Benchmark'));
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body,
-              });
-            }
-
-  check_if_pr_commit:
-    name: Detect merged PR push
-    if: github.event_name == 'push'
+  changes:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: read
     outputs:
-      skip_bench: ${{ steps.check_pr_commit.outputs.skip_bench }}
+      code: ${{ steps.paths.outputs.code }}
+      miri: ${{ steps.paths.outputs.miri }}
     steps:
-      - name: Detect PR-associated push commit
-        id: check_pr_commit
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              commit_sha: context.sha,
-            });
-
-            const mergedPrs = prs.filter(pr => pr.merged_at);
-            const skipBench = mergedPrs.length > 0;
-            core.setOutput('skip_bench', skipBench ? 'true' : 'false');
-
-  cu_benchmark_push:
-    name: CU Benchmark Guard (Push)
-    needs: [check_if_pr_commit]
-    if: github.event_name == 'push' && needs.check_if_pr_commit.outputs.skip_bench != 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Cache Solana tools
-        uses: actions/cache@v5
+      - uses: dorny/paths-filter@v3
+        id: paths
+        if: ${{ !inputs.full_check && !startsWith(github.ref, 'refs/tags/') }}
         with:
-          path: ~/.local/share/solana
-          key: ${{ runner.os }}-solana-${{ env.SOLANA_VERSION }}
-      - name: Install Solana tools
-        run: |
-          if [ ! -f "$HOME/.local/share/solana/install/active_release/bin/cargo-build-sbf" ]; then
-            sh -c "$(curl -sSfL https://release.anza.xyz/${{ env.SOLANA_VERSION }}/install)"
-          fi
-          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
-      - uses: actions/cache@v5
+          filters: .github/filters.yml
+
+  miri:
+    needs: changes
+    if: ${{ inputs.full_check || startsWith(github.ref, 'refs/tags/') || needs.changes.outputs.miri == 'true' }}
+    name: Miri (Tree Borrows)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read pinned Miri toolchain
+        id: miri
+        run: echo "toolchain=$(make miri-version)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.miri.outputs.toolchain }}
+          components: miri
+      - name: Cache Miri dependencies
+        uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
+            ~/.cargo/registry/
+            ~/.cargo/git/
+          key: ${{ runner.os }}-${{ runner.arch }}-miri-${{ steps.miri.outputs.toolchain }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-bench-
-      - uses: dtolnay/rust-toolchain@stable
+            ${{ runner.os }}-${{ runner.arch }}-miri-${{ steps.miri.outputs.toolchain }}-
+      - run: make test-miri test-miri-strict
 
-      - name: Capture base metrics
+  check:
+    needs: changes
+    if: ${{ inputs.full_check || startsWith(github.ref, 'refs/tags/') || needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          components: rustfmt, clippy, rust-src
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/
+            ~/.cargo/git/
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-cargo-
+      - name: Cache Solana and SBF toolchains
+        uses: actions/cache@v4
+        id: solana
+        with:
+          path: |
+            ~/.local/share/solana/
+            ~/.cache/solana/
+          key: ${{ runner.os }}-${{ runner.arch }}-solana-4.3.2-sbf-1.56
+      - name: Install the Solana toolchain
+        if: steps.solana.outputs.cache-hit != 'true'
         run: |
-          git checkout -f ${{ github.sha }}~1
-          bash scripts/bench-tracked-programs.sh capture /tmp/push_base_metrics.env
-
-      - name: Capture push head metrics
+          sh -c "$(curl -sSfL https://release.anza.xyz/v4.3.2/install)"
+      # cargo-build-sbf asks GitHub for the latest release unless the requested
+      # platform-tools are already installed, and panics if that lookup fails.
+      - name: Install SBF platform-tools v1.56
+        if: steps.solana.outputs.cache-hit != 'true'
         run: |
-          git checkout -f ${{ github.sha }}
-          bash scripts/bench-tracked-programs.sh capture /tmp/push_head_metrics.env
-
-      - name: Fail on tracked metric regression
-        run: |
-          bash scripts/bench-tracked-programs.sh compare-files /tmp/push_base_metrics.env /tmp/push_head_metrics.env
+          dir="$HOME/.cache/solana/v1.56/platform-tools"
+          mkdir -p "$dir"
+          curl -sSfL --retry 5 "https://github.com/anza-xyz/platform-tools/releases/download/v1.56/platform-tools-linux-$(uname -m).tar.bz2" \
+            | tar -xj -C "$dir"
+      - name: Add Solana tools to PATH
+        run: echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+      - name: Cache Cargo helper tools
+        uses: actions/cache@v4
+        id: tools
+        with:
+          path: |
+            ~/.cargo/bin/cargo-expand
+            ~/.cargo/bin/cargo-hack
+          key: ${{ runner.os }}-${{ runner.arch }}-tools-rust-1.97.1-expand-1.0.121-hack-0.6.45
+      - name: Install Kani
+        run: cargo install --locked kani-verifier@0.67.0 && cargo kani setup
+      - name: Install cargo-expand
+        if: steps.tools.outputs.cache-hit != 'true'
+        run: cargo install --locked cargo-expand@1.0.121
+      - name: Install cargo-hack
+        if: steps.tools.outputs.cache-hit != 'true'
+        run: cargo install --locked cargo-hack@0.6.45
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: false
+      - run: make check
+      - name: Committed files match what `make check` generates
+        run: git diff --exit-code

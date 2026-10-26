@@ -1,0 +1,16 @@
+error[E0080]: evaluation panicked: `Remaining` is the last field
+ --> tests/ui/fail/remaining_before_the_last_field.rs:5:10
+  |
+5 | #[derive(Accounts)]
+  |          ^^^^^^^^ evaluation of `_` failed inside this call
+  |
+note: inside `required`
+ --> $RUST/core/src/panic.rs
+  |
+  |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+  |
+ ::: $WORKSPACE/lang/src/field.rs
+  |
+  |             assert!(index + 1 == fields.len(), "`Remaining` is the last field");
+  |             ------------------------------------------------------------------- in this macro invocation

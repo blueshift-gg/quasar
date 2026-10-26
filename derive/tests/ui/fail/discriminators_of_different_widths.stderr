@@ -1,0 +1,5 @@
+error: every instruction's discriminator has the same number of bytes
+  --> tests/ui/fail/discriminators_of_different_widths.rs:18:5
+   |
+18 |     #[instruction([1, 0])]
+   |     ^^^^^^^^^^^^^^^^^^^^^^

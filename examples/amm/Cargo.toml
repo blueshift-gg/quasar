@@ -1,0 +1,21 @@
+[package]
+name = "amm"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+quasar-lang.workspace = true
+quasar-spl.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+quasar-test.workspace = true
+solana-program-pack = "=3.1.0"
+spl-token-interface = "=2.0.0"
+
+[lints]
+workspace = true

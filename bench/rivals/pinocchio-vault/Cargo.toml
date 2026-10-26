@@ -1,0 +1,19 @@
+[package]
+name = "pinocchio-vault"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[workspace]
+
+[dependencies]
+pinocchio = { version = "=0.11.1", default-features = false, features = ["copy"] }
+pinocchio-system = "=0.6.0"
+solana-address = { version = "2", features = ["curve25519"] }
+
+[profile.release]
+lto = "fat"
+codegen-units = 1

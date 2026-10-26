@@ -1,8 +1,9 @@
 use {
     crate::{
+        ClientCommand,
         config::resolve_client_path,
         error::{CliError, CliResult},
-        style, ClientCommand,
+        style,
     },
     quasar_idl::{
         codegen::{self, model::ProgramModel},
@@ -20,16 +21,12 @@ pub fn run(command: ClientCommand) -> CliResult {
     let idl_path = &command.idl_path;
 
     if !idl_path.exists() {
-        return Err(CliError::message(format!(
-            "IDL file not found: {}",
-            idl_path.display()
-        )));
+        return Err(CliError::message(format!("IDL file not found: {}", idl_path.display())));
     }
 
     let json =
         std::fs::read_to_string(idl_path).map_err(|e| CliError::io_path("read", idl_path, e))?;
-    let idl: quasar_idl::types::Idl = serde_json::from_str(&json)
-        .map_err(|e| CliError::json_parse(format!("IDL file {}", idl_path.display()), e))?;
+    let idl = quasar_idl::read(&json).map_err(CliError::message)?;
 
     let languages: Vec<&str> = if command.lang.is_empty() {
         ALL_LANGUAGES.to_vec()
@@ -51,10 +48,7 @@ pub fn run(command: ClientCommand) -> CliResult {
 
     generate_clients(&idl, &languages, &clients_path)?;
 
-    println!(
-        "  {}",
-        style::success(&format!("Clients generated: {}", languages.join(", ")))
-    );
+    println!("  {}", style::success(&format!("Clients generated: {}", languages.join(", "))));
     Ok(())
 }
 
@@ -66,9 +60,8 @@ pub fn generate_clients(idl: &Idl, languages: &[&str], clients_path: &Path) -> C
         let ts_code = codegen::typescript::generate_ts_client(idl);
         let ts_kit_code = codegen::typescript::generate_ts_client_kit(idl);
 
-        let ts_dir = PathBuf::from(clients_path)
-            .join("typescript")
-            .join(&model.identity.typescript_dir);
+        let ts_dir =
+            PathBuf::from(clients_path).join("typescript").join(&model.identity.typescript_dir);
         std::fs::create_dir_all(&ts_dir)?;
         std::fs::write(ts_dir.join("web3.ts"), &ts_code)?;
         std::fs::write(ts_dir.join("kit.ts"), &ts_kit_code)?;
@@ -81,23 +74,17 @@ pub fn generate_clients(idl: &Idl, languages: &[&str], clients_path: &Path) -> C
     // Python
     if languages.contains(&"python") {
         let py_code = codegen::python::generate_python_client(idl);
-        let py_dir = PathBuf::from(clients_path)
-            .join("python")
-            .join(&model.identity.python_package);
+        let py_dir =
+            PathBuf::from(clients_path).join("python").join(&model.identity.python_package);
         std::fs::create_dir_all(&py_dir)?;
         std::fs::write(py_dir.join("client.py"), &py_code)?;
-        std::fs::write(
-            py_dir.join("__init__.py"),
-            "from .client import *  # noqa: F401,F403\n",
-        )?;
+        std::fs::write(py_dir.join("__init__.py"), "from .client import *  # noqa: F401,F403\n")?;
     }
 
     // Go
     if languages.contains(&"golang") {
         let go_code = codegen::golang::generate_go_client(idl);
-        let go_dir = PathBuf::from(clients_path)
-            .join("golang")
-            .join(&model.identity.go_package);
+        let go_dir = PathBuf::from(clients_path).join("golang").join(&model.identity.go_package);
         std::fs::create_dir_all(&go_dir)?;
         std::fs::write(go_dir.join("client.go"), &go_code)?;
         std::fs::write(
@@ -109,9 +96,7 @@ pub fn generate_clients(idl: &Idl, languages: &[&str], clients_path: &Path) -> C
     // C
     if languages.contains(&"c") {
         let c_code = codegen::c::generate_c_client(idl);
-        let c_dir = PathBuf::from(clients_path)
-            .join("c")
-            .join(&model.identity.client_name);
+        let c_dir = PathBuf::from(clients_path).join("c").join(&model.identity.client_name);
         std::fs::create_dir_all(&c_dir)?;
         std::fs::write(c_dir.join("client.h"), &c_code)?;
     }

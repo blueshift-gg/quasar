@@ -1,116 +1,64 @@
-// Import zeropod so #[derive(ZeroPod)] expansion resolves `zeropod::*` paths.
-use {
-    crate::constants::METADATA_PROGRAM_ID,
-    quasar_lang::{__zeropod as zeropod, prelude::*},
-    solana_address::Address,
+use quasar_lang::{
+    Address,
+    account::{InterfaceAccount, InterfaceKind},
+    zeropod::{self, Layout},
 };
 
-/// Metaplex Key enum discriminant for MetadataV1 accounts.
-pub(crate) const KEY_METADATA_V1: u8 = 4;
-/// Metaplex Key enum discriminant for MasterEditionV2 accounts.
-pub(crate) const KEY_MASTER_EDITION_V2: u8 = 6;
-
-/// Zero-copy layout for the fixed-size prefix of Metaplex Metadata accounts.
-///
-/// The first 65 bytes of a Metadata account have a stable layout:
-/// - `key` (1 byte): Metaplex account type discriminant (`Key::MetadataV1 = 4`)
-/// - `update_authority` (32 bytes): pubkey authorized to update this metadata
-/// - `mint` (32 bytes): the SPL Token mint this metadata describes
-///
-/// Fields after the prefix (name, symbol, uri, creators, etc.) are
-/// variable-length Borsh-serialized data and require offset walking to access.
-#[derive(quasar_lang::__zeropod::ZeroPod)]
-pub struct MetadataPrefix {
+/// The stable 65-byte prefix. Name, URI, creators and newer fields follow it.
+#[derive(zeropod::ZeroPod)]
+#[zeropod(crate = quasar_lang::zeropod)]
+pub struct Metadata {
     pub key: u8,
     pub update_authority: Address,
     pub mint: Address,
 }
 
-const _: () = assert!(core::mem::size_of::<MetadataPrefixZc>() == 65);
-const _: () = assert!(core::mem::align_of::<MetadataPrefixZc>() == 1);
-const _: () = assert!(core::mem::offset_of!(MetadataPrefixZc, key) == 0);
-const _: () = assert!(core::mem::offset_of!(MetadataPrefixZc, update_authority) == 1);
-const _: () = assert!(core::mem::offset_of!(MetadataPrefixZc, mint) == 33);
-const _: () = assert!(<MetadataPrefix as quasar_lang::__zeropod::ZeroPodFixed>::SIZE == 65);
+impl InterfaceKind for Metadata {
+    type Owners = crate::MetadataProgram;
 
-/// Zero-copy layout for the fixed-size prefix of Metaplex MasterEdition
-/// accounts.
-///
-/// - `key` (1 byte): Metaplex account type discriminant (`Key::MasterEditionV2
-///   = 6`)
-/// - `supply` (8 bytes, u64 LE): number of editions printed
-/// - `max_supply` (9 bytes): Borsh `Option<u64>` tag + value
-#[derive(quasar_lang::__zeropod::ZeroPod)]
-pub struct MasterEditionPrefix {
+    fn validate(data: &[u8]) -> bool {
+        Self::view(data).is_ok_and(|view| view.key() == 4)
+    }
+}
+
+/// MasterEditionV2's Borsh prefix. `None` takes ten bytes, `Some` eighteen;
+/// allocated accounts may contain trailing padding.
+#[derive(zeropod::ZeroPod)]
+#[zeropod(crate = quasar_lang::zeropod)]
+pub struct MasterEdition {
     pub key: u8,
     pub supply: u64,
-    pub max_supply: zeropod::pod::PodOption<zeropod::pod::PodU64, 1>,
+    pub max_supply: Option<u64>,
 }
 
-const _: () = assert!(core::mem::size_of::<MasterEditionPrefixZc>() == 18);
-const _: () = assert!(core::mem::align_of::<MasterEditionPrefixZc>() == 1);
-const _: () = assert!(core::mem::offset_of!(MasterEditionPrefixZc, key) == 0);
-const _: () = assert!(core::mem::offset_of!(MasterEditionPrefixZc, supply) == 1);
-const _: () = assert!(core::mem::offset_of!(MasterEditionPrefixZc, max_supply) == 9);
-const _: () = assert!(<MasterEditionPrefix as quasar_lang::__zeropod::ZeroPodFixed>::SIZE == 18);
+impl InterfaceKind for MasterEdition {
+    type Owners = crate::MetadataProgram;
 
-/// Semantic accessors for MasterEditionPrefixZc.
-impl MasterEditionPrefixZc {
-    #[inline(always)]
-    pub fn max_supply_tag_valid(&self) -> bool {
-        self.max_supply.raw_tag() <= 1
-    }
-
-    #[inline(always)]
-    pub fn supply_value(&self) -> u64 {
-        self.supply.get()
-    }
-
-    #[inline(always)]
-    pub fn max_supply_value(&self) -> Option<u64> {
-        self.max_supply.get_ref().map(|v| v.get())
+    fn validate(data: &[u8]) -> bool {
+        Self::view(data).is_ok_and(|view| view.key() == 6)
     }
 }
 
-quasar_lang::define_account!(
-    /// Metaplex Metadata account; validates owner is Metadata program.
-    ///
-    /// Derefs to [`MetadataPrefixZc`] for zero-copy access to the fixed-size
-    /// header (update_authority, mint). Variable-length fields (name, symbol,
-    /// uri, creators) require Borsh deserialization and are not exposed here.
-    ///
-    /// Checks: owner == Metadata program, data_len >= 65, key byte == 4,
-    /// ZeroPod validation.
-    pub struct MetadataAccount => [checks::Owner, checks::Discriminator, checks::DataLen, checks::ZeroPod]: MetadataPrefix
-);
-
-impl Owner for MetadataAccount {
-    const OWNER: Address = METADATA_PROGRAM_ID;
-}
-
-impl quasar_lang::traits::Discriminator for MetadataAccount {
-    const DISCRIMINATOR: &'static [u8] = &[KEY_METADATA_V1];
-}
-
-quasar_lang::define_account!(
-    /// Metaplex MasterEdition account; validates owner is Metadata program.
-    ///
-    /// Derefs to [`MasterEditionPrefixZc`] for zero-copy access to supply and
-    /// max_supply fields.
-    ///
-    /// Checks: owner == Metadata program, data_len >= 18, key byte == 6,
-    /// ZeroPod validation.
-    pub struct MasterEditionAccount => [checks::Owner, checks::Discriminator, checks::DataLen, checks::ZeroPod]: MasterEditionPrefix
-);
-
-impl Owner for MasterEditionAccount {
-    const OWNER: Address = METADATA_PROGRAM_ID;
-}
-
-impl quasar_lang::traits::Discriminator for MasterEditionAccount {
-    const DISCRIMINATOR: &'static [u8] = &[KEY_MASTER_EDITION_V2];
-}
+/// These wrappers check owner, prefix length, discriminant and encoding.
+pub type MetadataAccount = InterfaceAccount<Metadata>;
+pub type MasterEditionAccount = InterfaceAccount<MasterEdition>;
 
 #[cfg(kani)]
-#[path = "../kani/state.rs"]
-mod kani_proofs;
+mod proofs {
+    use super::*;
+
+    #[kani::proof]
+    fn metadata_key_is_required() {
+        let mut data = [0; 65];
+        data[0] = kani::any();
+        assert_eq!(Metadata::validate(&data), data[0] == 4);
+    }
+
+    #[kani::proof]
+    fn edition_option_tag_is_checked() {
+        let mut data = [0; 18];
+        data[0] = kani::any();
+        data[9] = kani::any();
+        assert_eq!(MasterEdition::validate(&data), data[0] == 6 && data[9] <= 1);
+    }
+}

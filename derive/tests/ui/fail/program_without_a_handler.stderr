@@ -1,0 +1,5 @@
+error: a program has at least one `#[instruction(n)]` handler
+ --> tests/ui/fail/program_without_a_handler.rs:6:5
+  |
+6 | mod empty {}
+  |     ^^^^^

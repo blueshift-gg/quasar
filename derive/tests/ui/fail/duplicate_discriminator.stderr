@@ -1,0 +1,5 @@
+error: discriminator [0] is already `greet`'s
+  --> tests/ui/fail/duplicate_discriminator.rs:18:5
+   |
+18 |     #[instruction(0)]
+   |     ^^^^^^^^^^^^^^^^^

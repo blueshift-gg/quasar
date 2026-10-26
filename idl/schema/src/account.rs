@@ -20,11 +20,7 @@ pub struct IdlAccountDef {
 #[serde(deny_unknown_fields)]
 pub struct IdlAccountNode {
     pub name: String,
-    #[serde(
-        rename = "clientType",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(rename = "clientType", default, skip_serializing_if = "Option::is_none")]
     pub client_type: Option<String>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub optional: bool,
@@ -100,11 +96,7 @@ pub enum IdlResolver {
     AssociatedToken {
         mint: String,
         owner: String,
-        #[serde(
-            rename = "tokenProgram",
-            default,
-            skip_serializing_if = "Option::is_none"
-        )]
+        #[serde(rename = "tokenProgram", default, skip_serializing_if = "Option::is_none")]
         token_program: Option<String>,
     },
     /// Resolved from a field of another account.
@@ -143,11 +135,7 @@ pub enum IdlPdaSeed {
     Account { path: String },
     /// Derived from a decoded field of another account.
     #[serde(rename = "accountField")]
-    AccountField {
-        path: String,
-        account: String,
-        field: String,
-    },
+    AccountField { path: String, account: String, field: String },
     /// Derived from an instruction argument.
     #[serde(rename = "arg")]
     Arg {

@@ -1,0 +1,7 @@
+error: an account discriminator is at most 16 bytes
+ --> tests/ui/fail/account_discriminator_over_16_bytes.rs:5:1
+  |
+5 | #[account(discriminator = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17])]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `account` (in Nightly builds, run with -Z macro-backtrace for more info)

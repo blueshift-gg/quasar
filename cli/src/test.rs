@@ -19,14 +19,7 @@ pub fn run(
     if watch {
         run_watch(debug, show_output, filter, no_build, features, verbose);
     }
-    run_once(
-        debug,
-        show_output,
-        filter.as_deref(),
-        no_build,
-        features.as_deref(),
-        verbose,
-    )
+    run_once(debug, show_output, filter.as_deref(), no_build, features.as_deref(), verbose)
 }
 
 fn run_once(
@@ -62,14 +55,7 @@ fn run_watch(
     verbose: bool,
 ) -> ! {
     crate::build::watch_loop(|| {
-        run_once(
-            debug,
-            show_output,
-            filter.as_deref(),
-            no_build,
-            features.as_deref(),
-            verbose,
-        )
+        run_once(debug, show_output, filter.as_deref(), no_build, features.as_deref(), verbose)
     })
 }
 
@@ -99,21 +85,13 @@ fn run_rust_tests(
     verbose: bool,
 ) -> CliResult {
     let default_test = CommandSpec::new("cargo", ["test", "tests::"]);
-    let test_cmd = config
-        .testing
-        .rust
-        .as_ref()
-        .map(|r| &r.test)
-        .unwrap_or(&default_test);
+    let test_cmd = config.testing.rust.as_ref().map(|r| &r.test).unwrap_or(&default_test);
 
     run_test_cmd(test_cmd, filter, show_output, verbose)
 }
 
 fn run_command(command: &CommandSpec, verbose: bool) -> CliResult {
-    eprintln!(
-        "  {}",
-        style::step(&format!("Running {}...", command.display()))
-    );
+    eprintln!("  {}", style::step(&format!("Running {}...", command.display())));
     if verbose {
         eprintln!("  {}", style::dim(&format!("$ {}", command.display())));
     }
@@ -126,10 +104,7 @@ fn run_command(command: &CommandSpec, verbose: bool) -> CliResult {
             format!("{} failed", command.display()),
             s.code().unwrap_or(1),
         )),
-        Err(e) => Err(CliError::message(format!(
-            "failed to run {}: {e}",
-            command.display()
-        ))),
+        Err(e) => Err(CliError::message(format!("failed to run {}: {e}", command.display()))),
     }
 }
 
@@ -142,10 +117,7 @@ fn run_test_cmd(
     let mut cmd = Command::new(&test_cmd.program);
     cmd.args(test_command_args(test_cmd, filter, show_output));
 
-    eprintln!(
-        "  {}",
-        style::step(&format!("Running {}...", test_cmd.display()))
-    );
+    eprintln!("  {}", style::step(&format!("Running {}...", test_cmd.display())));
     if verbose {
         eprintln!("  {}", style::dim(&format!("$ {}", test_cmd.display())));
     }
@@ -158,10 +130,7 @@ fn run_test_cmd(
             format!("{} failed", test_cmd.display()),
             s.code().unwrap_or(1),
         )),
-        Err(e) => Err(CliError::message(format!(
-            "failed to run {}: {e}",
-            test_cmd.display()
-        ))),
+        Err(e) => Err(CliError::message(format!("failed to run {}: {e}", test_cmd.display()))),
     }
 }
 
@@ -218,10 +187,7 @@ mod tests {
         let cmd = CommandSpec::new("cargo", ["test", "tests::", "--", "--nocapture"]);
         let args = test_command_args(&cmd, Some("my_test"), false);
 
-        assert_eq!(
-            args,
-            vec!["test", "tests::", "my_test", "--", "--nocapture"]
-        );
+        assert_eq!(args, vec!["test", "tests::", "my_test", "--", "--nocapture"]);
     }
 
     #[test]
@@ -229,10 +195,7 @@ mod tests {
         let cmd = CommandSpec::new("cargo", ["test", "tests::", "--", "--nocapture"]);
         let args = test_command_args(&cmd, None, true);
 
-        assert_eq!(
-            args,
-            vec!["test", "tests::", "--", "--show-output", "--nocapture"]
-        );
+        assert_eq!(args, vec!["test", "tests::", "--", "--show-output", "--nocapture"]);
     }
 
     #[test]
@@ -240,17 +203,7 @@ mod tests {
         let cmd = CommandSpec::new("cargo", ["test", "tests::", "--", "--nocapture"]);
         let args = test_command_args(&cmd, Some("my_test"), true);
 
-        assert_eq!(
-            args,
-            vec![
-                "test",
-                "tests::",
-                "my_test",
-                "--",
-                "--show-output",
-                "--nocapture"
-            ]
-        );
+        assert_eq!(args, vec!["test", "tests::", "my_test", "--", "--show-output", "--nocapture"]);
     }
 
     #[test]

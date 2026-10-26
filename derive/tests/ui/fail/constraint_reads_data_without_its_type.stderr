@@ -1,0 +1,5 @@
+error: a constraint reads `data`: name its type with `#[data(..)]` on the struct
+  --> tests/ui/fail/constraint_reads_data_without_its_type.rs:13:9
+   |
+13 |     pub vault: Account<Vault>,
+   |         ^^^^^

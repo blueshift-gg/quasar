@@ -5,8 +5,43 @@ The `quasar` binary is a project-aware build tool for Solana programs. It wraps 
 ## Install
 
 ```bash
-cargo install --path cli
+cargo install --path cli --locked
 ```
+
+## Quasar 0.2 compatibility
+
+New projects use the typed-core API, explicit instruction discriminators and
+published ZeroPod 0.4.0 through `quasar-lang`. The Solana build uses
+platform-tools v1.56 and the v3 architecture by default, matching the repository
+gate. The optional upstream build uses `cargo +nightly`, `rust-src`, and
+`sbpf-linker`; its target config selects the runtime's on-chain implementation
+and SBPFv3 output.
+
+Rust scaffolds use Mollusk. TypeScript scaffolds use LiteSVM with the public
+Kit or Web3.js SDK. Both run SBPFv3 programs. The legacy
+`--rust-framework quasar-svm` spelling is accepted as an alias for `mollusk`.
+
+`quasar add --instruction settle` allocates an unused discriminator of the
+existing width. It preserves existing instruction numbers. State and error
+modules added to a minimal project are included in the crate automatically.
+
+`quasar idl` runs the host-only emission test and adapts `idl().to_json()`
+to the public client schema. `quasar client` also accepts that runtime JSON
+directly, alongside existing complete schema IDLs. Rust clients are standalone
+and use the runtime's Borsh-compatible encoding. Fixed-capacity `ArrayString`
+and `ArrayVec` values expose their wire representation as `length` plus
+`storage`; unused slots must be padded.
+
+The runtime IDL currently describes instructions, account flags and account
+fields. It does not describe PDA resolvers, events, errors or custom nested
+type definitions. The adapter does not invent that metadata: callers supply
+account addresses, and an unknown field encoding produces an explicit error.
+Linting still checks the reported interface and compares `quasar.lock.json`;
+its scope is the metadata present in the IDL.
+
+Before 0.2.0 is published, replace the generated `quasar-lang` dependency with
+a path to this checkout's `lang` directory. No local CLI installation publishes
+crates or deploys a program.
 
 ## Commands
 
@@ -16,7 +51,7 @@ Scaffold a new Quasar project. Without `--yes`, this launches an interactive wiz
 
 - **Project name**: becomes the crate name and `Quasar.toml` project name
 - **Toolchain**: `solana` (cargo build-sbf) or `upstream` (cargo +nightly build-bpf)
-- **Testing framework**: None, Mollusk, QuasarSVM/Rust, QuasarSVM/Web3.js, or QuasarSVM/Kit
+- **Testing framework**: None, Mollusk/Rust, LiteSVM/Web3.js, or LiteSVM/Kit
 - **Template**: Minimal (single instruction) or Full (state, events, instruction files)
 - **Git setup**: Initialize + Commit, Initialize, or Skip
 
@@ -27,7 +62,7 @@ The wizard generates a complete project directory with `Cargo.toml`, `Quasar.tom
 | `-y, --yes` | Explicitly skip prompts and use saved defaults |
 | `--no-git` | Skip git repo setup |
 | `--test-language` | Set `none`, `rust`, or `typescript` |
-| `--rust-framework` | Set `quasar-svm` or `mollusk` for Rust tests |
+| `--rust-framework` | Set `mollusk` for Rust tests |
 | `--ts-sdk` | Set `kit` or `web3.js` for TypeScript tests |
 | `--template` | Set `minimal` or `full` |
 | `--toolchain` | Set `solana` or `upstream` |
@@ -135,11 +170,11 @@ quasar deploy --program-keypair ./my-key.json
 
 ### `quasar clean`
 
-Remove build artifacts from `target/deploy/`, `target/profile/`, `target/idl/`, and the configured `clients.path` directory from `Quasar.toml`.
+Remove build artifacts while preserving program keypairs from `target/deploy/`, `target/profile/`, `target/idl/`, and the configured `clients.path` directory from `Quasar.toml`.
 
 ### `quasar idl <path>`
 
-Generate the IDL for a program crate. Produces JSON, TypeScript client, and Rust client module. See [IDL docs](idl.md) for details.
+Generate the IDL for a program crate. Produces JSON, TypeScript client, and Rust client module. No `idl-build` feature is needed: `#[program]` emits a host-only IDL test.
 
 ### `quasar completions <shell>`
 
@@ -179,18 +214,29 @@ name = "my-program"
 
 [toolchain]
 type = "solana"
+# Optional overrides for build, test, and profile:
+tools_version = "v1.56"
+arch = "v3"
 
 [testing]
 language = "rust"
 
 [testing.rust]
-framework = "quasar-svm"
+framework = "mollusk"
 test = { program = "cargo", args = ["test", "tests::"] }
 
 [clients]
 path = "target/client"
 languages = ["rust"]
 ```
+
+`tools_version` overrides the platform-tools version passed to `cargo build-sbf`.
+If omitted, it defaults to v1.56. `arch` defaults to `"v3"`. Set `arch = "v0"`
+when using a test runtime that requires SBPFv0. These settings apply to
+normal, debug, watch, test and profiling builds using the Solana toolchain;
+the upstream toolchain does not use them. The selected compiler validates the
+version/architecture combination. See the
+[Anza migration guide](https://github.com/anza-xyz/cargo-build-sbf#sbfpv3-migration).
 
 ### Global config (`~/.quasar/config.toml`)
 

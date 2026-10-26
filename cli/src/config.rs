@@ -21,6 +21,8 @@ pub struct ProjectConfig {
 pub struct ToolchainConfig {
     #[serde(rename = "type")]
     pub toolchain_type: String,
+    pub tools_version: Option<String>,
+    pub arch: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -118,10 +120,7 @@ impl CommandSpec {
         program: impl Into<String>,
         args: impl IntoIterator<Item = impl Into<String>>,
     ) -> Self {
-        Self {
-            program: program.into(),
-            args: args.into_iter().map(Into::into).collect(),
-        }
+        Self { program: program.into(), args: args.into_iter().map(Into::into).collect() }
     }
 
     pub fn display(&self) -> String {
@@ -133,9 +132,7 @@ impl CommandSpec {
 
     pub fn parse(command: &str) -> Result<Self, CliError> {
         let Some(parts) = shlex::split(command) else {
-            return Err(CliError::message(format!(
-                "invalid command syntax: {command}"
-            )));
+            return Err(CliError::message(format!("invalid command syntax: {command}")));
         };
         Self::from_parts(parts).map_err(CliError::message)
     }
@@ -147,10 +144,7 @@ impl CommandSpec {
         let Some(program) = parts.next() else {
             return Err("command cannot be empty".to_string());
         };
-        Ok(Self {
-            program,
-            args: parts.collect(),
-        })
+        Ok(Self { program, args: parts.collect() })
     }
 }
 
@@ -189,16 +183,13 @@ fn default_true() -> bool {
 
 impl Default for UiConfig {
     fn default() -> Self {
-        Self {
-            animation: true,
-            color: true,
-        }
+        Self { animation: true, color: true }
     }
 }
 
 impl GlobalConfig {
     pub fn path() -> PathBuf {
-        dirs::home_dir()
+        std::env::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join(".quasar")
             .join("config.toml")
@@ -249,10 +240,7 @@ mod tests {
     #[test]
     fn animation_disabled_survives_roundtrip() {
         let config = GlobalConfig {
-            ui: UiConfig {
-                animation: false,
-                ..UiConfig::default()
-            },
+            ui: UiConfig { animation: false, ..UiConfig::default() },
             ..GlobalConfig::default()
         };
         let toml_str = config.to_toml();
@@ -282,10 +270,7 @@ mod tests {
                 git: Some("commit".into()),
                 package_manager: None,
             },
-            ui: UiConfig {
-                animation: false,
-                ..globals.ui
-            },
+            ui: UiConfig { animation: false, ..globals.ui },
         };
         let toml_str = saved.to_toml();
         let reloaded = GlobalConfig::load_from_str(&toml_str).unwrap();

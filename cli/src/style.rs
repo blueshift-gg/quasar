@@ -13,11 +13,7 @@ fn use_color() -> bool {
 
 /// Colored checkmark (green).
 pub fn success(msg: &str) -> String {
-    if use_color() {
-        format!("\x1b[38;5;83m\u{2714}\x1b[0m {msg}")
-    } else {
-        format!("[ok] {msg}")
-    }
+    if use_color() { format!("\x1b[38;5;83m\u{2714}\x1b[0m {msg}") } else { format!("[ok] {msg}") }
 }
 
 /// Colored X (red).
@@ -31,11 +27,7 @@ pub fn fail(msg: &str) -> String {
 
 /// Colored arrow (cyan) for in-progress steps.
 pub fn step(msg: &str) -> String {
-    if use_color() {
-        format!("\x1b[38;5;45m\u{279c}\x1b[0m {msg}")
-    } else {
-        format!("[..] {msg}")
-    }
+    if use_color() { format!("\x1b[38;5;45m\u{279c}\x1b[0m {msg}") } else { format!("[..] {msg}") }
 }
 
 /// Warning triangle (yellow).
@@ -49,38 +41,22 @@ pub fn warn(msg: &str) -> String {
 
 /// Bold text.
 pub fn bold(s: &str) -> String {
-    if use_color() {
-        format!("\x1b[1m{s}\x1b[0m")
-    } else {
-        s.to_string()
-    }
+    if use_color() { format!("\x1b[1m{s}\x1b[0m") } else { s.to_string() }
 }
 
 /// Dim text.
 pub fn dim(s: &str) -> String {
-    if use_color() {
-        format!("\x1b[2m{s}\x1b[0m")
-    } else {
-        s.to_string()
-    }
+    if use_color() { format!("\x1b[2m{s}\x1b[0m") } else { s.to_string() }
 }
 
 /// 256-color text.
 pub fn color(code: u8, s: &str) -> String {
-    if use_color() {
-        format!("\x1b[38;5;{code}m{s}\x1b[0m")
-    } else {
-        s.to_string()
-    }
+    if use_color() { format!("\x1b[38;5;{code}m{s}\x1b[0m") } else { s.to_string() }
 }
 
 /// Accent text to highlight interactive prompt keywords/controls.
 pub fn prompt_accent(s: &str) -> String {
-    if use_color() {
-        format!("\x1b[33m{s}\x1b[0m")
-    } else {
-        s.to_string()
-    }
+    if use_color() { format!("\x1b[33m{s}\x1b[0m") } else { s.to_string() }
 }
 
 /// Format a byte size in a human-readable way.
@@ -120,10 +96,7 @@ pub struct Progress {
 
 impl Progress {
     pub fn new(verbose: bool) -> Self {
-        Self {
-            verbose,
-            current: None,
-        }
+        Self { verbose, current: None }
     }
 
     pub fn step(&mut self, msg: impl Into<String>) {

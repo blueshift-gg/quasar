@@ -10,10 +10,7 @@ use {
 };
 
 fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("workspace root")
-        .to_path_buf()
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().expect("workspace root").to_path_buf()
 }
 
 fn write_file(path: &Path, contents: impl AsRef<str>) -> Result<(), Box<dyn Error>> {
@@ -52,9 +49,6 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "lib"]
 
-[features]
-idl-build = ["quasar-lang/idl-build"]
-
 [dependencies]
 quasar-lang = {{ path = "{}" }}
 "#,
@@ -74,12 +68,14 @@ declare_id!("11111111111111111111111111111111");
 mod lint_demo {{
     use super::*;
 
-    #[instruction(discriminator = 0)]
-    pub fn make(_ctx: Ctx<Make>, amount: {amount_ty}) -> Result<(), ProgramError> {{
-        let _ = amount;
+    #[instruction(0)]
+    pub fn make(_ctx: Ctx<Make, Amount>) -> Result<()> {{
         Ok(())
     }}
 }}
+
+#[derive(InstructionData)]
+pub struct Amount {{ pub amount: {amount_ty} }}
 
 #[account(discriminator = 1)]
 pub struct Vault {{

@@ -1,0 +1,33 @@
+error[E0277]: `seeds(..)` is for a `Pda<..>` field, not `quasar_lang::account::Account<Vault>`
+  --> tests/ui/fail/seeds_on_a_field_that_is_not_a_pda.rs:15:16
+   |
+15 |     pub vault: Account<Vault>,
+   |                ^^^^^^^^^^^^^^ declare the field as `Pda<quasar_lang::account::Account<Vault>>`
+   |
+   = help: the trait `Seeded` is not implemented for `quasar_lang::account::Account<Vault>`
+help: the trait `Seeded` is implemented for `Pda<W, S>`
+  --> $WORKSPACE/lang/src/pda.rs
+   |
+   | impl<W: Wrapper, S> Seeded for Pda<W, S> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no associated function or constant named `seeds` found for type `_` in the current scope
+  --> tests/ui/fail/seeds_on_a_field_that_is_not_a_pda.rs:11:10
+   |
+11 | #[derive(Accounts)]
+   |          ^^^^^^^^ associated function or constant not found in `_`
+   |
+   = note: this error originates in the derive macro `Accounts` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: `seeds(..)` is for a `Pda<..>` field, not `quasar_lang::account::Account<Vault>`
+  --> tests/ui/fail/seeds_on_a_field_that_is_not_a_pda.rs:15:9
+   |
+15 |     pub vault: Account<Vault>,
+   |         ^^^^^ declare the field as `Pda<quasar_lang::account::Account<Vault>>`
+   |
+   = help: the trait `Seeded` is not implemented for `quasar_lang::account::Account<Vault>`
+help: the trait `Seeded` is implemented for `Pda<W, S>`
+  --> $WORKSPACE/lang/src/pda.rs
+   |
+   | impl<W: Wrapper, S> Seeded for Pda<W, S> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

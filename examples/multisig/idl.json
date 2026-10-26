@@ -1,0 +1,55 @@
+{
+  "address": "44444444444444444444444444444444444444444444",
+  "name": "multisig",
+  "instructions": [
+    {
+      "name": "create",
+      "discriminator": [0],
+      "accounts": [
+        { "name": "creator", "writable": true, "signer": true, "optional": false, "remaining": false },
+        { "name": "config", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "rent", "writable": false, "signer": false, "optional": false, "remaining": false },
+        { "name": "system_program", "writable": false, "signer": false, "optional": false, "remaining": false },
+        { "name": "members", "writable": false, "signer": true, "optional": false, "remaining": true }
+      ],
+      "args": [{ "name": "threshold", "type": "u8" }]
+    },
+    {
+      "name": "deposit",
+      "discriminator": [1],
+      "accounts": [
+        { "name": "depositor", "writable": true, "signer": true, "optional": false, "remaining": false },
+        { "name": "config", "writable": false, "signer": false, "optional": false, "remaining": false },
+        { "name": "vault", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "system_program", "writable": false, "signer": false, "optional": false, "remaining": false }
+      ],
+      "args": [{ "name": "amount", "type": "u64" }]
+    },
+    {
+      "name": "set_label",
+      "discriminator": [2],
+      "accounts": [
+        { "name": "creator", "writable": true, "signer": true, "optional": false, "remaining": false },
+        { "name": "config", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "system_program", "writable": false, "signer": false, "optional": false, "remaining": false }
+      ],
+      "args": [{ "name": "label", "type": "ArrayString<32>" }]
+    },
+    {
+      "name": "execute_transfer",
+      "discriminator": [3],
+      "accounts": [
+        { "name": "config", "writable": false, "signer": false, "optional": false, "remaining": false },
+        { "name": "creator", "writable": false, "signer": false, "optional": false, "remaining": false },
+        { "name": "vault", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "recipient", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "system_program", "writable": false, "signer": false, "optional": false, "remaining": false },
+        { "name": "approvals", "writable": false, "signer": true, "optional": false, "remaining": true }
+      ],
+      "args": [{ "name": "amount", "type": "u64" }]
+    }
+  ],
+  "accounts": [
+    { "name": "MultisigConfig", "discriminator": [1], "size": null, "fields": [{ "name": "creator", "type": "Address" }, { "name": "threshold", "type": "u8" }, { "name": "bump", "type": "u8" }, { "name": "label", "type": "String<32>" }, { "name": "members", "type": "Vec<Address, 10>" }] }
+  ]
+}

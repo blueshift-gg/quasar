@@ -25,11 +25,7 @@ pub(super) fn read_target_rustflags() -> Vec<String> {
         .and_then(|t| t.get("bpfel-unknown-none"))
         .and_then(|t| t.get("rustflags"))
         .and_then(|f| f.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        })
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
         .unwrap_or_default()
 }
 
@@ -38,19 +34,16 @@ pub(super) fn ensure_lockfile(sp: &indicatif::ProgressBar) -> Result<(), CliErro
     let lock_exists = lock_path.exists();
 
     let needs_refresh = if lock_exists {
-        fs::metadata(lock_path)
-            .and_then(|m| m.modified())
-            .ok()
-            .is_none_or(|lock_t| {
-                workspace_manifest_paths()
-                    .map(|paths| {
-                        paths
-                            .into_iter()
-                            .filter_map(|path| fs::metadata(path).and_then(|m| m.modified()).ok())
-                            .any(|manifest_t| manifest_t > lock_t)
-                    })
-                    .unwrap_or(true)
-            })
+        fs::metadata(lock_path).and_then(|m| m.modified()).ok().is_none_or(|lock_t| {
+            workspace_manifest_paths()
+                .map(|paths| {
+                    paths
+                        .into_iter()
+                        .filter_map(|path| fs::metadata(path).and_then(|m| m.modified()).ok())
+                        .any(|manifest_t| manifest_t > lock_t)
+                })
+                .unwrap_or(true)
+        })
     } else {
         true
     };

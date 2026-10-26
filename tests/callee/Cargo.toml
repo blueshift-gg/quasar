@@ -1,0 +1,18 @@
+[package]
+name = "callee"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+# Leaves out the entrypoint, for programs that call this one.
+no-entrypoint = []
+
+[dependencies]
+quasar-lang.workspace = true
+
+[lints]
+workspace = true

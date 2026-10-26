@@ -1,6 +1,0 @@
-error: `init` cannot be used with `Migration<From, To>`
-  --> tests/compile_fail/migration_init_blocked.rs:24:5
-   |
-24 | /     #[account(init, payer = payer)]
-25 | |     pub config: Migration<ConfigV1, ConfigV2>,
-   | |_____________________________________________^

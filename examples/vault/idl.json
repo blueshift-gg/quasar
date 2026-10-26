@@ -1,0 +1,29 @@
+{
+  "address": "33333333333333333333333333333333333333333333",
+  "name": "quasar_vault",
+  "instructions": [
+    {
+      "name": "deposit",
+      "discriminator": [0],
+      "accounts": [
+        { "name": "user", "writable": true, "signer": true, "optional": false, "remaining": false },
+        { "name": "vault", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "system_program", "writable": false, "signer": false, "optional": false, "remaining": false }
+      ],
+      "args": [{ "name": "amount", "type": "u64" }]
+    },
+    {
+      "name": "withdraw",
+      "discriminator": [1],
+      "accounts": [
+        { "name": "user", "writable": true, "signer": true, "optional": false, "remaining": false },
+        { "name": "vault", "writable": true, "signer": false, "optional": false, "remaining": false },
+        { "name": "system_program", "writable": false, "signer": false, "optional": false, "remaining": false }
+      ],
+      "args": [{ "name": "amount", "type": "u64" }]
+    }
+  ],
+  "accounts": [
+
+  ]
+}

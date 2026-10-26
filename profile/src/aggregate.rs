@@ -36,9 +36,5 @@ pub(crate) fn profile(mmap: &[u8], info: &ElfInfo, resolver: &Resolver) -> Profi
     let mut stack_counts: Vec<_> = stack_counts.into_iter().collect();
     stack_counts.sort_by(|a, b| a.0.iter().cmp(b.0.iter()));
 
-    ProfileResult {
-        stack_counts,
-        total_cus,
-        function_cus,
-    }
+    ProfileResult { stack_counts, total_cus, function_cus }
 }

@@ -1,0 +1,16 @@
+error[E0080]: evaluation panicked: only accounts this program owns can be closed
+ --> tests/ui/fail/close_an_account_the_program_does_not_own.rs:8:17
+  |
+8 |     pub wallet: SystemAccount,
+  |                 ^^^^^^^^^^^^^ evaluation of `_` failed inside this call
+  |
+note: inside `closable::<quasar_lang::wrapper::SystemAccount>`
+ --> $RUST/core/src/panic.rs
+  |
+  |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+  |
+ ::: $WORKSPACE/lang/src/effects.rs
+  |
+  |     assert!(W::PROGRAM_OWNED, "only accounts this program owns can be closed");
+  |     -------------------------------------------------------------------------- in this macro invocation

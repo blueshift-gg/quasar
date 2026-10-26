@@ -1,7 +1,0 @@
-error: #[error_code] can only be used on enums
- --> tests/compile_fail/error_code_on_struct.rs:4:1
-  |
-4 | / pub struct NotAnEnum {
-5 | |     pub field: u64,
-6 | | }
-  | |_^

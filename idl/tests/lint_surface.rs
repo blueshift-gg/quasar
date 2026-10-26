@@ -8,12 +8,7 @@ fn primitive(name: &str) -> IdlType {
 }
 
 fn field(name: &str, ty: IdlType) -> IdlFieldDef {
-    IdlFieldDef {
-        name: name.to_owned(),
-        ty,
-        codec: None,
-        docs: Vec::new(),
-    }
+    IdlFieldDef { name: name.to_owned(), ty, codec: None, docs: Vec::new() }
 }
 
 fn account_type(name: &str, fields: Vec<IdlFieldDef>) -> IdlTypeDef {
@@ -92,12 +87,7 @@ fn instruction(
 }
 
 fn arg(name: &str, ty: IdlType) -> IdlArg {
-    IdlArg {
-        name: name.to_owned(),
-        ty,
-        codec: None,
-        docs: Vec::new(),
-    }
+    IdlArg { name: name.to_owned(), ty, codec: None, docs: Vec::new() }
 }
 
 fn base_idl() -> Idl {
@@ -121,12 +111,8 @@ fn base_idl() -> Idl {
                     IdlResolver::Pda {
                         program: IdlPdaProgram::ProgramId {},
                         seeds: vec![
-                            IdlPdaSeed::Const {
-                                value: b"vault".to_vec(),
-                            },
-                            IdlPdaSeed::Account {
-                                path: "authority".to_owned(),
-                            },
+                            IdlPdaSeed::Const { value: b"vault".to_vec() },
+                            IdlPdaSeed::Account { path: "authority".to_owned() },
                         ],
                         bump: Some(IdlPdaBump::Canonical {}),
                     },
@@ -145,12 +131,7 @@ fn base_idl() -> Idl {
                 vec![
                     field("version", primitive("u8")),
                     field("amount", primitive("u64")),
-                    field(
-                        "_reserved",
-                        IdlType::Array {
-                            array: (Box::new(primitive("u8")), 64),
-                        },
-                    ),
+                    field("_reserved", IdlType::Array { array: (Box::new(primitive("u8")), 64) }),
                 ],
             ),
             enum_type("Mode", vec![("Open", 0), ("Closed", 1)]),
@@ -176,11 +157,7 @@ fn surface_preserves_ordered_account_instruction_and_pda_shape() {
 
     assert_eq!(surface.accounts[0].name, "Vault");
     assert_eq!(
-        surface.accounts[0]
-            .fields
-            .iter()
-            .map(|field| field.name.as_str())
-            .collect::<Vec<_>>(),
+        surface.accounts[0].fields.iter().map(|field| field.name.as_str()).collect::<Vec<_>>(),
         vec!["version", "amount", "_reserved"]
     );
     assert_eq!(surface.instructions[0].accounts[1].name, "vault");
@@ -212,9 +189,7 @@ fn diff_rules_find_breaking_release_surface_changes() {
     new_idl.instructions[0].args[0] = arg("amount", primitive("u32"));
     new_idl.instructions[0].accounts[1].resolver = IdlResolver::Pda {
         program: IdlPdaProgram::ProgramId {},
-        seeds: vec![IdlPdaSeed::Const {
-            value: b"vault-v2".to_vec(),
-        }],
+        seeds: vec![IdlPdaSeed::Const { value: b"vault-v2".to_vec() }],
         bump: Some(IdlPdaBump::Canonical {}),
     };
     new_idl.events[0].discriminator = vec![8];
@@ -235,9 +210,7 @@ fn diff_rules_find_breaking_release_surface_changes() {
 fn additive_changes_do_not_fail_by_default() {
     let old = ProgramSurface::from_idl(&base_idl());
     let mut new_idl = base_idl();
-    new_idl.types[0]
-        .fields
-        .push(field("new_tail_field", primitive("u64")));
+    new_idl.types[0].fields.push(field("new_tail_field", primitive("u64")));
     new_idl.types[1] = enum_type("Mode", vec![("Open", 0), ("Closed", 1), ("Paused", 2)]);
     let new = ProgramSurface::from_idl(&new_idl);
 
@@ -270,22 +243,11 @@ fn preflight_warns_when_auto_instruction_discriminators_are_unlocked() {
         serde_json::json!({ "make": "auto" }),
     );
 
-    let report = lint::run(
-        &idl,
-        &lint::LintConfig {
-            strict: false,
-            lockfile_present: false,
-        },
-    );
+    let report = lint::run(&idl, &lint::LintConfig { strict: false, lockfile_present: false });
     assert!(report.contains(RuleCode::P008));
 
-    let locked_report = lint::run(
-        &idl,
-        &lint::LintConfig {
-            strict: false,
-            lockfile_present: true,
-        },
-    );
+    let locked_report =
+        lint::run(&idl, &lint::LintConfig { strict: false, lockfile_present: true });
     assert!(!locked_report.contains(RuleCode::P008));
 }
 
@@ -302,9 +264,7 @@ fn diff_rules_cover_account_layout_breaks() {
     assert!(lint::diff(&old, &ProgramSurface::from_idl(&removed)).contains(RuleCode::R003));
 
     let mut inserted = base_idl();
-    inserted.types[0]
-        .fields
-        .insert(1, field("inserted", primitive("u8")));
+    inserted.types[0].fields.insert(1, field("inserted", primitive("u8")));
     assert!(lint::diff(&old, &ProgramSurface::from_idl(&inserted)).contains(RuleCode::R004));
 
     let mut discriminator = base_idl();

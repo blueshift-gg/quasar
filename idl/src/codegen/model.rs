@@ -19,11 +19,8 @@ impl ResolvedIdentity {
     pub fn from_idl(idl: &Idl) -> Self {
         let program_name = idl.name.clone();
         let crate_name = idl.metadata.crate_name.clone().unwrap_or_default();
-        let client_name = if crate_name.is_empty() {
-            program_name.clone()
-        } else {
-            crate_name.clone()
-        };
+        let client_name =
+            if crate_name.is_empty() { program_name.clone() } else { crate_name.clone() };
         let go_package = client_name.replace('-', "_");
 
         Self {
@@ -176,20 +173,13 @@ pub fn type_has_public_key(ty: &IdlType) -> bool {
 }
 
 pub fn python_field_path(path: &str) -> String {
-    path.split('.')
-        .map(camel_to_snake)
-        .collect::<Vec<_>>()
-        .join(".")
+    path.split('.').map(camel_to_snake).collect::<Vec<_>>().join(".")
 }
 
 pub fn go_field_path(path: &str) -> String {
     path.split('.')
         .map(|segment| {
-            if segment.contains('_') {
-                snake_to_pascal(segment)
-            } else {
-                camel_to_pascal(segment)
-            }
+            if segment.contains('_') { snake_to_pascal(segment) } else { camel_to_pascal(segment) }
         })
         .collect::<Vec<_>>()
         .join(".")
@@ -206,11 +196,7 @@ mod tests {
             version: "0.1.0".to_string(),
             address: "11111111111111111111111111111111".to_string(),
             metadata: IdlMetadata {
-                crate_name: if crate_name.is_empty() {
-                    None
-                } else {
-                    Some(crate_name.to_string())
-                },
+                crate_name: if crate_name.is_empty() { None } else { Some(crate_name.to_string()) },
                 ..Default::default()
             },
             docs: vec![],

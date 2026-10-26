@@ -1,6 +1,0 @@
-error: `realloc = ...` cannot be used on Option<T> fields
-  --> tests/compile_fail/realloc_bad_optional.rs:13:5
-   |
-13 | /     #[account(mut, realloc = 64)]
-14 | |     pub account: Option<Account<DemoAccount>>,
-   | |_____________________________________________^

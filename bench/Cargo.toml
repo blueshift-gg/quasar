@@ -1,0 +1,31 @@
+[package]
+name = "bench"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+default-run = "bench"
+
+[features]
+# For the `profile` binary: `make profile`.
+profile = ["quasar-test/trace", "dep:addr2line", "dep:object"]
+
+[[bin]]
+name = "profile"
+required-features = ["profile"]
+
+[dependencies]
+addr2line = { version = "0.25", optional = true }
+object = { version = "0.37", optional = true }
+amm = { path = "../examples/amm" }
+escrow = { path = "../examples/escrow" }
+multisig = { path = "../examples/multisig" }
+quasar-lang.workspace = true
+quasar-test.workspace = true
+lamport-vault = { path = "../examples/lamport-vault" }
+quasar-spl.workspace = true
+solana-program-pack = "=3.1.0"
+spl-token-interface = "=2.0.0"
+vault = { path = "../examples/vault" }
+
+[lints]
+workspace = true

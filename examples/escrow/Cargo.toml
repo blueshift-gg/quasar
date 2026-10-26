@@ -1,27 +1,22 @@
 [package]
-name = "quasar-escrow"
-version = "0.1.0"
-edition = "2021"
+name = "escrow"
+version = "0.0.0"
+edition.workspace = true
+publish = false
 
 [lib]
 crate-type = ["cdylib", "lib"]
-doctest = false
+
+[dependencies]
+quasar-lang.workspace = true
+quasar-spl.workspace = true
+
+[dev-dependencies]
+mollusk-svm-programs-token-2022 = "=0.16.2"
+quasar-test.workspace = true
+solana-program-option = "=3.0.0"
+solana-program-pack = "=3.1.0"
+spl-token-interface = "=2.0.0"
 
 [lints]
 workspace = true
-
-[features]
-alloc = []
-client = []
-debug = []
-idl-build = ["quasar-lang/idl-build"]
-
-[dependencies]
-quasar-lang = { path = "../../lang" }
-quasar-spl = { path = "../../spl" }
-
-[dev-dependencies]
-quasar-escrow-client = { path = "client" }
-wincode = { version = "0.4", features = ["derive"] }
-quasar-svm = { git = "https://github.com/blueshift-gg/quasar-svm" }
-spl-token-interface = { version = "2.0.0" }

@@ -8,11 +8,7 @@ pub(crate) struct InstructionWalker<'a> {
 
 impl<'a> InstructionWalker<'a> {
     pub(crate) fn new(text: &'a [u8], text_base: u64) -> Self {
-        Self {
-            text,
-            text_base,
-            offset: 0,
-        }
+        Self { text, text_base, offset: 0 }
     }
 }
 

@@ -1,7 +1,7 @@
 use std::fmt;
 
-#[derive(Debug, Clone, Copy)]
-pub(super) enum Toolchain {
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum Toolchain {
     Solana,
     Upstream,
 }
@@ -15,10 +15,11 @@ impl fmt::Display for Toolchain {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(super) enum TestLanguage {
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum TestLanguage {
     None,
     Rust,
+    #[value(name = "typescript")]
     TypeScript,
 }
 
@@ -32,24 +33,24 @@ impl fmt::Display for TestLanguage {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(super) enum RustFramework {
-    QuasarSVM,
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum RustFramework {
+    #[value(alias = "quasar-svm")]
     Mollusk,
 }
 
 impl fmt::Display for RustFramework {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            RustFramework::QuasarSVM => write!(f, "quasar-svm"),
             RustFramework::Mollusk => write!(f, "mollusk"),
         }
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(super) enum TypeScriptSdk {
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum TypeScriptSdk {
     Kit,
+    #[value(name = "web3.js")]
     Web3js,
 }
 
@@ -62,8 +63,8 @@ impl fmt::Display for TypeScriptSdk {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(super) enum Template {
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum Template {
     Minimal,
     Full,
 }

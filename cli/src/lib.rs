@@ -81,24 +81,24 @@ pub struct InitCommand {
     pub no_git: bool,
 
     /// Test language (none, rust, typescript)
-    #[arg(long)]
-    pub test_language: Option<String>,
+    #[arg(long, value_enum)]
+    pub test_language: Option<init::TestLanguage>,
 
-    /// Rust test framework (quasar-svm, mollusk)
-    #[arg(long)]
-    pub rust_framework: Option<String>,
+    /// Rust test framework (mollusk)
+    #[arg(long, value_enum)]
+    pub rust_framework: Option<init::RustFramework>,
 
     /// TypeScript SDK (kit, web3.js)
-    #[arg(long)]
-    pub ts_sdk: Option<String>,
+    #[arg(long, value_enum)]
+    pub ts_sdk: Option<init::TypeScriptSdk>,
 
     /// Project template (minimal, full)
-    #[arg(long)]
-    pub template: Option<String>,
+    #[arg(long, value_enum)]
+    pub template: Option<init::Template>,
 
     /// Toolchain (solana, upstream)
-    #[arg(long)]
-    pub toolchain: Option<String>,
+    #[arg(long, value_enum)]
+    pub toolchain: Option<init::Toolchain>,
 
     /// Show each scaffold step as it runs
     #[arg(long, action = ArgAction::SetTrue)]
@@ -401,11 +401,7 @@ pub fn run(cli: Cli) -> CliResult {
             };
 
             quasar_profile::run(quasar_profile::ProfileCommand {
-                elf_path: if elf_path.as_os_str().is_empty() {
-                    None
-                } else {
-                    Some(elf_path)
-                },
+                elf_path: if elf_path.as_os_str().is_empty() { None } else { Some(elf_path) },
                 diff_program: cmd.diff_program,
                 share: cmd.share,
                 expand: cmd.expand,
@@ -421,48 +417,23 @@ pub fn print_help() {
     let v = env!("CARGO_PKG_VERSION");
 
     println!();
-    println!(
-        "  {} {}",
-        style::bold("quasar"),
-        style::dim(&format!("v{v}"))
-    );
-    println!(
-        "  {}",
-        style::dim("Build programs that execute at the speed of light")
-    );
+    println!("  {} {}", style::bold("quasar"), style::dim(&format!("v{v}")));
+    println!("  {}", style::dim("Build programs that execute at the speed of light"));
     println!();
     println!("  {}", style::bold("Commands:"));
-    print_cmd(
-        "init    [name] [-y] [--no-git] [--template] [--verbose]",
-        "Scaffold a new project",
-    );
-    print_cmd(
-        "add     [-i name] [-s name] [-e name]",
-        "Add instructions, state, errors",
-    );
-    print_cmd(
-        "build   [--debug] [--verbose] [-w] [--features]",
-        "Compile the on-chain program",
-    );
+    print_cmd("init    [name] [-y] [--no-git] [--template] [--verbose]", "Scaffold a new project");
+    print_cmd("add     [-i name] [-s name] [-e name]", "Add instructions, state, errors");
+    print_cmd("build   [--debug] [--verbose] [-w] [--features]", "Compile the on-chain program");
     print_cmd(
         "test    [--debug] [--show-output] [-f] [-w] [--features] [--verbose]",
         "Run the test suite",
     );
-    print_cmd(
-        "deploy  [-u url] [-k keypair] [--skip-build]",
-        "Deploy to a cluster",
-    );
+    print_cmd("deploy  [-u url] [-k keypair] [--skip-build]", "Deploy to a cluster");
     print_cmd("clean   [-a]", "Remove build artifacts");
     print_cmd("config  [get|set|list|reset]", "Manage global settings");
     print_cmd("idl     <path>", "Generate the program IDL");
-    print_cmd(
-        "client  <idl> [--lang ts,py,go]",
-        "Generate client code from IDL",
-    );
-    print_cmd(
-        "profile [elf] [--expand] [--diff] [-w]",
-        "Measure compute-unit usage",
-    );
+    print_cmd("client  <idl> [--lang ts,py,go]", "Generate client code from IDL");
+    print_cmd("profile [elf] [--expand] [--diff] [-w]", "Measure compute-unit usage");
     print_cmd("keys    [list|sync|new]", "Manage program keypair");
     print_cmd("dump    [elf] [-f] [-S]", "Dump sBPF assembly");
     println!();
@@ -470,10 +441,7 @@ pub fn print_help() {
     print_cmd("-h, --help", "Print help");
     print_cmd("-V, --version", "Print version");
     println!();
-    println!(
-        "  Run {} for details on any command.",
-        style::bold("quasar <command> --help")
-    );
+    println!("  Run {} for details on any command.", style::bold("quasar <command> --help"));
     println!();
 }
 

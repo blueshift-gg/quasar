@@ -1,5 +1,0 @@
-error: #[derive(Accounts)] only supports lifetime parameters; type parameters are not supported
- --> tests/compile_fail/accounts_type_generic.rs:5:30
-  |
-5 | pub struct BadGenericAccount<T> {
-  |                              ^
