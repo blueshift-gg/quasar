@@ -392,7 +392,10 @@ fn validate_project_name(name: &str) -> CliResult {
         && module.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
         && name
             .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-');
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-')
+        // syn accepts `gen`, but the generated crate uses Rust 2024, where it is reserved.
+        && module != "gen"
+        && syn::parse_str::<syn::Ident>(&module).is_ok();
 
     if valid {
         return Ok(());
@@ -501,7 +504,35 @@ mod tests {
     }
 
     #[test]
-    fn accepts_hyphenated_project_name() {
-        validate_project_name("my-program").expect("hyphenated crate names are valid");
+    fn rejects_rust_keywords_as_project_names() {
+        for name in [
+            "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum",
+            "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod",
+            "move", "mut", "pub", "ref", "return", "self", "Self", "static", "struct", "super",
+            "trait", "true", "type", "unsafe", "use", "where", "while", "abstract", "become",
+            "box", "do", "final", "gen", "macro", "override", "priv", "try", "typeof", "unsized",
+            "virtual", "yield",
+        ] {
+            let err = crate_name_for_target(name).expect_err(name);
+            assert!(err.to_string().contains(&format!("invalid project name: \"{name}\"")));
+        }
+    }
+
+    #[test]
+    fn accepts_valid_project_names() {
+        for name in [
+            "my-program",
+            "my_program",
+            "vault2",
+            "type-vault",
+            "async_program",
+            "gen-vault",
+            "union",
+            "macro_rules",
+            "raw",
+            "safe",
+        ] {
+            assert_eq!(crate_name_for_target(name).expect(name), name);
+        }
     }
 }
