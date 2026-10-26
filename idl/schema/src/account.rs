@@ -13,6 +13,9 @@ pub struct IdlAccountDef {
     pub docs: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub space: Option<IdlSpace>,
+    /// PDA declaration used for standalone helpers, not instruction resolution.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seeds: Option<Vec<IdlPdaSeed>>,
 }
 
 /// An account node in an instruction's account list (the resolver graph).

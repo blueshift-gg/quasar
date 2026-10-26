@@ -52,6 +52,14 @@ pub struct IdlKind {
     /// The data length, when every account of the kind has the same.
     pub size: Option<usize>,
     pub fields: &'static [IdlField],
+    /// Declared PDA seeds, independent of instruction constraints.
+    pub seeds: Option<&'static [IdlSeed]>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum IdlSeed {
+    Const(&'static [u8]),
+    Param(IdlField),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -87,11 +95,18 @@ impl Idl {
             )
         });
         let kinds = self.kinds.iter().map(|kind| {
-            let IdlKind { name, discriminator, size, fields: kind_fields } = kind;
+            let IdlKind { name, discriminator, size, fields: kind_fields, seeds } = kind;
             let size = size.map_or("null".into(), |size| format!("{size}"));
             let kind_fields = fields(kind_fields);
+            let seeds = seeds.map_or(String::new(), |seeds| {
+                let seeds = seeds.iter().map(|seed| match seed {
+                    IdlSeed::Const(value) => format!(r#"{{ "kind": "const", "value": {value:?} }}"#),
+                    IdlSeed::Param(IdlField { name, ty }) => format!(r#"{{ "kind": "param", "name": "{name}", "type": "{ty}" }}"#),
+                }).collect::<Vec<_>>().join(", ");
+                format!(r#", "seeds": [{seeds}]"#)
+            });
             format!(
-                r#"    {{ "name": "{name}", "discriminator": {discriminator:?}, "size": {size}, "fields": [{kind_fields}] }}"#
+                r#"    {{ "name": "{name}", "discriminator": {discriminator:?}, "size": {size}, "fields": [{kind_fields}]{seeds} }}"#
             )
         });
         format!(
