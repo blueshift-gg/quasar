@@ -162,6 +162,46 @@ mod tests {
     }
 
     #[test]
+    fn rust_instruction_names_use_pascal_case() {
+        for (name, module, pascal) in [
+            ("create_market", "create_market", "CreateMarket"),
+            ("createMarket", "create_market", "CreateMarket"),
+            ("create", "create", "Create"),
+        ] {
+            for has_args in [false, true] {
+                let mut idl = idl_with_pubkey_arg();
+                idl.instructions[0].name = name.to_owned();
+                if !has_args {
+                    idl.instructions[0].args.clear();
+                }
+                let files = generate_rust_client(&idl);
+                let instruction = files
+                    .iter()
+                    .find_map(|(path, contents)| {
+                        (path == &format!("instructions/{module}.rs")).then_some(contents)
+                    })
+                    .expect("instruction file generated");
+                assert!(instruction.contains(&format!("pub struct {pascal}Instruction {{")));
+                assert!(instruction.contains(&format!("impl From<{pascal}Instruction>")));
+                assert!(instruction.contains(&format!("fn from(ix: {pascal}Instruction)")));
+
+                let module_rs = files
+                    .iter()
+                    .find_map(|(path, contents)| {
+                        (path == "instructions/mod.rs").then_some(contents)
+                    })
+                    .expect("instruction module generated");
+                assert!(module_rs.contains(&format!("pub mod {module};")));
+                assert!(module_rs.contains(&format!("pub use {module}::*;")));
+                let suffix = if has_args { " {" } else { "," };
+                assert!(module_rs.contains(&format!("    {pascal}{suffix}")));
+                let suffix = if has_args { " {" } else { ")" };
+                assert!(module_rs.contains(&format!("Some(ProgramInstruction::{pascal}{suffix}")));
+            }
+        }
+    }
+
+    #[test]
     fn rust_pda_arg_seed_uses_typed_encoding() {
         let files = generate_rust_client(&idl_with_u64_arg_seed());
         let pda_rs = files
