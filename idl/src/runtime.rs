@@ -45,7 +45,7 @@ struct Field {
     ty: String,
 }
 
-/// Read either a public schema IDL or the interface emitted by Quasar 0.3.
+/// Read either a public schema IDL or the interface emitted by Quasar 0.2.
 /// Unknown type encodings fail explicitly instead of producing broken clients.
 pub fn read(json: &str) -> Result<Idl, String> {
     let value: Value = serde_json::from_str(json).map_err(|e| e.to_string())?;
@@ -89,7 +89,7 @@ pub fn read(json: &str) -> Result<Idl, String> {
     serde_json::from_value(json!({
         "spec": "quasar-idl/1.0.0", "name": runtime.name, "version": "0.0.0",
         "address": runtime.address, "instructions": instructions, "accounts": accounts, "types": types,
-        "metadata": {"extra": {"encoding": "borsh", "interface": "quasar-0.3"}}
+        "metadata": {"extra": {"encoding": "borsh", "interface": "quasar-0.2"}}
     })).map_err(|e| e.to_string())
 }
 

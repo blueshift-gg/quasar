@@ -1,7 +1,7 @@
 # Metaplex Token Metadata
 
 `quasar-metadata` integrates the Metaplex Token Metadata program with Quasar
-0.3. It depends only on `quasar-lang` at runtime. The official
+0.2. It depends only on `quasar-lang` at runtime. The official
 `mpl-token-metadata` 5.1.1 SDK is a test dependency used to check instruction
 bytes, account ordering, signer flags, writable flags, and PDA derivation.
 

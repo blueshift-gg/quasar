@@ -4,17 +4,17 @@ members = ["bench", "cli", "idl", "idl/schema", "profile", "schema", "derive", "
 exclude = ["bench/rivals"]
 
 [workspace.package]
-version = "0.3.0"
+version = "0.2.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/blueshift-gg/quasar"
 
 [workspace.dependencies]
-quasar-lang = { version = "=0.3.0", path = "lang" }
-quasar-test = { version = "=0.3.0", path = "test" }
-quasar-spl = { version = "=0.3.0", path = "spl" }
-quasar-metadata = { version = "=0.3.0", path = "metadata" }
-quasar-derive = { version = "=0.3.0", path = "derive" }
+quasar-lang = { version = "=0.2.0", path = "lang" }
+quasar-test = { version = "=0.2.0", path = "test" }
+quasar-spl = { version = "=0.2.0", path = "spl" }
+quasar-metadata = { version = "=0.2.0", path = "metadata" }
+quasar-derive = { version = "=0.2.0", path = "derive" }
 
 solana-address = { version = "=2.7.0", default-features = false, features = [
     "copy",

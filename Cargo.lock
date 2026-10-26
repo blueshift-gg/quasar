@@ -2516,7 +2516,7 @@ dependencies = [
 
 [[package]]
 name = "quasar-cli"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "bs58",
  "clap",
@@ -2540,7 +2540,7 @@ dependencies = [
 
 [[package]]
 name = "quasar-derive"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "proc-macro2",
  "quasar-lang",
@@ -2553,7 +2553,7 @@ dependencies = [
 
 [[package]]
 name = "quasar-idl"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "bs58",
  "quasar-idl-schema",
@@ -2564,7 +2564,7 @@ dependencies = [
 
 [[package]]
 name = "quasar-idl-schema"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -2573,7 +2573,7 @@ dependencies = [
 
 [[package]]
 name = "quasar-lang"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "proptest",
  "quasar-derive",
@@ -2588,7 +2588,7 @@ dependencies = [
 
 [[package]]
 name = "quasar-metadata"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "mpl-token-metadata",
  "quasar-lang",
@@ -2597,7 +2597,7 @@ dependencies = [
 
 [[package]]
 name = "quasar-profile"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "addr2line 0.24.2",
  "chrono",
@@ -2614,11 +2614,11 @@ dependencies = [
 
 [[package]]
 name = "quasar-schema"
-version = "0.3.0"
+version = "0.2.0"
 
 [[package]]
 name = "quasar-spl"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "proptest",
  "quasar-lang",
@@ -2629,7 +2629,7 @@ dependencies = [
 
 [[package]]
 name = "quasar-test"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "agave-feature-set",
  "base64 0.22.1",
