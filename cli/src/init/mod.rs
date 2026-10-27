@@ -323,7 +323,7 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
         if no_git { globals.defaults.git.clone() } else { Some(git_setup.to_string()) };
     let saved_pm = package_manager
         .as_ref()
-        .map(|pm| pm.to_string())
+        .map(ToString::to_string)
         .or_else(|| globals.defaults.package_manager.clone());
 
     let new_globals = GlobalConfig {

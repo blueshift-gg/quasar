@@ -12,14 +12,8 @@ use {
 /// Read rustflags from .cargo/config.toml for the bpfel-unknown-none target.
 pub(super) fn read_target_rustflags() -> Vec<String> {
     let config_path = Path::new(".cargo").join("config.toml");
-    let contents = match fs::read_to_string(&config_path) {
-        Ok(c) => c,
-        Err(_) => return vec![],
-    };
-    let value: toml::Value = match contents.parse() {
-        Ok(v) => v,
-        Err(_) => return vec![],
-    };
+    let Ok(contents) = fs::read_to_string(&config_path) else { return vec![] };
+    let Ok(value) = contents.parse::<toml::Value>() else { return vec![] };
     value
         .get("target")
         .and_then(|t| t.get("bpfel-unknown-none"))
@@ -35,14 +29,12 @@ pub(super) fn ensure_lockfile(sp: &indicatif::ProgressBar) -> Result<(), CliErro
 
     let needs_refresh = if lock_exists {
         fs::metadata(lock_path).and_then(|m| m.modified()).ok().is_none_or(|lock_t| {
-            workspace_manifest_paths()
-                .map(|paths| {
-                    paths
-                        .into_iter()
-                        .filter_map(|path| fs::metadata(path).and_then(|m| m.modified()).ok())
-                        .any(|manifest_t| manifest_t > lock_t)
-                })
-                .unwrap_or(true)
+            workspace_manifest_paths().map_or(true, |paths| {
+                paths
+                    .into_iter()
+                    .filter_map(|path| fs::metadata(path).and_then(|m| m.modified()).ok())
+                    .any(|manifest_t| manifest_t > lock_t)
+            })
         })
     } else {
         true

@@ -51,24 +51,18 @@ pub(super) fn format_build_errors(stderr: &str, elapsed: std::time::Duration) ->
     let err_count = errors.iter().filter(|l| l.starts_with("error")).count();
     let warn_count = errors.iter().filter(|l| l.starts_with("warning")).count();
 
-    let mut summary = String::new();
+    let mut summary = Vec::new();
     if err_count > 0 {
-        summary.push_str(&format!("{err_count} error{}", if err_count == 1 { "" } else { "s" }));
+        summary.push(format!("{err_count} error{}", if err_count == 1 { "" } else { "s" }));
     }
     if warn_count > 0 {
-        if !summary.is_empty() {
-            summary.push_str(", ");
-        }
-        summary
-            .push_str(&format!("{warn_count} warning{}", if warn_count == 1 { "" } else { "s" }));
+        summary.push(format!("{warn_count} warning{}", if warn_count == 1 { "" } else { "s" }));
     }
 
-    let mut message = String::new();
-    for line in &errors {
-        message.push_str(line);
-        message.push('\n');
-    }
-    message.push('\n');
-    message.push_str(&format!("build failed in {} ({summary})", style::human_duration(elapsed)));
-    message
+    format!(
+        "{}\n\nbuild failed in {} ({})",
+        errors.join("\n"),
+        style::human_duration(elapsed),
+        summary.join(", ")
+    )
 }

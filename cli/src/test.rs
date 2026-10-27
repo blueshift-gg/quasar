@@ -68,8 +68,8 @@ fn run_typescript_tests(
     let ts = config.testing.typescript.as_ref();
     let default_install = CommandSpec::new("npm", ["install"]);
     let default_test = CommandSpec::new("npx", ["vitest", "run"]);
-    let install_cmd = ts.map(|t| &t.install).unwrap_or(&default_install);
-    let test_cmd = ts.map(|t| &t.test).unwrap_or(&default_test);
+    let install_cmd = ts.map_or(&default_install, |t| &t.install);
+    let test_cmd = ts.map_or(&default_test, |t| &t.test);
 
     if !std::path::Path::new("node_modules").exists() {
         run_command(install_cmd, verbose)?;
@@ -85,7 +85,7 @@ fn run_rust_tests(
     verbose: bool,
 ) -> CliResult {
     let default_test = CommandSpec::new("cargo", ["test", "tests::"]);
-    let test_cmd = config.testing.rust.as_ref().map(|r| &r.test).unwrap_or(&default_test);
+    let test_cmd = config.testing.rust.as_ref().map_or(&default_test, |r| &r.test);
 
     run_test_cmd(test_cmd, filter, show_output, verbose)
 }

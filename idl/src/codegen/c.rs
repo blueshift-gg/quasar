@@ -531,7 +531,7 @@ fn c_type(ty: &IdlType, prefix: &str) -> String {
             format!("{prefix}_{}_t", pascal_to_snake(&defined.name))
         }
         IdlType::Generic { generic } => {
-            panic!("Generic type '{}' not supported in C codegen", generic)
+            panic!("Generic type '{generic}' not supported in C codegen")
         }
     }
 }
@@ -650,7 +650,7 @@ fn static_data_overhead(ty: &IdlType, codec: Option<&IdlCodec>, types: &[IdlType
         }
         IdlType::Array { array: (_inner, size) } => *size,
         IdlType::Generic { generic } => {
-            panic!("Generic type '{}' not supported in C codegen", generic)
+            panic!("Generic type '{generic}' not supported in C codegen")
         }
     }
 }
@@ -708,11 +708,7 @@ fn serialize_compact_header_expr(
     if matches!(ty, IdlType::Option { .. }) {
         return format!("{t}data_buf[off++] = {name}_present ? 1 : 0;\n");
     }
-    serialize_prefix_expr(
-        &format!("{name}_len"),
-        codec.map(IdlCodec::prefix_bytes).unwrap_or(4),
-        &t,
-    )
+    serialize_prefix_expr(&format!("{name}_len"), codec.map_or(4, IdlCodec::prefix_bytes), &t)
 }
 
 fn serialize_compact_tail_expr(
@@ -725,7 +721,7 @@ fn serialize_compact_tail_expr(
     let Some(payload_ty) = dynamic_payload_type(ty) else {
         return String::new();
     };
-    let prefix_bytes = codec.map(IdlCodec::prefix_bytes).unwrap_or(4);
+    let prefix_bytes = codec.map_or(4, IdlCodec::prefix_bytes);
     let mut out = String::new();
     if matches!(ty, IdlType::Option { .. }) {
         writeln!(out, "{t}if ({name}_present) {{").unwrap();
@@ -895,7 +891,7 @@ fn serialize_field_expr(
             )
         }
         IdlType::Generic { generic } => {
-            panic!("Generic type '{}' not supported in C codegen", generic)
+            panic!("Generic type '{generic}' not supported in C codegen")
         }
     }
 }
@@ -1032,7 +1028,7 @@ fn decode_field_expr(
             }
         }
         IdlType::Generic { generic } => {
-            panic!("Generic type '{}' not supported in C codegen", generic)
+            panic!("Generic type '{generic}' not supported in C codegen")
         }
     }
 }

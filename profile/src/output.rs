@@ -102,7 +102,7 @@ fn print_top_functions(result: &ProfileResult, total: u64) {
         println!(
             "  {:>8} {}  {}",
             format_cu(*cus),
-            dim(&format!("{:>5.1}%", pct)),
+            dim(&format!("{pct:>5.1}%")),
             simplify_name(name),
         );
     }
@@ -160,7 +160,7 @@ fn print_deltas(result: &ProfileResult, prev: &HashMap<String, u64>, total: u64)
             "  {:>8} {}  {}  {}",
             cu_str,
             delta_str,
-            dim(&format!("{:>5.1}%", pct)),
+            dim(&format!("{pct:>5.1}%")),
             simplify_name(name),
         );
     }
@@ -177,7 +177,7 @@ fn print_full_table(
     total: u64,
     fn_count: usize,
 ) {
-    let max_cu = result.function_cus.first().map(|(_, c)| *c).unwrap_or(1);
+    let max_cu = result.function_cus.first().map_or(1, |(_, c)| *c);
     let bar_width: usize = 20;
 
     for (name, cus) in &result.function_cus {
@@ -203,7 +203,7 @@ fn print_full_table(
         println!(
             "  {:>8} {}  {}{}  {}{}",
             format_cu(*cus),
-            dim(&format!("{:>5.1}%", pct)),
+            dim(&format!("{pct:>5.1}%")),
             bar_fill(&bar_filled),
             dim(&bar_empty),
             simplify_name(name),
@@ -387,7 +387,7 @@ pub(crate) fn write_json(
     });
     let mut writer = BufWriter::new(file);
     serde_json::to_writer_pretty(&mut writer, &profile).unwrap_or_else(|e| {
-        eprintln!("Error: failed to serialize JSON profile: {}", e);
+        eprintln!("Error: failed to serialize JSON profile: {e}");
         std::process::exit(1);
     });
     writer.write_all(b"\n").unwrap();

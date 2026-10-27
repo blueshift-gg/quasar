@@ -29,7 +29,7 @@ impl ResolvedIdentity {
             typescript_dir: client_name.clone(),
             typescript_package: format!("{client_name}-client"),
             python_package: client_name.clone(),
-            go_package: go_package.clone(),
+            go_package,
             rust_client_crate: format!("{client_name}-client"),
             client_name,
         }

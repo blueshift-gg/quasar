@@ -128,10 +128,10 @@ fn run_once(debug: bool, verbose: bool, features: Option<&str>) -> CliResult {
                 let src = PathBuf::from("target")
                     .join("bpfel-unknown-none")
                     .join("release")
-                    .join(format!("lib{}.so", program));
+                    .join(format!("lib{program}.so"));
                 let dest_dir = PathBuf::from("target").join("deploy");
                 fs::create_dir_all(&dest_dir)?;
-                let dest = dest_dir.join(format!("lib{}.so", program));
+                let dest = dest_dir.join(format!("lib{program}.so"));
                 fs::copy(&src, &dest).map_err(|e| {
                     eprintln!(
                         "  {}",
@@ -187,10 +187,10 @@ fn run_once(debug: bool, verbose: bool, features: Option<&str>) -> CliResult {
                 let src = PathBuf::from("target")
                     .join("bpfel-unknown-none")
                     .join("release")
-                    .join(format!("lib{}.so", program));
+                    .join(format!("lib{program}.so"));
                 let dest_dir = PathBuf::from("target").join("deploy");
                 fs::create_dir_all(&dest_dir)?;
-                let dest = dest_dir.join(format!("lib{}.so", program));
+                let dest = dest_dir.join(format!("lib{program}.so"));
                 fs::copy(&src, &dest).map_err(|e| {
                     eprintln!(
                         "  {}",
@@ -303,22 +303,22 @@ pub fn profile_build() -> Result<PathBuf, crate::error::CliError> {
                     PathBuf::from("target")
                         .join("sbf-solana-solana")
                         .join("release")
-                        .join(format!("{}.so", program))
+                        .join(format!("{program}.so"))
                 })
             } else {
                 PathBuf::from("target")
                     .join("bpfel-unknown-none")
                     .join("release")
-                    .join(format!("lib{}.so", program))
+                    .join(format!("lib{program}.so"))
             };
 
-            let dest = profile_dir.join(format!("{}.so", program));
+            let dest = profile_dir.join(format!("{program}.so"));
             fs::copy(&src, &dest).map_err(|e| {
                 eprintln!("  {}", style::fail(&format!("failed to copy {}: {e}", src.display())));
                 e
             })?;
 
-            let size = fs::metadata(&dest).map(|m| m.len()).unwrap_or(0);
+            let size = fs::metadata(&dest).map_or(0, |m| m.len());
             println!(
                 "  {}",
                 style::success(&format!(

@@ -81,7 +81,7 @@ pub fn run(command: ProfileCommand) {
 
     let program_name = elf_path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown");
     let version = resolve_program_version(&elf_path, program_name);
-    let binary_size = fs::metadata(&elf_path).map(|m| m.len()).unwrap_or(0);
+    let binary_size = fs::metadata(&elf_path).map_or(0, |m| m.len());
     let profile_root = profile_web_root();
     let profiles_dir = profile_root.join("profiles");
     fs::create_dir_all(&profiles_dir).unwrap_or_else(|e| {
@@ -101,7 +101,7 @@ pub fn run(command: ProfileCommand) {
     let now = chrono::Utc::now();
     let timestamp = now.format("%Y-%m-%d-%H-%M-%S-%3f");
 
-    let file_name = format!("{}__{}.profile.json", program_name, timestamp);
+    let file_name = format!("{program_name}__{timestamp}.profile.json");
     let local_output_path = profiles_dir.join(&file_name);
 
     output::write_json(
@@ -115,7 +115,7 @@ pub fn run(command: ProfileCommand) {
     if public_gist {
         ensure_frontend_assets(&profile_root);
         ensure_gh_installed();
-        let desc = format!("{} CU profile v{}", program_name, version);
+        let desc = format!("{program_name} CU profile v{version}");
         let gist_url = create_gist(&local_output_path, &desc);
         println!("  {gist_url}");
         return;
@@ -123,7 +123,7 @@ pub fn run(command: ProfileCommand) {
 
     // Start the flamegraph server in the background.
     if has_frontend_assets(&profile_root) {
-        let url = format!("http://{}:{}/?program={}", SERVER_HOST, SERVER_PORT, program_name);
+        let url = format!("http://{SERVER_HOST}:{SERVER_PORT}/?program={program_name}");
         match serve::serve_background(&profile_root, SERVER_PORT, program_name) {
             Ok(_) => output::print_flamegraph_link(&url),
             Err(_) => {
@@ -139,10 +139,10 @@ pub fn run(command: ProfileCommand) {
 fn run_diff(program: String) {
     let profile_root = profile_web_root();
     ensure_frontend_assets(&profile_root);
-    println!("http://{}:{}/?program={}&view=diff", SERVER_HOST, SERVER_PORT, program);
+    println!("http://{SERVER_HOST}:{SERVER_PORT}/?program={program}&view=diff");
     eprintln!("Press Ctrl-C to stop the profiler server.");
     serve::serve_blocking(&profile_root, SERVER_PORT).unwrap_or_else(|e| {
-        eprintln!("Error: failed to start local profiler server: {}", e);
+        eprintln!("Error: failed to start local profiler server: {e}");
         std::process::exit(1);
     });
 }
@@ -223,7 +223,7 @@ fn create_gist(path: &Path, desc: &str) -> String {
     cmd.arg("gist").arg("create").arg(path).arg("--desc").arg(desc).arg("--public");
 
     let output = cmd.output().unwrap_or_else(|e| {
-        eprintln!("Error: failed to run gh gist create: {}", e);
+        eprintln!("Error: failed to run gh gist create: {e}");
         std::process::exit(1);
     });
 

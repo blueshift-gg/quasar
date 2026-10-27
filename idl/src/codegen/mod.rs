@@ -14,12 +14,12 @@ pub fn parse_fixed_array_size(p: &str) -> Option<usize> {
 
 /// Format discriminator bytes as a decimal comma-separated list (no brackets).
 pub fn format_disc_decimal(disc: &[u8]) -> String {
-    disc.iter().map(|b| b.to_string()).collect::<Vec<_>>().join(", ")
+    disc.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ")
 }
 
 /// Format discriminator bytes as a hex comma-separated list (no brackets).
 pub fn format_disc_hex(disc: &[u8]) -> String {
-    disc.iter().map(|b| format!("0x{:02x}", b)).collect::<Vec<_>>().join(", ")
+    disc.iter().map(|b| format!("0x{b:02x}")).collect::<Vec<_>>().join(", ")
 }
 
 /// Format discriminator bytes as a decimal array with brackets: `[1, 2, 3]`.

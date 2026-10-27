@@ -171,7 +171,7 @@ pub fn program(args: TokenStream, module: ItemMod) -> Result<TokenStream> {
     };
     let name = &module.ident;
     let program = format_ident!("{}", camel_case(&name.to_string()));
-    let names: Vec<String> = handlers.iter().map(|handler| handler.to_string()).collect();
+    let names: Vec<String> = handlers.iter().map(ToString::to_string).collect();
     let handlers: Vec<TokenStream> =
         handlers.iter().map(|handler| quote!(#name::#handler)).collect();
     let first = quote!(#name::#first);

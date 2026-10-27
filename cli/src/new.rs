@@ -200,7 +200,7 @@ fn parse_discriminator(line: &str) -> Option<i64> {
 
     let (_, after_name) = line.split_once("discriminator")?;
     let (_, after_eq) = after_name.split_once('=')?;
-    let digits: String = after_eq.trim_start().chars().take_while(|c| c.is_ascii_digit()).collect();
+    let digits: String = after_eq.trim_start().chars().take_while(char::is_ascii_digit).collect();
 
     if digits.is_empty() {
         return None;

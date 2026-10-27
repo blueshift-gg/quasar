@@ -24,7 +24,7 @@ fn run_command(cmd: &mut Command) -> Result<(), Box<dyn Error>> {
     }
 
     let mut message = String::new();
-    message.push_str(&format!("command failed: {:?}\n", cmd));
+    message.push_str(&format!("command failed: {cmd:?}\n"));
     if !output.stdout.is_empty() {
         message.push_str("stdout:\n");
         message.push_str(&String::from_utf8_lossy(&output.stdout));
