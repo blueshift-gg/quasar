@@ -36,12 +36,13 @@ solana-instruction = "3"
 }
 
 pub fn generate_cargo_toml_for_program(model: &ProgramModel<'_>) -> String {
-    generate_cargo_toml(&model.identity.client_name, &model.idl.version, model.features.has_pdas)
+    generate_cargo_toml(&model.identity.client_name, &model.idl.version, has_pdas(model.idl))
 }
 
-/// Check whether the IDL has any resolvable PDA annotations.
+/// Check whether the IDL has PDA declarations or resolvable PDA annotations.
 pub fn has_pdas(idl: &Idl) -> bool {
-    ProgramModel::new(idl).features.has_pdas
+    idl.accounts.iter().any(|account| account.seeds.is_some())
+        || ProgramModel::new(idl).features.has_pdas
 }
 
 /// Generate a standalone Rust client crate from the IDL.
@@ -65,7 +66,7 @@ pub fn generate_client(idl: &Idl) -> Vec<(String, String)> {
 
     // Collect PDA info for pda.rs generation
     let pdas = collect_pdas(idl);
-    let has_pdas = model.features.has_pdas;
+    let has_pdas = has_pdas(idl);
 
     files.push((
         "lib.rs".to_string(),
@@ -1016,13 +1017,30 @@ fn collect_pdas(idl: &Idl) -> Vec<PdaInfo> {
         }
     }
 
+    'declarations: for account in &idl.accounts {
+        if let Some(seeds) = &account.seeds {
+            let base_name = pascal_to_snake(&account.name);
+            let mut field_name = base_name.clone();
+            let mut suffix = 2;
+            // Keep existing names, but never discard a different seed declaration.
+            while let Some(existing) = pdas.iter().find(|pda| pda.field_name == field_name) {
+                if format!("{:?}", existing.seeds) == format!("{:?}", seeds) {
+                    continue 'declarations;
+                }
+                field_name = format!("{base_name}_{suffix}");
+                suffix += 1;
+            }
+            pdas.push(PdaInfo { field_name, seeds: seeds.clone() });
+        }
+    }
+
     pdas
 }
 
 /// Format a const seed value for display (doc comments or code expressions).
 fn format_const_seed_display(value: &[u8]) -> String {
     if value.iter().all(|b| b.is_ascii_graphic() || *b == b' ') {
-        format!("b\"{}\"", String::from_utf8_lossy(value))
+        format!("b{:?}", String::from_utf8_lossy(value))
     } else {
         let byte_list: Vec<String> = value.iter().map(|b| b.to_string()).collect();
         format!("&[{}]", byte_list.join(", "))

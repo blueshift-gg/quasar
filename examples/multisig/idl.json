@@ -50,6 +50,6 @@
     }
   ],
   "accounts": [
-    { "name": "MultisigConfig", "discriminator": [1], "size": null, "fields": [{ "name": "creator", "type": "Address" }, { "name": "threshold", "type": "u8" }, { "name": "bump", "type": "u8" }, { "name": "label", "type": "String<32>" }, { "name": "members", "type": "Vec<Address, 10>" }] }
+    { "name": "MultisigConfig", "discriminator": [1], "size": null, "fields": [{ "name": "creator", "type": "Address" }, { "name": "threshold", "type": "u8" }, { "name": "bump", "type": "u8" }, { "name": "label", "type": "String<32>" }, { "name": "members", "type": "Vec<Address, 10>" }], "seeds": [{ "kind": "const", "value": [109, 117, 108, 116, 105, 115, 105, 103] }, { "kind": "param", "name": "creator", "type": "Address" }] }
   ]
 }

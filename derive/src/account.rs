@@ -144,6 +144,22 @@ pub fn expand_account(args: TokenStream, mut item: ItemStruct) -> Result<TokenSt
     let stored: Vec<(&Ident, &Type)> =
         fields.named.iter().filter_map(|field| Some((field.ident.as_ref()?, &field.ty))).collect();
     let view = quote!(<#name as ::quasar_lang::zeropod::Layout>::View);
+    let idl_seeds = match &seeds {
+        Some(seeds) => {
+            let seeds = seeds.iter().map(|seed| match seed {
+                Seed::Literal(value) => quote!(::quasar_lang::client::IdlSeed::Const(#value)),
+                Seed::Param(name, ty) => {
+                    let name = name.to_string();
+                    let ty = ty.to_string();
+                    quote!(::quasar_lang::client::IdlSeed::Param(
+                        ::quasar_lang::client::IdlField { name: #name, ty: #ty }
+                    ))
+                }
+            });
+            quote!(::core::option::Option::Some(&[#(#seeds),*]))
+        }
+        None => quote!(::core::option::Option::None),
+    };
     let seeds = seeds.map(|seeds| {
         let (by_name, own) = (seeds_impl(name, &seeds), own_seeds(name, &seeds, &stored, view));
         quote!(#by_name #own)
@@ -171,6 +187,7 @@ pub fn expand_account(args: TokenStream, mut item: ItemStruct) -> Result<TokenSt
                         discriminator: &[#(#discriminator),*],
                         size: ::quasar_lang::account::len::<#name>(),
                         fields: &[#(#idl_fields),*],
+                        seeds: #idl_seeds,
                     });
             }
         }

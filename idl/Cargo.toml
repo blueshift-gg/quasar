@@ -20,3 +20,6 @@ quasar-schema = { version = "=0.2.0", path = "../schema" }
 quasar-idl-schema = { version = "=0.2.0", path = "schema" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+[dev-dependencies]
+quasar-lang = { path = "../lang" }

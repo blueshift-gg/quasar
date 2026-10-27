@@ -66,6 +66,6 @@
     }
   ],
   "accounts": [
-    { "name": "Pool", "discriminator": [1], "size": 164, "fields": [{ "name": "mint_a", "type": "Address" }, { "name": "mint_b", "type": "Address" }, { "name": "vault_a", "type": "Address" }, { "name": "vault_b", "type": "Address" }, { "name": "lp_mint", "type": "Address" }, { "name": "fee_bps", "type": "u16" }, { "name": "bump", "type": "u8" }] }
+    { "name": "Pool", "discriminator": [1], "size": 164, "fields": [{ "name": "mint_a", "type": "Address" }, { "name": "mint_b", "type": "Address" }, { "name": "vault_a", "type": "Address" }, { "name": "vault_b", "type": "Address" }, { "name": "lp_mint", "type": "Address" }, { "name": "fee_bps", "type": "u16" }, { "name": "bump", "type": "u8" }], "seeds": [{ "kind": "const", "value": [112, 111, 111, 108] }, { "kind": "param", "name": "mint_a", "type": "Address" }, { "kind": "param", "name": "mint_b", "type": "Address" }] }
   ]
 }

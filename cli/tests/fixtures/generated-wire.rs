@@ -3,6 +3,14 @@ use quasar_lang::{Address, zeropod};
 use solana_instruction::Instruction;
 
 #[test]
+fn generated_pda_helper_matches_the_account_seed_declaration() {
+    let creator = Address::new_from_array([7; 32]);
+    let expected = multisig::MultisigConfig::seeds(&creator).canonical(&multisig::ID).unwrap();
+    let actual = multisig_client::pda::find_multisig_config_address(&creator, &multisig::ID);
+    assert_eq!(actual, expected);
+}
+
+#[test]
 fn generated_instruction_matches_the_runtime_builder() {
     let signer = Address::new_from_array([7; 32]);
     let config = Address::new_from_array([8; 32]);

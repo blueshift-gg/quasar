@@ -124,6 +124,7 @@ fn base_idl() -> Idl {
             discriminator: vec![42],
             docs: Vec::new(),
             space: None,
+            seeds: None,
         }],
         types: vec![
             account_type(

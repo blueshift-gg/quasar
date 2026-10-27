@@ -258,7 +258,13 @@ const fn idl_kind(
     size: usize,
     fields: &'static [quasar_lang::client::IdlField],
 ) -> Option<quasar_lang::client::IdlKind> {
-    Some(quasar_lang::client::IdlKind { name, discriminator: &[], size: Some(size), fields })
+    Some(quasar_lang::client::IdlKind {
+        name,
+        discriminator: &[],
+        size: Some(size),
+        fields,
+        seeds: None,
+    })
 }
 
 #[cfg(not(target_os = "solana"))]

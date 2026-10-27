@@ -69,12 +69,14 @@ jobs:
       - name: Cache Cargo dependencies
         uses: actions/cache@v4
         with:
+          # Unpacked sources include mutable publish dry-run crates at unchanged versions.
           path: |
-            ~/.cargo/registry/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
             ~/.cargo/git/
-          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-downloads-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-cargo-
+            ${{ runner.os }}-${{ runner.arch }}-cargo-downloads-
       - name: Cache Solana and SBF toolchains
         uses: actions/cache@v4
         id: solana

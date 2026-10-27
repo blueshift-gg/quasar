@@ -2557,6 +2557,7 @@ version = "0.2.0"
 dependencies = [
  "bs58",
  "quasar-idl-schema",
+ "quasar-lang",
  "quasar-schema",
  "serde",
  "serde_json",

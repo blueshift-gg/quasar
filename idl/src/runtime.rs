@@ -36,6 +36,20 @@ struct Account {
     discriminator: Vec<u8>,
     size: Option<usize>,
     fields: Vec<Field>,
+    #[serde(default)]
+    seeds: Option<Vec<Seed>>,
+}
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
+enum Seed {
+    Const {
+        value: Vec<u8>,
+    },
+    Param {
+        name: String,
+        #[serde(rename = "type")]
+        ty: String,
+    },
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -57,12 +71,25 @@ pub fn read(json: &str) -> Result<Idl, String> {
     let mut accounts = Vec::new();
     for account in runtime.accounts {
         let fields = fields(account.fields, &mut types)?;
+        // Optional helpers must not prevent clients for otherwise valid accounts.
+        let seeds = account.seeds.and_then(|seeds| {
+            seeds
+                .into_iter()
+                .map(|seed| match seed {
+                    Seed::Const { value } => Ok(json!({"kind": "const", "value": value})),
+                    Seed::Param { name, ty } => Ok(
+                        json!({"kind": "arg", "path": name, "type": field_type(&ty, &mut types)?}),
+                    ),
+                })
+                .collect::<Result<Vec<_>, String>>()
+                .ok()
+        });
         types.push(json!({"name": account.name, "kind": "struct", "fields": fields}));
         let space = account.size.map(
             |size| json!({"min": size, "max": size, "discriminator": account.discriminator.len()}),
         );
         accounts.push(
-            json!({"name": account.name, "discriminator": account.discriminator, "space": space}),
+            json!({"name": account.name, "discriminator": account.discriminator, "space": space, "seeds": seeds}),
         );
     }
     let mut instructions = Vec::new();

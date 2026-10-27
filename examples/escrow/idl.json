@@ -55,6 +55,6 @@
     }
   ],
   "accounts": [
-    { "name": "Escrow", "discriminator": [1], "size": 138, "fields": [{ "name": "maker", "type": "Address" }, { "name": "mint_a", "type": "Address" }, { "name": "mint_b", "type": "Address" }, { "name": "maker_ta_b", "type": "Address" }, { "name": "receive", "type": "u64" }, { "name": "bump", "type": "u8" }] }
+    { "name": "Escrow", "discriminator": [1], "size": 138, "fields": [{ "name": "maker", "type": "Address" }, { "name": "mint_a", "type": "Address" }, { "name": "mint_b", "type": "Address" }, { "name": "maker_ta_b", "type": "Address" }, { "name": "receive", "type": "u64" }, { "name": "bump", "type": "u8" }], "seeds": [{ "kind": "const", "value": [101, 115, 99, 114, 111, 119] }, { "kind": "param", "name": "maker", "type": "Address" }] }
   ]
 }
