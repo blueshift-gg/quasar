@@ -11,7 +11,7 @@ pub fn pascal_to_snake(s: &str) -> String {
     let mut chars = s.chars().peekable();
     while let Some(c) = chars.next() {
         if c.is_uppercase() && prev.is_some() {
-            let prev_lower = prev.is_some_and(|p| p.is_lowercase());
+            let prev_lower = prev.is_some_and(char::is_lowercase);
             let next_lower = chars.peek().is_some_and(|n| n.is_lowercase());
             if prev_lower || next_lower {
                 result.push('_');

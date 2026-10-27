@@ -95,7 +95,7 @@ impl QuasarConfig {
     }
 
     pub fn client_languages(&self) -> Vec<&str> {
-        self.clients.languages.iter().map(|s| s.as_str()).collect()
+        self.clients.languages.iter().map(String::as_str).collect()
     }
 }
 

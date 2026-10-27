@@ -164,7 +164,7 @@ pub(super) fn scaffold(
         fs::write(root.join("tsconfig.json"), TS_TEST_TSCONFIG)?;
 
         fs::write(
-            tests_dir.join(format!("{}.test.ts", name)),
+            tests_dir.join(format!("{name}.test.ts")),
             generate_test_ts(name, sdk, toolchain),
         )?;
     }
@@ -435,9 +435,10 @@ describe("{class_name} Program", () => {{
 }
 
 fn generate_tests_rs(module_name: &str, toolchain: Toolchain) -> String {
-    let mut libname = module_name.to_string();
-    if matches!(toolchain, Toolchain::Upstream) {
-        libname = format!("lib{libname}");
+    let libname = if matches!(toolchain, Toolchain::Upstream) {
+        format!("lib{module_name}")
+    } else {
+        module_name.to_string()
     };
     format!(
         r#"use mollusk_svm::{{program::keyed_account_for_system_program, Mollusk}};

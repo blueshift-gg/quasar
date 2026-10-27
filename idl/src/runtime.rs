@@ -162,7 +162,7 @@ fn field_type(ty: &str, types: &mut Vec<Value>) -> Result<Value, String> {
                     if name == "ArrayString" { json!("u8") } else { field_type(args[0], types)? };
                 // Expose the fixed-capacity wire representation explicitly: u32
                 // count followed by every slot, including unused padding.
-                let name: String = ty.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+                let name: String = ty.chars().filter(char::is_ascii_alphanumeric).collect();
                 if !types.iter().any(|t| t["name"] == name) {
                     types.push(json!({"name": name, "kind": "struct", "fields": [
                         {"name": "length", "type": "u32"},

@@ -43,24 +43,7 @@ pub fn compute_abi_hash(idl: &Idl) -> String {
 
 /// SHA-256 hash as lowercase hex string.
 fn hex_sha256(data: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(data);
-    let result = hasher.finalize();
-    hex::encode(result)
-}
-
-/// Hex encoding without external dep (inline implementation).
-mod hex {
-    use std::fmt::Write;
-
-    pub fn encode(bytes: impl AsRef<[u8]>) -> String {
-        let bytes = bytes.as_ref();
-        let mut out = String::with_capacity(bytes.len() * 2);
-        for b in bytes {
-            let _ = write!(out, "{b:02x}");
-        }
-        out
-    }
+    format!("{:x}", Sha256::digest(data))
 }
 
 /// Extract the ABI-affecting subset for hashing.

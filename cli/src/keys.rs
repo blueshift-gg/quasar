@@ -93,9 +93,8 @@ pub fn sync() -> CliResult {
 
     let keypair_id = read_program_id(&path)?;
 
-    let current_id = match current_program_id() {
-        Some(id) => id,
-        None => return Err(CliError::message("declare_id!() not found in src/lib.rs")),
+    let Some(current_id) = current_program_id() else {
+        return Err(CliError::message("declare_id!() not found in src/lib.rs"));
     };
 
     if current_id == keypair_id {

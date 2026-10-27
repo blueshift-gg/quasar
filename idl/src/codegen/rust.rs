@@ -77,7 +77,7 @@ pub fn generate_client(idl: &Idl) -> Vec<(String, String)> {
         let (mod_rs, ix_files) = emit_instructions(idl, &type_map);
         files.push(("instructions/mod.rs".to_string(), mod_rs));
         for (name, content) in ix_files {
-            files.push((format!("instructions/{}.rs", name), content));
+            files.push((format!("instructions/{name}.rs"), content));
         }
     }
 
@@ -91,7 +91,7 @@ pub fn generate_client(idl: &Idl) -> Vec<(String, String)> {
         );
         files.push(("state/mod.rs".to_string(), mod_rs));
         for (name, content) in state_files {
-            files.push((format!("state/{}.rs", name), content));
+            files.push((format!("state/{name}.rs"), content));
         }
     }
 
@@ -105,7 +105,7 @@ pub fn generate_client(idl: &Idl) -> Vec<(String, String)> {
         );
         files.push(("events/mod.rs".to_string(), mod_rs));
         for (name, content) in event_files {
-            files.push((format!("events/{}.rs", name), content));
+            files.push((format!("events/{name}.rs"), content));
         }
     }
 
@@ -113,7 +113,7 @@ pub fn generate_client(idl: &Idl) -> Vec<(String, String)> {
         let (mod_rs, type_files) = emit_types(&type_map);
         files.push(("types/mod.rs".to_string(), mod_rs));
         for (name, content) in type_files {
-            files.push((format!("types/{}.rs", name), content));
+            files.push((format!("types/{name}.rs"), content));
         }
     }
 
@@ -169,11 +169,11 @@ fn emit_lib_rs(
     if !active.is_empty() {
         out.push('\n');
         for name in &active {
-            writeln!(out, "pub mod {};", name).expect("write to String");
+            writeln!(out, "pub mod {name};").expect("write to String");
         }
         out.push('\n');
         for name in &active {
-            writeln!(out, "pub use {}::*;", name).expect("write to String");
+            writeln!(out, "pub use {name}::*;").expect("write to String");
         }
     }
 
@@ -213,12 +213,12 @@ fn emit_instructions(
     // mod declarations and re-exports
     for ix in &idl.instructions {
         let snake = camel_to_snake(&ix.name);
-        writeln!(mod_rs, "pub mod {};", snake).expect("write to String");
+        writeln!(mod_rs, "pub mod {snake};").expect("write to String");
     }
     mod_rs.push('\n');
     for ix in &idl.instructions {
         let snake = camel_to_snake(&ix.name);
-        writeln!(mod_rs, "pub use {}::*;", snake).expect("write to String");
+        writeln!(mod_rs, "pub use {snake}::*;").expect("write to String");
     }
     mod_rs.push('\n');
 
@@ -227,9 +227,9 @@ fn emit_instructions(
     for ix in &idl.instructions {
         let pascal = snake_to_pascal(&ix.name);
         if ix.args.is_empty() {
-            writeln!(mod_rs, "    {},", pascal).expect("write to String");
+            writeln!(mod_rs, "    {pascal},").expect("write to String");
         } else {
-            write!(mod_rs, "    {} {{ ", pascal).expect("write to String");
+            write!(mod_rs, "    {pascal} {{ ").expect("write to String");
             for (i, arg) in ix.args.iter().enumerate() {
                 if i > 0 {
                     write!(mod_rs, ", ").expect("write to String");
@@ -250,31 +250,30 @@ fn emit_instructions(
     // decode_instruction function
     mod_rs.push_str("pub fn decode_instruction(data: &[u8]) -> Option<ProgramInstruction> {\n");
 
-    let disc_len = idl.instructions.first().map(|ix| ix.discriminator.len()).unwrap_or(1);
+    let disc_len = idl.instructions.first().map_or(1, |ix| ix.discriminator.len());
 
     if disc_len == 1 {
         mod_rs.push_str("    let disc = *data.first()?;\n");
-        mod_rs.push_str("    match disc {\n");
     } else {
-        writeln!(mod_rs, "    let disc = data.get(..{})?;", disc_len).expect("write to String");
-        mod_rs.push_str("    match disc {\n");
+        writeln!(mod_rs, "    let disc = data.get(..{disc_len})?;").expect("write to String");
     }
+    mod_rs.push_str("    match disc {\n");
 
     for ix in &idl.instructions {
         let pascal = snake_to_pascal(&ix.name);
         let disc_str = super::format_disc_decimal(&ix.discriminator);
 
         if disc_len == 1 {
-            write!(mod_rs, "        {} => ", disc_str).expect("write to String");
+            write!(mod_rs, "        {disc_str} => ").expect("write to String");
         } else {
-            write!(mod_rs, "        [{}] => ", disc_str).expect("write to String");
+            write!(mod_rs, "        [{disc_str}] => ").expect("write to String");
         }
 
         if ix.args.is_empty() {
-            writeln!(mod_rs, "Some(ProgramInstruction::{}),", pascal).expect("write to String");
+            writeln!(mod_rs, "Some(ProgramInstruction::{pascal}),").expect("write to String");
         } else {
             mod_rs.push_str("{\n");
-            writeln!(mod_rs, "            let payload = &data[{}..];", disc_len)
+            writeln!(mod_rs, "            let payload = &data[{disc_len}..];")
                 .expect("write to String");
 
             let is_compact = matches!(ix.layout, Some(IdlLayout::Compact { .. }));
@@ -490,7 +489,7 @@ fn emit_instructions(
                 }
             }
 
-            write!(mod_rs, "            Some(ProgramInstruction::{} {{ ", pascal)
+            write!(mod_rs, "            Some(ProgramInstruction::{pascal} {{ ")
                 .expect("write to String");
             for (i, arg) in ix.args.iter().enumerate() {
                 if i > 0 {
@@ -542,7 +541,7 @@ fn emit_single_instruction(
 
     out.push('\n');
 
-    writeln!(out, "pub struct {}Instruction {{", struct_name).expect("write to String");
+    writeln!(out, "pub struct {struct_name}Instruction {{").expect("write to String");
 
     for account in &ix.accounts {
         writeln!(out, "    pub {}: Address,", camel_to_snake(&account.name))
@@ -565,9 +564,9 @@ fn emit_single_instruction(
 
     out.push_str("}\n\n");
 
-    writeln!(out, "impl From<{}Instruction> for Instruction {{", struct_name)
+    writeln!(out, "impl From<{struct_name}Instruction> for Instruction {{")
         .expect("write to String");
-    writeln!(out, "    fn from(ix: {}Instruction) -> Instruction {{", struct_name)
+    writeln!(out, "    fn from(ix: {struct_name}Instruction) -> Instruction {{")
         .expect("write to String");
 
     if has_remaining {
@@ -589,9 +588,9 @@ fn emit_single_instruction(
     let is_compact = matches!(ix.layout, Some(IdlLayout::Compact { .. }));
 
     if ix.args.is_empty() {
-        writeln!(out, "        let data = vec![{}];", disc_str).expect("write to String");
+        writeln!(out, "        let data = vec![{disc_str}];").expect("write to String");
     } else {
-        writeln!(out, "        let mut data = vec![{}];", disc_str).expect("write to String");
+        writeln!(out, "        let mut data = vec![{disc_str}];").expect("write to String");
 
         let fixed_args: Vec<_> =
             ix.args.iter().filter(|a| !is_direct_dynamic(&a.ty, &a.codec)).collect();
@@ -761,13 +760,13 @@ fn emit_discriminated_module<T: DiscriminatedItem>(
     // mod declarations for items with fields
     for item in &with_fields {
         let snake = pascal_to_snake(item.name());
-        writeln!(mod_rs, "pub mod {};", snake).expect("write to String");
+        writeln!(mod_rs, "pub mod {snake};").expect("write to String");
     }
     if !with_fields.is_empty() {
         mod_rs.push('\n');
         for item in &with_fields {
             let snake = pascal_to_snake(item.name());
-            writeln!(mod_rs, "pub use {}::*;", snake).expect("write to String");
+            writeln!(mod_rs, "pub use {snake}::*;").expect("write to String");
         }
         mod_rs.push('\n');
     }
@@ -780,8 +779,7 @@ fn emit_discriminated_module<T: DiscriminatedItem>(
         let disc_str = super::format_disc_decimal(item.discriminator());
         writeln!(
             mod_rs,
-            "pub const {}_{}_DISCRIMINATOR: &[u8] = &[{}];",
-            const_name, kind_upper, disc_str
+            "pub const {const_name}_{kind_upper}_DISCRIMINATOR: &[u8] = &[{disc_str}];"
         )
         .expect("write to String");
     }
@@ -790,7 +788,7 @@ fn emit_discriminated_module<T: DiscriminatedItem>(
     }
 
     // Enum
-    writeln!(mod_rs, "pub enum {} {{", enum_name).expect("write to String");
+    writeln!(mod_rs, "pub enum {enum_name} {{").expect("write to String");
     for item in items {
         if has_fields(item) {
             writeln!(mod_rs, "    {}({}),", item.name(), item.name()).expect("write to String");
@@ -801,12 +799,12 @@ fn emit_discriminated_module<T: DiscriminatedItem>(
     mod_rs.push_str("}\n\n");
 
     // decode function
-    writeln!(mod_rs, "pub fn {}(data: &[u8]) -> Option<{}> {{", decode_fn, enum_name)
+    writeln!(mod_rs, "pub fn {decode_fn}(data: &[u8]) -> Option<{enum_name}> {{")
         .expect("write to String");
     for item in items {
         let base = disc_base_name(item.name(), kind);
         let const_name = pascal_to_screaming_snake(base);
-        writeln!(mod_rs, "    if data.starts_with({}_{}_DISCRIMINATOR) {{", const_name, kind_upper)
+        writeln!(mod_rs, "    if data.starts_with({const_name}_{kind_upper}_DISCRIMINATOR) {{")
             .expect("write to String");
         if has_fields(item) {
             writeln!(
@@ -871,12 +869,8 @@ fn emit_single_state_or_event(
     let const_name = pascal_to_screaming_snake(base);
     let kind_upper = kind.to_ascii_uppercase();
     let disc_str = super::format_disc_decimal(discriminator);
-    writeln!(
-        out,
-        "pub const {}_{}_DISCRIMINATOR: &[u8] = &[{}];",
-        const_name, kind_upper, disc_str
-    )
-    .expect("write to String");
+    writeln!(out, "pub const {const_name}_{kind_upper}_DISCRIMINATOR: &[u8] = &[{disc_str}];")
+        .expect("write to String");
     out.push('\n');
 
     // Struct + manual impls
@@ -895,12 +889,12 @@ fn emit_types(type_map: &HashMap<String, Vec<IdlFieldDef>>) -> (String, Vec<(Str
 
     for type_name in &type_names {
         let snake = pascal_to_snake(type_name);
-        writeln!(mod_rs, "pub mod {};", snake).expect("write to String");
+        writeln!(mod_rs, "pub mod {snake};").expect("write to String");
     }
     mod_rs.push('\n');
     for type_name in &type_names {
         let snake = pascal_to_snake(type_name);
-        writeln!(mod_rs, "pub use {}::*;", snake).expect("write to String");
+        writeln!(mod_rs, "pub use {snake}::*;").expect("write to String");
     }
 
     for type_name in &type_names {
@@ -927,7 +921,7 @@ fn emit_single_type(
     out.push('\n');
 
     out.push_str("#[derive(Clone, SchemaWrite, SchemaRead)]\n");
-    writeln!(out, "pub struct {} {{", type_name).expect("write to String");
+    writeln!(out, "pub struct {type_name} {{").expect("write to String");
     for field in fields {
         writeln!(
             out,
@@ -950,13 +944,13 @@ fn emit_errors(idl: &Idl) -> String {
 
     out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n");
     out.push_str("#[repr(u32)]\n");
-    writeln!(out, "pub enum {} {{", enum_name).expect("write to String");
+    writeln!(out, "pub enum {enum_name} {{").expect("write to String");
     for err in &idl.errors {
         writeln!(out, "    {} = {},", err.name, err.code).expect("write to String");
     }
     out.push_str("}\n\n");
 
-    writeln!(out, "impl {} {{", enum_name).expect("write to String");
+    writeln!(out, "impl {enum_name} {{").expect("write to String");
 
     // from_code
     out.push_str("    pub fn from_code(code: u32) -> Option<Self> {\n");
@@ -1004,7 +998,7 @@ fn collect_pdas(idl: &Idl) -> Vec<PdaInfo> {
                 }
 
                 // Dedup by seed identity (use debug repr as key)
-                let key = format!("{:?}", seeds);
+                let key = format!("{seeds:?}");
                 if !seen.insert(key) {
                     continue;
                 }
@@ -1024,7 +1018,7 @@ fn collect_pdas(idl: &Idl) -> Vec<PdaInfo> {
             let mut suffix = 2;
             // Keep existing names, but never discard a different seed declaration.
             while let Some(existing) = pdas.iter().find(|pda| pda.field_name == field_name) {
-                if format!("{:?}", existing.seeds) == format!("{:?}", seeds) {
+                if format!("{:?}", existing.seeds) == format!("{seeds:?}") {
                     continue 'declarations;
                 }
                 field_name = format!("{base_name}_{suffix}");
@@ -1042,7 +1036,7 @@ fn format_const_seed_display(value: &[u8]) -> String {
     if value.iter().all(|b| b.is_ascii_graphic() || *b == b' ') {
         format!("b{:?}", String::from_utf8_lossy(value))
     } else {
-        let byte_list: Vec<String> = value.iter().map(|b| b.to_string()).collect();
+        let byte_list: Vec<String> = value.iter().map(ToString::to_string).collect();
         format!("&[{}]", byte_list.join(", "))
     }
 }
@@ -1174,7 +1168,7 @@ fn rust_pda_arg_seed_setup(path: &str, ty: &IdlType) -> Option<String> {
     let var = rust_pda_arg_seed_var(path);
     match pda_scalar_type(ty) {
         Some("bool") => Some(format!("    let {var} = [{name} as u8];\n")),
-        Some("u8") | Some("i8") => Some(format!("    let {var} = [{name} as u8];\n")),
+        Some("u8" | "i8") => Some(format!("    let {var} = [{name} as u8];\n")),
         Some("u16" | "i16" | "u32" | "i32" | "u64" | "i64" | "u128" | "i128") => {
             Some(format!("    let {var} = {name}.to_le_bytes();\n"))
         }
@@ -1310,13 +1304,13 @@ fn emit_manual_impls(
     } else {
         out.push_str("#[derive(Clone, Copy)]\n");
     }
-    writeln!(out, "pub struct {} {{", name).expect("write to String");
+    writeln!(out, "pub struct {name} {{").expect("write to String");
     let fields: Vec<(String, String)> = idl_fields
         .iter()
         .map(|f| (camel_to_snake(&f.name), rust_field_type(&f.ty, &f.codec)))
         .collect();
     for (field_name, field_type) in &fields {
-        writeln!(out, "    pub {}: {},", field_name, field_type).expect("write to String");
+        writeln!(out, "    pub {field_name}: {field_type},").expect("write to String");
     }
     out.push_str("}\n\n");
 
@@ -1351,8 +1345,7 @@ fn emit_manual_impls(
     let const_name = pascal_to_screaming_snake(base);
     let disc_const = format!("{}_{}_DISCRIMINATOR", const_name, kind.to_ascii_uppercase());
 
-    writeln!(out, "unsafe impl<C: ConfigCore> SchemaWrite<C> for {}", name)
-        .expect("write to String");
+    writeln!(out, "unsafe impl<C: ConfigCore> SchemaWrite<C> for {name}").expect("write to String");
     if !unique_bound_types.is_empty() {
         out.push_str("where\n");
         for ty in &unique_bound_types {
@@ -1447,7 +1440,7 @@ fn emit_manual_impls(
     out.push_str("    }\n");
     out.push_str("}\n\n");
 
-    writeln!(out, "unsafe impl<'de, C: ConfigCore> SchemaRead<'de, C> for {}", name)
+    writeln!(out, "unsafe impl<'de, C: ConfigCore> SchemaRead<'de, C> for {name}")
         .expect("write to String");
     if !unique_bound_types.is_empty() {
         out.push_str("where\n");
@@ -1560,11 +1553,9 @@ fn emit_manual_impls(
 fn account_meta_expr(account: &IdlAccountNode) -> String {
     let field_name = camel_to_snake(&account.name);
     let signer = matches!(account.signer, AccountFlag::Fixed(true));
-    if matches!(account.writable, AccountFlag::Fixed(true)) {
-        format!("AccountMeta::new(ix.{}, {})", field_name, signer)
-    } else {
-        format!("AccountMeta::new_readonly(ix.{}, {})", field_name, signer)
-    }
+    let ctor =
+        if matches!(account.writable, AccountFlag::Fixed(true)) { "new" } else { "new_readonly" };
+    format!("AccountMeta::{ctor}(ix.{field_name}, {signer})")
 }
 
 /// Map an `IdlType` to its Rust field type for the client struct.
@@ -1612,12 +1603,12 @@ fn rust_field_type(ty: &IdlType, codec: &Option<IdlCodec>) -> String {
                 format!("DynVec<{}, {}>", inner, prefix_rust_type(pfx_bytes))
             } else {
                 let inner = rust_field_type(vec, &None);
-                format!("Vec<{}>", inner)
+                format!("Vec<{inner}>")
             }
         }
         IdlType::Array { array: (inner, size) } => {
             let inner_ty = rust_field_type(inner, &None);
-            format!("[{}; {}]", inner_ty, size)
+            format!("[{inner_ty}; {size}]")
         }
         IdlType::Defined { defined } => defined.name.clone(),
         IdlType::Generic { generic } => {

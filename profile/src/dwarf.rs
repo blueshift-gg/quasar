@@ -14,7 +14,7 @@ impl Resolver<'_> {
         match self {
             Resolver::Dwarf(dwarf, sym_fallback) => {
                 let stack = dwarf.resolve(addr);
-                if stack.first().map(|s| s.as_str()) == Some("[unknown]") {
+                if stack.first().map(String::as_str) == Some("[unknown]") {
                     sym_fallback.resolve(addr)
                 } else {
                     stack
@@ -56,14 +56,8 @@ impl<'a> DwarfResolver<'a> {
     }
 
     pub(crate) fn resolve(&self, addr: u64) -> Vec<String> {
-        let frames_result = match self.ctx.find_frames(addr) {
-            LookupResult::Output(result) => result,
-            LookupResult::Load { .. } => return vec!["[unknown]".into()],
-        };
-
-        let mut frames_iter = match frames_result {
-            Ok(iter) => iter,
-            Err(_) => return vec!["[unknown]".into()],
+        let LookupResult::Output(Ok(mut frames_iter)) = self.ctx.find_frames(addr) else {
+            return vec!["[unknown]".into()];
         };
 
         let mut stack = Vec::new();
@@ -73,10 +67,9 @@ impl<'a> DwarfResolver<'a> {
                     let name = match &frame.function {
                         Some(f) => match f.demangle() {
                             Ok(cow) => cow.into_owned(),
-                            Err(_) => f
-                                .raw_name()
-                                .map(|n| n.to_string())
-                                .unwrap_or_else(|_| "[unknown]".into()),
+                            Err(_) => {
+                                f.raw_name().map_or_else(|_| "[unknown]".into(), |n| n.to_string())
+                            }
                         },
                         None => "[unknown]".into(),
                     };

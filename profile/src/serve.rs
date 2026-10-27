@@ -105,10 +105,7 @@ fn handle_connection(mut stream: TcpStream, root: &Path) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
 
     let buf_reader = BufReader::new(&stream);
-    let request_line = match buf_reader.lines().next() {
-        Some(Ok(line)) => line,
-        _ => return,
-    };
+    let Some(Ok(request_line)) = buf_reader.lines().next() else { return };
 
     // Parse "GET /path HTTP/1.1"
     let path = request_line.split_whitespace().nth(1).unwrap_or("/").to_string();

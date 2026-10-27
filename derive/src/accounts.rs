@@ -353,7 +353,7 @@ fn named(names: &[&Ident]) -> TokenStream {
 /// `#[data(T)]` on the struct: the instruction data its constraints read.
 fn data_type(input: &DeriveInput) -> Result<Option<Type>> {
     let mut attrs = input.attrs.iter().filter(|attr| attr.path().is_ident("data"));
-    let data = attrs.next().map(|attr| attr.parse_args()).transpose()?;
+    let data = attrs.next().map(syn::Attribute::parse_args).transpose()?;
     if let Some(extra) = attrs.next() {
         return Err(Error::new_spanned(extra, "`#[data(..)]` is declared twice"));
     }

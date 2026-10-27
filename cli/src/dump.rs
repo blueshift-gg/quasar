@@ -57,9 +57,8 @@ pub fn run(elf_path: Option<PathBuf>, function: Option<String>, source: bool) ->
                         "symbol not found: {sym}\n  Try a mangled or partial name, e.g. \
                          'entrypoint'"
                     )));
-                } else {
-                    return Err(CliError::message("no disassembly output"));
                 }
+                return Err(CliError::message("no disassembly output"));
             }
 
             for line in &lines {
@@ -113,12 +112,7 @@ fn find_so() -> Result<PathBuf, crate::error::CliError> {
 /// Find llvm-objdump in Solana platform-tools (newest version first)
 fn find_objdump() -> Option<PathBuf> {
     let home = std::env::home_dir()?;
-    let cache = home.join(".cache/solana");
-    if !cache.exists() {
-        return None;
-    }
-
-    let mut versions: Vec<_> = std::fs::read_dir(&cache)
+    std::fs::read_dir(home.join(".cache/solana"))
         .ok()?
         .flatten()
         .filter_map(|e| {
@@ -128,9 +122,9 @@ fn find_objdump() -> Option<PathBuf> {
             let objdump = path.join("platform-tools/llvm/bin/llvm-objdump");
             if objdump.exists() { Some((version, objdump)) } else { None }
         })
-        .collect();
-    versions.sort_by(|a, b| b.0.cmp(&a.0));
-    versions.into_iter().next().map(|(_, path)| path)
+        // ponytail: reversed `min_by` keeps the first of equal versions, as the stable sort did
+        .min_by(|a, b| b.0.cmp(&a.0))
+        .map(|(_, path)| path)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -142,9 +136,8 @@ impl Ord for ToolchainVersion {
         for idx in 0..max_len {
             let lhs = self.0.get(idx).copied().unwrap_or(0);
             let rhs = other.0.get(idx).copied().unwrap_or(0);
-            match lhs.cmp(&rhs) {
-                Ordering::Equal => continue,
-                non_eq => return non_eq,
+            if lhs != rhs {
+                return lhs.cmp(&rhs);
             }
         }
 

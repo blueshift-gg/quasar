@@ -82,8 +82,7 @@ pub fn run(
                 .lines()
                 .find(|l| l.contains("Program Id:"))
                 .and_then(|l| l.split(':').nth(1))
-                .map(|s| s.trim())
-                .unwrap_or("(unknown)");
+                .map_or("(unknown)", str::trim);
 
             println!("\n  {}", style::success(&format!("Deployed to {}", style::bold(program_id))));
             println!();

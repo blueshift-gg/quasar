@@ -201,7 +201,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
         codec_imports.push("getArrayCodec");
     }
 
-    codec_imports.sort();
+    codec_imports.sort_unstable();
     codec_imports.dedup();
 
     if !codec_imports.is_empty() {
@@ -244,7 +244,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
     for account in &idl.accounts {
         let const_name = pascal_to_screaming_snake(&account.name);
         let disc_str = super::format_disc_array(&account.discriminator);
-        writeln!(out, "export const {}_DISCRIMINATOR = new Uint8Array({});", const_name, disc_str)
+        writeln!(out, "export const {const_name}_DISCRIMINATOR = new Uint8Array({disc_str});")
             .expect("write to String");
     }
 
@@ -252,7 +252,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
     for event in &idl.events {
         let const_name = pascal_to_screaming_snake(&event.name);
         let disc_str = super::format_disc_array(&event.discriminator);
-        writeln!(out, "export const {}_DISCRIMINATOR = new Uint8Array({});", const_name, disc_str)
+        writeln!(out, "export const {const_name}_DISCRIMINATOR = new Uint8Array({disc_str});")
             .expect("write to String");
     }
 
@@ -263,8 +263,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
         let disc_str = super::format_disc_array(&ix.discriminator);
         writeln!(
             out,
-            "export const {}_INSTRUCTION_DISCRIMINATOR = new Uint8Array({});",
-            const_name, disc_str
+            "export const {const_name}_INSTRUCTION_DISCRIMINATOR = new Uint8Array({disc_str});"
         )
         .expect("write to String");
     }
@@ -278,7 +277,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
     for type_def in &idl.types {
         let name = &type_def.name;
         let fields = &type_def.fields;
-        writeln!(out, "export interface {} {{", name).expect("write to String");
+        writeln!(out, "export interface {name} {{").expect("write to String");
         for field in fields {
             writeln!(out, "  {}: {};", field.name, ts_type(&field.ty)).expect("write to String");
         }
@@ -291,7 +290,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
             continue;
         }
         let pascal = snake_to_pascal(&ix.name);
-        writeln!(out, "export interface {}InstructionArgs {{", pascal).expect("write to String");
+        writeln!(out, "export interface {pascal}InstructionArgs {{").expect("write to String");
         for arg in &ix.args {
             writeln!(out, "  {}: {};", arg.name, ts_type(&arg.ty)).expect("write to String");
         }
@@ -353,8 +352,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
         if has_dynamic_field_defs(fields) {
             emit_compact_type_codec(&mut out, name, fields, target);
         } else {
-            writeln!(out, "export const {}Codec = getStructCodec([", name)
-                .expect("write to String");
+            writeln!(out, "export const {name}Codec = getStructCodec([").expect("write to String");
             for field in fields {
                 writeln!(out, "  [\"{}\", {}],", field.name, ts_codec_for_field_def(field, target))
                     .expect("write to String");
@@ -402,7 +400,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
         out.push_str("export const ProgramInstruction = {\n");
         for ix in &idl.instructions {
             let pascal = snake_to_pascal(&ix.name);
-            writeln!(out, "  {}: \"{}\",", pascal, pascal).expect("write to String");
+            writeln!(out, "  {pascal}: \"{pascal}\",").expect("write to String");
         }
         out.push_str("} as const;\n\n");
 
@@ -415,13 +413,12 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
         for (i, ix) in idl.instructions.iter().enumerate() {
             let pascal = snake_to_pascal(&ix.name);
             if ix.args.is_empty() {
-                write!(out, "  | {{ type: typeof ProgramInstruction.{} }}", pascal)
+                write!(out, "  | {{ type: typeof ProgramInstruction.{pascal} }}")
                     .expect("write to String");
             } else {
                 write!(
                     out,
-                    "  | {{ type: typeof ProgramInstruction.{}; args: {}InstructionArgs }}",
-                    pascal, pascal
+                    "  | {{ type: typeof ProgramInstruction.{pascal}; args: {pascal}InstructionArgs }}"
                 )
                 .expect("write to String");
             }
@@ -435,7 +432,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
     // === Client class ===
     out.push_str("/* Client */\n");
     let class_name = format!("{}Client", snake_to_pascal(&model.identity.program_name));
-    writeln!(out, "export class {} {{", class_name).expect("write to String");
+    writeln!(out, "export class {class_name} {{").expect("write to String");
 
     if target == TsTarget::Web3js {
         writeln!(out, "  static readonly programId = new Address(\"{}\");", idl.address)
@@ -446,18 +443,16 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
         let name = &account.name;
         let const_name = pascal_to_screaming_snake(name);
         out.push('\n');
-        writeln!(out, "  decode{}(data: Uint8Array): {} {{", name, name).expect("write to String");
+        writeln!(out, "  decode{name}(data: Uint8Array): {name} {{").expect("write to String");
         writeln!(
             out,
-            "    if (!matchDisc(data, {}_DISCRIMINATOR)) throw new Error(\"Invalid {} \
-             discriminator\");",
-            const_name, name
+            "    if (!matchDisc(data, {const_name}_DISCRIMINATOR)) throw new Error(\"Invalid {name} \
+             discriminator\");"
         )
         .expect("write to String");
         writeln!(
             out,
-            "    return {}Codec.decode(data.slice({}_DISCRIMINATOR.length));",
-            name, const_name
+            "    return {name}Codec.decode(data.slice({const_name}_DISCRIMINATOR.length));"
         )
         .expect("write to String");
         out.push_str("  }\n");
@@ -469,7 +464,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
         for event in &idl.events {
             let has_type = idl.types.iter().any(|t| t.name == event.name);
             let const_name = format!("{}_DISCRIMINATOR", pascal_to_screaming_snake(&event.name));
-            writeln!(out, "    if (matchDisc(data, {}))", const_name).expect("write to String");
+            writeln!(out, "    if (matchDisc(data, {const_name}))").expect("write to String");
             if has_type {
                 writeln!(
                     out,
@@ -495,12 +490,12 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
             let const_name =
                 format!("{}_INSTRUCTION_DISCRIMINATOR", pascal_to_screaming_snake(&pascal));
             if ix.args.is_empty() {
-                writeln!(out, "    if (matchDisc(data, {}))", const_name).expect("write to String");
-                writeln!(out, "      return {{ type: ProgramInstruction.{} }};", pascal)
+                writeln!(out, "    if (matchDisc(data, {const_name}))").expect("write to String");
+                writeln!(out, "      return {{ type: ProgramInstruction.{pascal} }};")
                     .expect("write to String");
             } else {
                 let has_dyn = ix.args.iter().any(is_arg_dynamic);
-                writeln!(out, "    if (matchDisc(data, {})) {{", const_name)
+                writeln!(out, "    if (matchDisc(data, {const_name})) {{")
                     .expect("write to String");
 
                 if !has_dyn {
@@ -518,9 +513,8 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
                     out.push_str("      ]);\n");
                     writeln!(
                         out,
-                        "      return {{ type: ProgramInstruction.{}, args: \
-                         argsCodec.decode(data.slice({}.length)) }};",
-                        pascal, const_name
+                        "      return {{ type: ProgramInstruction.{pascal}, args: \
+                         argsCodec.decode(data.slice({const_name}.length)) }};"
                     )
                     .expect("write to String");
                 } else {
@@ -720,7 +714,7 @@ fn generate_instruction_builders_web3js(
             if input_account_names.contains(name) {
                 format!("input.{name}")
             } else {
-                format!("accountsMap[\"{}\"]", name)
+                format!("accountsMap[\"{name}\"]")
             }
         };
 
@@ -761,7 +755,7 @@ fn generate_instruction_builders_web3js(
         // Derive PDA accounts
         for acc in &ix.accounts {
             if let IdlResolver::Pda { seeds, .. } = &acc.resolver {
-                if let Some(helper_name) = exportable_pda_helpers.get(&format!("{:?}", seeds)) {
+                if let Some(helper_name) = exportable_pda_helpers.get(&format!("{seeds:?}")) {
                     let args = helper_call_args(seeds, &account_expr);
                     writeln!(
                         out,
@@ -790,7 +784,7 @@ fn generate_instruction_builders_web3js(
         let disc_str = super::format_disc_decimal(&ix.discriminator);
         let has_dyn = ix.args.iter().any(is_arg_dynamic);
         if ix.args.is_empty() {
-            writeln!(out, "    const data = Uint8Array.from([{}]);", disc_str)
+            writeln!(out, "    const data = Uint8Array.from([{disc_str}]);")
                 .expect("write to String");
         } else if !has_dyn {
             // Fixed-only: use getStructCodec
@@ -830,8 +824,7 @@ fn generate_instruction_builders_web3js(
                 let is_writable = matches!(acc.writable, AccountFlag::Fixed(true));
                 writeln!(
                     out,
-                    "        {{ pubkey: {}, isSigner: {}, isWritable: {} }},",
-                    pubkey_expr, is_signer, is_writable
+                    "        {{ pubkey: {pubkey_expr}, isSigner: {is_signer}, isWritable: {is_writable} }},"
                 )
                 .expect("write to String");
             }
@@ -877,7 +870,7 @@ fn generate_instruction_builders_kit(
             if input_account_names.contains(name) {
                 format!("input.{name}")
             } else {
-                format!("accountsMap[\"{}\"]", name)
+                format!("accountsMap[\"{name}\"]")
             }
         };
 
@@ -916,7 +909,7 @@ fn generate_instruction_builders_kit(
         // Derive PDA accounts (async in kit)
         for acc in &ix.accounts {
             if let IdlResolver::Pda { seeds, .. } = &acc.resolver {
-                if let Some(helper_name) = exportable_pda_helpers.get(&format!("{:?}", seeds)) {
+                if let Some(helper_name) = exportable_pda_helpers.get(&format!("{seeds:?}")) {
                     let args = helper_call_args(seeds, &account_expr);
                     writeln!(
                         out,
@@ -943,7 +936,7 @@ fn generate_instruction_builders_kit(
         let disc_str = super::format_disc_decimal(&ix.discriminator);
         let has_dyn = ix.args.iter().any(is_arg_dynamic);
         if ix.args.is_empty() {
-            writeln!(out, "    const data = Uint8Array.from([{}]);", disc_str)
+            writeln!(out, "    const data = Uint8Array.from([{disc_str}]);")
                 .expect("write to String");
         } else if !has_dyn {
             // Fixed-only: use getStructCodec
@@ -982,7 +975,7 @@ fn generate_instruction_builders_kit(
                 let is_signer = matches!(acc.signer, AccountFlag::Fixed(true));
                 let is_writable = matches!(acc.writable, AccountFlag::Fixed(true));
                 let role = account_role(is_signer, is_writable);
-                writeln!(out, "        {{ address: {}, role: {} }},", addr_expr, role)
+                writeln!(out, "        {{ address: {addr_expr}, role: {role} }},")
                     .expect("write to String");
             }
             if has_remaining {
@@ -1005,13 +998,13 @@ fn has_dynamic_field_defs(fields: &[IdlFieldDef]) -> bool {
 /// Returns `true` if a field def has a SizePrefixed or Remainder codec
 /// (dynamic).
 fn is_field_def_dynamic(field: &IdlFieldDef) -> bool {
-    matches!(field.codec, Some(IdlCodec::SizePrefixed { .. }) | Some(IdlCodec::Remainder { .. }))
+    matches!(field.codec, Some(IdlCodec::SizePrefixed { .. } | IdlCodec::Remainder { .. }))
 }
 
 /// Returns `true` if an instruction arg is dynamic (has SizePrefixed or
 /// Remainder codec).
 fn is_arg_dynamic(arg: &IdlArg) -> bool {
-    matches!(arg.codec, Some(IdlCodec::SizePrefixed { .. }) | Some(IdlCodec::Remainder { .. }))
+    matches!(arg.codec, Some(IdlCodec::SizePrefixed { .. } | IdlCodec::Remainder { .. }))
 }
 
 /// Emit a custom codec object for a type with dynamic fields (compact layout).
@@ -1117,7 +1110,6 @@ fn emit_compact_type_codec(out: &mut String, name: &str, fields: &[IdlFieldDef],
                      getArrayCodec({item_codec}, {{ size: value.{name}.length \
                      }}).encode(value.{name});",
                     name = f.name,
-                    item_codec = item_codec,
                 )
                 .expect("write to String");
                 writeln!(
@@ -1139,7 +1131,6 @@ fn emit_compact_type_codec(out: &mut String, name: &str, fields: &[IdlFieldDef],
                 "    const {name}Bytes = getArrayCodec({item_codec}, {{ size: value.{name}.length \
                  }}).encode(value.{name});",
                 name = f.name,
-                item_codec = item_codec,
             )
             .expect("write to String");
         }
@@ -1162,7 +1153,7 @@ fn emit_compact_type_codec(out: &mut String, name: &str, fields: &[IdlFieldDef],
         out,
         "    return {}([{}]);",
         buf_ctor,
-        concat_parts.iter().map(|p| format!("...{}", p)).collect::<Vec<_>>().join(", ")
+        concat_parts.iter().map(|p| format!("...{p}")).collect::<Vec<_>>().join(", ")
     )
     .expect("write to String");
     out.push_str("  },\n");
@@ -1211,7 +1202,7 @@ fn emit_compact_type_codec(out: &mut String, name: &str, fields: &[IdlFieldDef],
                 codec = pfx_codec
             )
             .expect("write to String");
-            writeln!(out, "    offset += {};", pfx).expect("write to String");
+            writeln!(out, "    offset += {pfx};").expect("write to String");
         }
     }
 
@@ -1232,7 +1223,7 @@ fn emit_compact_type_codec(out: &mut String, name: &str, fields: &[IdlFieldDef],
                     codec = pfx_codec
                 )
                 .expect("write to String");
-                writeln!(out, "      offset += {};", pfx).expect("write to String");
+                writeln!(out, "      offset += {pfx};").expect("write to String");
                 writeln!(
                     out,
                     "      {name} = new TextDecoder().decode(data.slice(offset, offset + \
@@ -1260,13 +1251,12 @@ fn emit_compact_type_codec(out: &mut String, name: &str, fields: &[IdlFieldDef],
                     codec = pfx_codec
                 )
                 .expect("write to String");
-                writeln!(out, "      offset += {};", pfx).expect("write to String");
+                writeln!(out, "      offset += {pfx};").expect("write to String");
                 writeln!(
                     out,
                     "      const {name}Codec = getArrayCodec({item_codec}, {{ size: \
                      Number({name}Len) }});",
                     name = f.name,
-                    item_codec = item_codec,
                 )
                 .expect("write to String");
                 writeln!(
@@ -1295,7 +1285,6 @@ fn emit_compact_type_codec(out: &mut String, name: &str, fields: &[IdlFieldDef],
                 "    const {name}Codec = getArrayCodec({item_codec}, {{ size: Number({name}Len) \
                  }});",
                 name = f.name,
-                item_codec = item_codec,
             )
             .expect("write to String");
             writeln!(
@@ -1427,7 +1416,6 @@ fn emit_compact_encoding(
                      getArrayCodec({item_codec}, {{ size: input.{name}.length \
                      }}).encode(input.{name});",
                     name = arg.name,
-                    item_codec = item_codec,
                 )
                 .expect("write to String");
                 writeln!(
@@ -1449,7 +1437,6 @@ fn emit_compact_encoding(
                 "    const {name}Bytes = getArrayCodec({item_codec}, {{ size: input.{name}.length \
                  }}).encode(input.{name});",
                 name = arg.name,
-                item_codec = item_codec,
             )
             .expect("write to String");
         }
@@ -1472,7 +1459,7 @@ fn emit_compact_encoding(
         out,
         "    const data = {}([{}]);",
         buf_ctor,
-        concat_parts.iter().map(|p| format!("...{}", p)).collect::<Vec<_>>().join(", ")
+        concat_parts.iter().map(|p| format!("...{p}")).collect::<Vec<_>>().join(", ")
     )
     .expect("write to String");
 }
@@ -1488,7 +1475,7 @@ fn emit_compact_decode(
     let fixed_args: Vec<_> = ix.args.iter().filter(|a| !is_arg_dynamic(a)).collect();
     let dyn_args: Vec<_> = ix.args.iter().filter(|a| is_arg_dynamic(a)).collect();
 
-    writeln!(out, "      let offset = {}.length;", const_name).expect("write to String");
+    writeln!(out, "      let offset = {const_name}.length;").expect("write to String");
 
     // Phase 1: decode fixed fields
     if !fixed_args.is_empty() {
@@ -1531,7 +1518,7 @@ fn emit_compact_decode(
                 codec = pfx_codec
             )
             .expect("write to String");
-            writeln!(out, "      offset += {};", pfx).expect("write to String");
+            writeln!(out, "      offset += {pfx};").expect("write to String");
         }
     }
 
@@ -1552,7 +1539,7 @@ fn emit_compact_decode(
                     codec = pfx_codec
                 )
                 .expect("write to String");
-                writeln!(out, "        offset += {};", pfx).expect("write to String");
+                writeln!(out, "        offset += {pfx};").expect("write to String");
                 writeln!(
                     out,
                     "        {name} = new TextDecoder().decode(data.slice(offset, offset + \
@@ -1581,13 +1568,12 @@ fn emit_compact_decode(
                     codec = pfx_codec
                 )
                 .expect("write to String");
-                writeln!(out, "        offset += {};", pfx).expect("write to String");
+                writeln!(out, "        offset += {pfx};").expect("write to String");
                 writeln!(
                     out,
                     "        const {name}Codec = getArrayCodec({item_codec}, {{ size: \
                      Number({name}Len) }});",
                     name = arg.name,
-                    item_codec = item_codec,
                 )
                 .expect("write to String");
                 writeln!(
@@ -1620,7 +1606,6 @@ fn emit_compact_decode(
                 "      const {name}Codec = getArrayCodec({item_codec}, {{ size: Number({name}Len) \
                  }});",
                 name = arg.name,
-                item_codec = item_codec,
             )
             .expect("write to String");
             writeln!(
@@ -1687,16 +1672,13 @@ fn collect_pdas(idl: &Idl) -> Vec<PdaInfo> {
     for ix in &idl.instructions {
         let arg_types = instruction_arg_types(ix);
         for account in &ix.accounts {
-            let seeds = match &account.resolver {
-                IdlResolver::Pda { seeds, .. } => seeds,
-                _ => continue,
-            };
+            let IdlResolver::Pda { seeds, .. } = &account.resolver else { continue };
             if seeds.is_empty() || !pda_is_exportable(seeds, &arg_types) {
                 continue;
             }
 
             // Use a serialized form for dedup since IdlPdaSeed doesn't impl Hash
-            let seed_key = format!("{:?}", seeds).into_bytes();
+            let seed_key = format!("{seeds:?}").into_bytes();
             if !seen_seeds.insert(seed_key) {
                 continue;
             }
@@ -1843,10 +1825,10 @@ fn write_ts_pda_seed_lines(
             IdlPdaSeed::Const { value } => write_byte_array(out, value),
             IdlPdaSeed::Account { path } => match target {
                 TsTarget::Web3js => {
-                    writeln!(out, "      {}.toBytes(),", path).expect("write to String");
+                    writeln!(out, "      {path}.toBytes(),").expect("write to String");
                 }
                 TsTarget::Kit => {
-                    writeln!(out, "      getAddressCodec().encode({}),", path)
+                    writeln!(out, "      getAddressCodec().encode({path}),")
                         .expect("write to String");
                 }
             },
@@ -1854,9 +1836,8 @@ fn write_ts_pda_seed_lines(
             IdlPdaSeed::Arg { path, .. } => {
                 let expr = arg_types
                     .get(path)
-                    .map(|ty| ts_pda_arg_seed_expr(path, ty, target))
-                    .unwrap_or_else(|| path.clone());
-                writeln!(out, "      {},", expr).expect("write to String");
+                    .map_or_else(|| path.clone(), |ty| ts_pda_arg_seed_expr(path, ty, target));
+                writeln!(out, "      {expr},").expect("write to String");
             }
         }
     }
@@ -1876,20 +1857,17 @@ fn emit_inline_pda_derivation(
         InlinePdaTarget::Web3js { program_expr } => {
             writeln!(
                 out,
-                "    accountsMap[\"{}\"] = (await Address.findProgramAddress(",
-                account_name
+                "    accountsMap[\"{account_name}\"] = (await Address.findProgramAddress("
             )
             .expect("write to String");
             out.push_str("      [\n");
             write_inline_pda_seed_lines(out, seeds, idl, ts_target, arg_types, account_expr);
-            writeln!(out, "      ],\n      {},\n    ))[0];", program_expr)
-                .expect("write to String");
+            writeln!(out, "      ],\n      {program_expr},\n    ))[0];").expect("write to String");
         }
         InlinePdaTarget::Kit { .. } => {
             writeln!(
                 out,
-                "    accountsMap[\"{}\"] = (await getProgramDerivedAddress({{",
-                account_name
+                "    accountsMap[\"{account_name}\"] = (await getProgramDerivedAddress({{"
             )
             .expect("write to String");
             writeln!(out, "      programAddress: {},", target.program_expr())
@@ -1926,18 +1904,18 @@ fn write_inline_pda_seed_lines(
             IdlPdaSeed::AccountField { path, account, field } => {
                 let expr = account_field_seed_var(path, field);
                 let Some(ty) = account_field_type(idl, account, field) else {
-                    writeln!(out, "        {},", expr).expect("write to String");
+                    writeln!(out, "        {expr},").expect("write to String");
                     continue;
                 };
                 writeln!(out, "        {},", ts_pda_arg_seed_expr(&expr, &ty, target))
                     .expect("write to String");
             }
             IdlPdaSeed::Arg { path, .. } => {
-                let expr = arg_types
-                    .get(path)
-                    .map(|ty| ts_pda_arg_seed_expr(&format!("input.{path}"), ty, target))
-                    .unwrap_or_else(|| format!("input.{path}"));
-                writeln!(out, "        {},", expr).expect("write to String");
+                let expr = arg_types.get(path).map_or_else(
+                    || format!("input.{path}"),
+                    |ty| ts_pda_arg_seed_expr(&format!("input.{path}"), ty, target),
+                );
+                writeln!(out, "        {expr},").expect("write to String");
             }
         }
     }
@@ -2182,11 +2160,10 @@ fn primitive_ts_codec(primitive: &str, target: TsTarget) -> String {
         other if other.starts_with('[') => {
             let size = super::parse_fixed_array_size(other).unwrap_or(1);
             format!(
-                "transformCodec(fixCodecSize(getBytesCodec(), {}), (value: Uint8Array) => value, value => Uint8Array.from(value))",
-                size
+                "transformCodec(fixCodecSize(getBytesCodec(), {size}), (value: Uint8Array) => value, value => Uint8Array.from(value))"
             )
         }
-        other => format!("/* unknown: {} */", other),
+        other => format!("/* unknown: {other} */"),
     }
 }
 
@@ -2195,8 +2172,7 @@ fn ts_type(ty: &IdlType) -> String {
         IdlType::Primitive(p) => primitive_ts_type(p),
         IdlType::Option { option } => format!("{} | null", ts_type(option)),
         IdlType::Defined { defined } => builtin_defined_primitive(&defined.name)
-            .map(primitive_ts_type)
-            .unwrap_or_else(|| defined.name.clone()),
+            .map_or_else(|| defined.name.clone(), primitive_ts_type),
         IdlType::Vec { vec } => format!("Array<{}>", ts_type(vec)),
         IdlType::Array { array } => {
             let (item, _size) = array;
@@ -2215,9 +2191,10 @@ fn ts_codec(ty: &IdlType, target: TsTarget) -> String {
     match ty {
         IdlType::Primitive(p) => primitive_ts_codec(p, target),
         IdlType::Option { option } => format!("getOptionCodec({})", ts_codec(option, target)),
-        IdlType::Defined { defined } => builtin_defined_primitive(&defined.name)
-            .map(|primitive| primitive_ts_codec(primitive, target))
-            .unwrap_or_else(|| format!("{}Codec", defined.name)),
+        IdlType::Defined { defined } => builtin_defined_primitive(&defined.name).map_or_else(
+            || format!("{}Codec", defined.name),
+            |primitive| primitive_ts_codec(primitive, target),
+        ),
         IdlType::Vec { vec } => {
             format!("getArrayCodec({}, {{ size: getU32Codec() }})", ts_codec(vec, target))
         }
@@ -2225,14 +2202,13 @@ fn ts_codec(ty: &IdlType, target: TsTarget) -> String {
             let (item, size) = array;
             if is_u8_type(item) {
                 format!(
-                    "transformCodec(fixCodecSize(getBytesCodec(), {}), (value: Uint8Array) => value, value => Uint8Array.from(value))",
-                    size
+                    "transformCodec(fixCodecSize(getBytesCodec(), {size}), (value: Uint8Array) => value, value => Uint8Array.from(value))"
                 )
             } else {
                 format!("getArrayCodec({}, {{ size: {} }})", ts_codec(item, target), size)
             }
         }
-        IdlType::Generic { generic } => format!("/* generic: {} */", generic),
+        IdlType::Generic { generic } => format!("/* generic: {generic} */"),
     }
 }
 
@@ -2244,13 +2220,13 @@ fn ts_codec_for_field_def(field: &IdlFieldDef, target: TsTarget) -> String {
             let pfx_bytes = scalar_repr_bytes(prefix);
             let pfx_codec = prefix_codec(pfx_bytes);
             if is_string_type(&field.ty) {
-                format!("addCodecSizePrefix(getUtf8Codec(), {})", pfx_codec)
+                format!("addCodecSizePrefix(getUtf8Codec(), {pfx_codec})")
             } else if let IdlType::Vec { vec } = &field.ty {
                 let item_codec = match item {
                     Some(codec_item) => ts_codec(&codec_item.ty, target),
                     None => ts_codec(vec, target),
                 };
-                format!("getArrayCodec({}, {{ size: {} }})", item_codec, pfx_codec)
+                format!("getArrayCodec({item_codec}, {{ size: {pfx_codec} }})")
             } else {
                 ts_codec(&field.ty, target)
             }
@@ -2267,13 +2243,13 @@ fn ts_codec_for_arg(arg: &IdlArg, target: TsTarget) -> String {
             let pfx_bytes = scalar_repr_bytes(prefix);
             let pfx_codec = prefix_codec(pfx_bytes);
             if is_string_type(&arg.ty) {
-                format!("addCodecSizePrefix(getUtf8Codec(), {})", pfx_codec)
+                format!("addCodecSizePrefix(getUtf8Codec(), {pfx_codec})")
             } else if let IdlType::Vec { vec } = &arg.ty {
                 let item_codec = match item {
                     Some(codec_item) => ts_codec(&codec_item.ty, target),
                     None => ts_codec(vec, target),
                 };
-                format!("getArrayCodec({}, {{ size: {} }})", item_codec, pfx_codec)
+                format!("getArrayCodec({item_codec}, {{ size: {pfx_codec} }})")
             } else {
                 ts_codec(&arg.ty, target)
             }
@@ -2388,7 +2364,7 @@ fn write_byte_array(out: &mut String, value: &[u8]) {
         if i > 0 {
             out.push_str(", ");
         }
-        write!(out, "{}", b).expect("write to String");
+        write!(out, "{b}").expect("write to String");
     }
     out.push_str("]),\n");
 }
