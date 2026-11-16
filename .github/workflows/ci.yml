@@ -13,6 +13,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   changes:
     runs-on: ubuntu-latest
@@ -30,6 +34,7 @@ jobs:
         id: paths
         if: ${{ !inputs.full_check && !startsWith(github.ref, 'refs/tags/') }}
         with:
+          base: 0.2.0-release
           filters: .github/filters.yml
 
   miri:
@@ -77,6 +82,16 @@ jobs:
           key: ${{ runner.os }}-${{ runner.arch }}-cargo-downloads-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-cargo-downloads-
+      - name: Cache host build dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            target/debug/.fingerprint/
+            target/debug/build/
+            target/debug/deps/
+          key: ${{ runner.os }}-${{ runner.arch }}-host-build-${{ hashFiles('rust-toolchain.toml', '**/Cargo.toml', '**/Cargo.lock', '.cargo/**', 'Makefile', '.github/workflows/ci.yml') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-host-build-${{ hashFiles('rust-toolchain.toml', '**/Cargo.toml', '**/Cargo.lock', '.cargo/**', 'Makefile', '.github/workflows/ci.yml') }}-
       - name: Cache Solana and SBF toolchains
         uses: actions/cache@v4
         id: solana
@@ -123,6 +138,14 @@ jobs:
         with:
           go-version: '1.25'
           cache: false
+      - name: Cache pinned rival binaries
+        uses: actions/cache@v4
+        id: rivals
+        with:
+          path: target/rivals/*.so
+          key: ${{ runner.os }}-${{ runner.arch }}-rivals-${{ hashFiles('bench/rivals.sh', 'bench/rivals/**', 'Cargo.toml', 'Cargo.lock', '.cargo/**', 'rust-toolchain.toml', 'Makefile', '.github/workflows/ci.yml') }}
       - run: make check
+        env:
+          RIVALS_CACHE_HIT: ${{ steps.rivals.outputs.cache-hit }}
       - name: Committed files match what `make check` generates
         run: git diff --exit-code

@@ -13,6 +13,17 @@ TOKEN_REV=8185db13640f0df038266c7cf4306c212d81380a
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 out="$root/target/rivals"
+
+if [ "${RIVALS_CACHE_HIT:-false}" = true ]; then
+    cached=true
+    for program in pinocchio_vault anchor_next_vault blueshift_vault quasar_vault quasar_escrow quasar_multisig pinocchio_token_program; do
+        [ -s "$out/$program.so" ] || cached=false
+    done
+    if [ "$cached" = true ]; then
+        exit 0
+    fi
+fi
+
 mkdir -p "$out/src"
 
 checkout() {
