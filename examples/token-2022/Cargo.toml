@@ -1,0 +1,81 @@
+[package]
+name = "quasar-token-2022"
+version = "0.0.0"
+publish = false
+description = "Native Quasar port of the Token-2022 program and extensions"
+readme = "README.md"
+license = "Apache-2.0"
+edition = "2021"
+
+[features]
+no-entrypoint = []
+test-sbf = []
+
+[dependencies]
+quasar-lang = { path = "../../lang", features = ["shared-accounts"] }
+spl-type-length-value = "0.9.1"
+spl-tlv-account-resolution = "0.11.3"
+bytemuck = { version = "1.25.0", features = ["derive"] }
+num_enum = "0.7.6"
+solana-account-info = "3.1.1"
+solana-address = { version = "2.6.1", features = ["bytemuck", "nullable"] }
+solana-clock = "3.1.0"
+solana-cpi = "3.1.0"
+solana-get-sysvar = "1.0.0"
+solana-instruction = "3.0.0"
+solana-msg = "3.1.0"
+solana-nullable = { version = "1.1.1", features = ["bytemuck"] }
+solana-program-error = "3.0.1"
+solana-program-memory = "3.1.0"
+solana-program-option = { version = "3.1.0", features = ["nullable"] }
+solana-program-pack = "3.1.0"
+solana-rent = { version = "4.0.0", features = ["sysvar"] }
+solana-sdk-ids = "3.1.0"
+solana-sysvar = { version = "3.0.0", features = ["bincode"] }
+solana-system-interface = { version = "3.2.0", features = ["bincode"] }
+solana-zero-copy = { version = "1.1.1", features = ["bytemuck"] }
+solana-zk-sdk-pod = "0.1.2"
+solana-zk-elgamal-proof-interface = "1.0.0"
+spl-elgamal-registry-interface = { version = "0.3.0", git = "https://github.com/solana-program/token-2022", rev = "e8ca680ca8aeb12f9598524b003c776c6a4168f2" }
+spl-memo-interface = { version = "2.1" }
+spl-token-2022-interface = { version = "4.0.0", git = "https://github.com/solana-program/token-2022", rev = "e8ca680ca8aeb12f9598524b003c776c6a4168f2" }
+spl-token-confidential-transfer-ciphertext-arithmetic = { version = "0.5.0", git = "https://github.com/solana-program/token-2022", rev = "e8ca680ca8aeb12f9598524b003c776c6a4168f2" }
+spl-token-confidential-transfer-proof-extraction = { version = "0.7.0", git = "https://github.com/solana-program/token-2022", rev = "e8ca680ca8aeb12f9598524b003c776c6a4168f2" }
+spl-token-group-interface = "0.7.2"
+spl-token-metadata-interface = "1.0.0"
+spl-transfer-hook-interface = { version = "2.1.0" }
+
+[dev-dependencies]
+agave-feature-set = "=3.1.14"
+mollusk-svm = "=0.10.3"
+solana-account = { version = "=3.4.0", features = ["bincode"] }
+solana-rent-legacy = { package = "solana-rent", version = "=3.1.0" }
+
+quasar-test = { path = "../../test" }
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[lints]
+workspace = true
+
+# Token-2022's current interfaces require newer minor versions than this
+# repository's pinned fixtures. Keep its dependency resolution independent.
+[workspace]
+members = ["fixtures/hook"]
+resolver = "3"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
+
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "deny"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+
+[patch.crates-io]
+# Upstream's v3 instruction APIs otherwise conflict with this crate's v4 dependency.
+solana-zk-elgamal-proof-interface = { path = "vendor/zk-elgamal-proof-interface" }

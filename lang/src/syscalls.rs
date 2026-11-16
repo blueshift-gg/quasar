@@ -33,6 +33,7 @@ mod sbf {
     use super::RawSlice;
     use crate::{Address, ProgramError, Result};
 
+    #[cfg(not(feature = "shared-accounts"))]
     #[panic_handler]
     fn panic(_: &core::panic::PanicInfo) -> ! {
         // SAFETY: `abort` ends the program and never returns.

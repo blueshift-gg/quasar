@@ -1,0 +1,14 @@
+[package]
+name = "token-2022-test-hook"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+quasar-lang = { path = "../../../../lang", features = ["shared-accounts"] }
+
+[lints]
+workspace = true

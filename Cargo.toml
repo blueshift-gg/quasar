@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["bench", "cli", "idl", "idl/schema", "profile", "schema", "derive", "examples/*", "lang", "metadata", "spl", "test", "tests/*"]
-exclude = ["bench/rivals"]
+exclude = ["bench/rivals", "examples/token-2022"]
 
 [workspace.package]
 version = "0.2.0"

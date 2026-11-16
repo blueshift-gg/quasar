@@ -1,0 +1,112 @@
+// Adapted from solana-program/token-2022 at e8ca680ca8aeb12f9598524b003c776c6a4168f2.
+// Modified to execute on Quasar; see ../README.md for provenance and compatibility.
+use {
+    crate::processor::Processor,
+    crate::runtime::system::Transfer,
+    crate::runtime::{account::next_account_view, AccountView},
+    solana_address::Address,
+    solana_get_sysvar::GetSysvar,
+    solana_msg::msg,
+    solana_program_error::ProgramResult,
+    solana_program_option::COption,
+    solana_rent::Rent,
+    spl_token_2022_interface::{
+        check_program_account,
+        error::TokenError,
+        extension::{
+            set_account_type, AccountType, BaseStateWithExtensions, ExtensionType,
+            StateWithExtensions, StateWithExtensionsMut,
+        },
+        state::Account,
+    },
+};
+
+/// Processes a [Reallocate](enum.TokenInstruction.html) instruction
+pub fn process_reallocate(
+    program_id: &Address,
+    accounts: &mut [AccountView],
+    new_extension_types: Vec<ExtensionType>,
+) -> ProgramResult {
+    let account_info_iter = &mut accounts.iter_mut();
+    let token_account_info = next_account_view(account_info_iter)?;
+    let payer_info = next_account_view(account_info_iter)?;
+    let _system_program_info = next_account_view(account_info_iter)?;
+    let authority_info = next_account_view(account_info_iter)?;
+    let authority_info_data_len = authority_info.data_len();
+
+    check_program_account(&token_account_info.owner())?;
+
+    // check that account is the right type and validate owner
+    let (mut current_extension_types, native_token_amount) = {
+        let token_account = token_account_info.try_borrow()?;
+        let account = StateWithExtensions::<Account>::unpack(&token_account)?;
+        Processor::validate_owner(
+            program_id,
+            &account.base.owner,
+            authority_info,
+            authority_info_data_len,
+            account_info_iter.as_slice(),
+        )?;
+        let native_token_amount = account.base.is_native().then_some(account.base.amount);
+        (account.get_extension_types()?, native_token_amount)
+    };
+
+    // check that all desired extensions are for the right account type
+    if new_extension_types
+        .iter()
+        .any(|extension_type| extension_type.get_account_type() != AccountType::Account)
+    {
+        return Err(TokenError::InvalidState.into());
+    }
+    // ExtensionType::try_calculate_account_len() dedupes types, so just a dumb
+    // concatenation is fine here
+    current_extension_types.extend_from_slice(&new_extension_types);
+    let needed_account_len =
+        ExtensionType::try_calculate_account_len::<Account>(&current_extension_types)?;
+
+    // if account is already large enough, return early
+    if token_account_info.data_len() >= needed_account_len {
+        return Ok(());
+    }
+
+    // reallocate
+    msg!("account needs resize, +{:?} bytes", needed_account_len - token_account_info.data_len());
+    token_account_info.resize(needed_account_len)?;
+
+    // if additional lamports needed to remain rent-exempt, transfer them
+    let rent = Rent::get()?;
+    let new_rent_exempt_reserve = rent.minimum_balance(needed_account_len);
+
+    let current_lamport_reserve = token_account_info
+        .lamports()
+        .checked_sub(native_token_amount.unwrap_or(0))
+        .ok_or(TokenError::Overflow)?;
+    let lamports_diff = new_rent_exempt_reserve.saturating_sub(current_lamport_reserve);
+    if lamports_diff > 0 {
+        Transfer { from: payer_info, to: token_account_info, lamports: lamports_diff }.invoke()?;
+    }
+
+    // Note: Storing the lamports value so borrow checker doesn't complain about
+    // multiple borrows of `token_account_lamports`.
+    let token_account_lamports = token_account_info.lamports();
+
+    // set account_type, if needed
+    let mut token_account_data = token_account_info.try_borrow_mut()?;
+    set_account_type::<Account>(&mut token_account_data)?;
+
+    // sync the rent exempt reserve for native accounts
+    if let Some(native_token_amount) = native_token_amount {
+        let mut token_account = StateWithExtensionsMut::<Account>::unpack(&mut token_account_data)?;
+        // sanity check that there are enough lamports to cover the token amount
+        // and the rent exempt reserve
+        let minimum_lamports =
+            new_rent_exempt_reserve.checked_add(native_token_amount).ok_or(TokenError::Overflow)?;
+        if token_account_lamports < minimum_lamports {
+            return Err(TokenError::InvalidState.into());
+        }
+        token_account.base.is_native = COption::Some(new_rent_exempt_reserve);
+        token_account.pack_base();
+    }
+
+    Ok(())
+}

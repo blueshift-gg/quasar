@@ -9,21 +9,21 @@
 // nothing is allocated on chain. Off chain, `std` supplies the panic handler
 // and allocator that a `no_std` program's host build (for tests) would lack.
 extern crate alloc;
-#[cfg(not(target_os = "solana"))]
+#[cfg(any(not(target_os = "solana"), feature = "shared-accounts"))]
 extern crate std;
 
-/// On chain nothing allocates: every read and write is in place. An account's
+/// By default, nothing allocates on chain: reads and writes are in place. An account's
 /// `String` and `Vec` fields still name `alloc`'s types, so the program links
 /// `alloc`, whose allocator this is: every request fails.
-#[cfg(target_os = "solana")]
+#[cfg(all(target_os = "solana", not(feature = "shared-accounts")))]
 #[global_allocator]
 static NO_ALLOCATION: Refuse = Refuse;
 
-#[cfg(target_os = "solana")]
+#[cfg(all(target_os = "solana", not(feature = "shared-accounts")))]
 struct Refuse;
 
 // SAFETY: `alloc` never returns memory, which `GlobalAlloc` allows.
-#[cfg(target_os = "solana")]
+#[cfg(all(target_os = "solana", not(feature = "shared-accounts")))]
 unsafe impl alloc::alloc::GlobalAlloc for Refuse {
     unsafe fn alloc(&self, _: core::alloc::Layout) -> *mut u8 {
         core::ptr::null_mut()
@@ -46,6 +46,8 @@ pub mod math;
 pub mod pda;
 pub mod relation;
 pub mod remaining;
+#[cfg(feature = "shared-accounts")]
+pub mod shared;
 pub mod system;
 pub mod sysvar;
 #[cfg(kani)]

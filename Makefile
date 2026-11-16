@@ -9,13 +9,13 @@ PLATFORM_TOOLS_VERSION ?= v1.56
 SBF_TOOLS ?= --tools-version $(PLATFORM_TOOLS_VERSION) --arch v3
 export SBF_TOOLS
 
-PROGRAMS := $(patsubst %/Cargo.toml,%,$(wildcard tests/*/Cargo.toml examples/*/Cargo.toml))
+PROGRAMS := $(filter-out examples/token-2022,$(patsubst %/Cargo.toml,%,$(wildcard tests/*/Cargo.toml examples/*/Cargo.toml)))
 # Built a second time with `quasar-lang/debug`: making every check
 # themselves and saying which fails, to compare with the build that leaves
 # checks to the calls that make them.
 DEBUG := $(PROGRAMS)
 
-.PHONY: check fmt clippy check-features sbf rivals test kani bench bench-check idl expansion profile publish-check
+.PHONY: token-2022 check fmt clippy check-features sbf rivals test kani bench bench-check idl expansion profile publish-check
 .PHONY: test-miri test-miri-strict miri-version
 .PHONY: format format-fix clippy-fix build build-sbf generated-client-smoke
 .PHONY: bench-cu bench-tracked compare-tracked test-all nightly-version
@@ -62,7 +62,7 @@ rivals:
 	python3 .github/scripts/test-rivals.py
 	bench/rivals.sh
 
-test: sbf rivals
+test: sbf rivals token-2022
 	RUST_LOG=error cargo test --workspace
 
 kani: kani-lang kani-metadata
@@ -89,6 +89,7 @@ miri-version:
 
 test-miri:
 	MIRIFLAGS="$(MIRI_FLAGS)" cargo +$(MIRI_TOOLCHAIN) miri test --locked -p quasar-lang --lib miri::
+	MIRIFLAGS="$(MIRI_FLAGS)" cargo +$(MIRI_TOOLCHAIN) miri test --locked -p quasar-lang --features shared-accounts --lib shared::tests
 	MIRIFLAGS="$(MIRI_FLAGS)" cargo +$(MIRI_TOOLCHAIN) miri test --locked -p quasar-spl --test miri
 	MIRIFLAGS="$(MIRI_FLAGS)" cargo +$(MIRI_TOOLCHAIN) miri test --locked -p quasar-metadata --lib --test accounts --test wire
 
@@ -151,3 +152,9 @@ compare-tracked: bench-check
 
 test-all:
 	$(MAKE) -j1 check test-miri test-miri-strict
+
+# Its current upstream interfaces resolve separately from the pinned workspace.
+token-2022:
+	$(MAKE) -C examples/token-2022 check
+	cargo clippy -p quasar-lang --all-targets --features shared-accounts -- -D warnings
+	cargo test -p quasar-lang --features shared-accounts --lib
