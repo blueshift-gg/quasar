@@ -103,7 +103,7 @@ quasar-lang = { path = "../quasar/lang" }
 quasar-test = { path = "../quasar/test" }
 ```
 
-`cargo build-sbf --tools-version v1.56` builds `target/deploy/<name>.so`. A
+`cargo build-sbf --tools-version v1.57` builds `target/deploy/<name>.so`. A
 test runs that build under the pinned runtime, and builds each instruction
 with `name::instruction(accounts, data)`:
 
@@ -162,10 +162,10 @@ the canonical bump.
 
 | Vault (deposit / withdraw CU, binary bytes) | |
 |---|---|
-| Quasar, this repository | 2190 / 2218, 4656 |
-| Quasar master | 2214 / 2231, 6024 |
-| anchor-next v2 | 2275 / 2336, 8656 |
-| Pinocchio, by hand | 5877 / 5890, 5472 |
+| Quasar, this repository | 2187 / 2225, 4712 |
+| Quasar master | 2198 / 2219, 5680 |
+| anchor-next v2 | 2344 / 2391, 6720 |
+| Pinocchio, by hand | 5875 / 5888, 5424 |
 
 ## Documentation
 
@@ -183,10 +183,10 @@ feature powerset without dev-dependency feature unification. To run it locally,
 install `cargo-hack` with `cargo install --locked cargo-hack@0.6.45`.
 `ARCHITECTURE.md` is the map of the code.
 
-Workspace SBF builds default to platform-tools v1.56 and the v3 architecture.
+Workspace SBF builds default to platform-tools v1.57 and the v3 architecture.
 Override the version with `make sbf PLATFORM_TOOLS_VERSION=v1.53`, or pass
 explicit build options with
-`make sbf SBF_TOOLS='--tools-version v1.56 --arch v0'`. These overrides also
+`make sbf SBF_TOOLS='--tools-version v1.57 --arch v0'`. These overrides also
 apply to comparison-program and profiling builds. Benchmark results depend on
 the compiler, so CI keeps the pinned default. The pinned upstream multisig still
 uses v0 because that revision cannot link v3. For CLI projects, configure

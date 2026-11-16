@@ -4,7 +4,7 @@
 set -eu
 
 ANCHOR_REPO=https://github.com/otter-sec/anchor
-ANCHOR_REV=dbb5bae417bfb7dd2ba67c1d1f4091c5216d7f4c
+ANCHOR_REV=2cdb58ba8fd9139942ffe235ed5c5c01072138b8
 BLUESHIFT_REPO=https://github.com/blueshift-gg/quasar
 BLUESHIFT_REV=b0de7db4cd271654a2dcf78807dd865e98e0b339
 # p-token, which replaces the Token program (SIMD-0266).
@@ -18,6 +18,8 @@ mkdir -p "$out/src"
 checkout() {
     dir="$out/src/$1"
     [ -d "$dir" ] || git clone --quiet "$2" "$dir"
+    git -C "$dir" cat-file -e "$3^{commit}" 2>/dev/null ||
+        git -C "$dir" fetch --quiet origin "$3"
     git -C "$dir" checkout --quiet "$3"
 }
 

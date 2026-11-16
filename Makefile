@@ -5,7 +5,7 @@ MIRI_TOOLCHAIN := nightly-2026-03-27
 MIRI_FLAGS := -Zmiri-tree-borrows -Zmiri-symbolic-alignment-check
 
 # Compute units and sizes depend on the compiler, so every SBF build uses one.
-PLATFORM_TOOLS_VERSION ?= v1.56
+PLATFORM_TOOLS_VERSION ?= v1.57
 SBF_TOOLS ?= --tools-version $(PLATFORM_TOOLS_VERSION) --arch v3
 export SBF_TOOLS
 
