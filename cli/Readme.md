@@ -12,7 +12,7 @@ cargo install --path cli --locked
 
 New projects use the typed-core API, explicit instruction discriminators and
 published ZeroPod 0.4.0 through `quasar-lang`. The Solana build uses
-platform-tools v1.56 and the v3 architecture by default, matching the repository
+platform-tools v1.57 and the v3 architecture by default, matching the repository
 gate. The optional upstream build uses `cargo +nightly`, `rust-src`, and
 `sbpf-linker`; its target config selects the runtime's on-chain implementation
 and SBPFv3 output.
@@ -215,7 +215,7 @@ name = "my-program"
 [toolchain]
 type = "solana"
 # Optional overrides for build, test, and profile:
-tools_version = "v1.56"
+tools_version = "v1.57"
 arch = "v3"
 
 [testing]
@@ -231,7 +231,7 @@ languages = ["rust"]
 ```
 
 `tools_version` overrides the platform-tools version passed to `cargo build-sbf`.
-If omitted, it defaults to v1.56. `arch` defaults to `"v3"`. Set `arch = "v0"`
+If omitted, it defaults to v1.57. `arch` defaults to `"v3"`. Set `arch = "v0"`
 when using a test runtime that requires SBPFv0. These settings apply to
 normal, debug, watch, test and profiling builds using the Solana toolchain;
 the upstream toolchain does not use them. The selected compiler validates the

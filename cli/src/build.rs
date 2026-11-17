@@ -7,7 +7,7 @@ mod watch;
 
 pub(crate) use watch::watch_loop;
 /// Match the compiler used by the workspace benchmark and verification gate.
-const PLATFORM_TOOLS_VERSION: &str = "v1.56";
+const PLATFORM_TOOLS_VERSION: &str = "v1.57";
 use {
     crate::{
         config::{QuasarConfig, ToolchainConfig},
@@ -410,13 +410,20 @@ mod tests {
 
     #[test]
     fn solana_build_defaults_to_v3_and_honors_tools_and_arch_overrides() {
+        assert!(
+            include_str!("../../Makefile").contains(&format!(
+                "PLATFORM_TOOLS_VERSION ?= {}\n",
+                super::PLATFORM_TOOLS_VERSION
+            )),
+            "CLI and workspace must use the same SBF platform-tools"
+        );
         for (settings, expected) in [
-            ("", vec!["build-sbf", "--tools-version", "v1.56", "--arch", "v3"]),
+            ("", vec!["build-sbf", "--tools-version", "v1.57", "--arch", "v3"]),
             (
                 "tools_version = 'v1.53'",
                 vec!["build-sbf", "--tools-version", "v1.53", "--arch", "v3"],
             ),
-            ("arch = 'v0'", vec!["build-sbf", "--tools-version", "v1.56", "--arch", "v0"]),
+            ("arch = 'v0'", vec!["build-sbf", "--tools-version", "v1.57", "--arch", "v0"]),
             (
                 "tools_version = 'v1.53'\narch = 'v3'",
                 vec!["build-sbf", "--tools-version", "v1.53", "--arch", "v3"],

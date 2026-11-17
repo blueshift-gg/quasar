@@ -22,7 +22,7 @@ const USER: Address = Address::new_from_array([7; 32]);
 const IMPLEMENTATIONS: [(&str, Option<&str>); 4] = [
     ("Quasar, this repository", None),
     ("Quasar master (b0de7db)", Some("blueshift_vault")),
-    ("anchor-next v2 (dbb5bae)", Some("anchor_next_vault")),
+    ("anchor-next v2 (2cdb58b)", Some("anchor_next_vault")),
     ("Pinocchio 0.11, by hand", Some("pinocchio_vault")),
 ];
 
@@ -38,8 +38,9 @@ from 255 down is hashed and curve-checked until one is off the curve. Quasar,
 Quasar master and the Pinocchio version, which calls `find_program_address`,
 do; anchor-next accepts any bump that gives the address.
 Agave 4.3.2 through Mollusk 0.16.2, every feature enabled; `bench/rivals.sh` pins
-the other revisions. Programs use SBPFv3 except the pinned Quasar master multisig,
-which requires SBPFv0. Compute units include the System Program call. Every run
+the other revisions. Programs use platform-tools v1.57 and SBPFv3 except the
+pinned Quasar master multisig, which requires SBPFv0. Compute units include the
+System Program call. Every run
 uses the same user, whose vault's canonical bump is {bump}, so a search from 255
 tries {tries} bumps.
 
