@@ -201,6 +201,7 @@ Developer shortcuts:
 | `make clippy-fix` | Apply Clippy fixes to the workspace |
 | `make build` / `make build-sbf` | Build host crates / normal and debug SBF programs |
 | `make generated-client-smoke` | Generate and check clients in all supported languages |
+| `make test-upstream` | Build and test a scaffolded project with the upstream toolchain (`cargo +nightly`, `rust-src`, `sbpf-linker`); not part of `make check` |
 | `make bench-cu` / `make bench-tracked` | Print the current benchmark report |
 | `make compare-tracked` | Compare against `bench/RESULTS.md` |
 | `make help-kani` / `make check-kani` | Show setup instructions / verify the pinned version |

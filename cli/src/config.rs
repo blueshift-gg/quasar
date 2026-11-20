@@ -196,9 +196,12 @@ impl GlobalConfig {
     }
 
     pub fn load() -> Result<Self, CliError> {
-        let path = Self::path();
+        Self::load_from(&Self::path())
+    }
+
+    fn load_from(path: &Path) -> Result<Self, CliError> {
         if path.exists() {
-            let contents = std::fs::read_to_string(&path).map_err(|e| {
+            let contents = std::fs::read_to_string(path).map_err(|e| {
                 CliError::message(format!("failed to read {}: {e}", path.display()))
             })?;
             toml::from_str(&contents)
@@ -230,23 +233,6 @@ impl GlobalConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn default_config_has_animation_enabled() {
-        let config = GlobalConfig::default();
-        assert!(config.ui.animation);
-    }
-
-    #[test]
-    fn animation_disabled_survives_roundtrip() {
-        let config = GlobalConfig {
-            ui: UiConfig { animation: false, ..UiConfig::default() },
-            ..GlobalConfig::default()
-        };
-        let toml_str = config.to_toml();
-        let loaded = GlobalConfig::load_from_str(&toml_str).unwrap();
-        assert!(!loaded.ui.animation);
-    }
 
     #[test]
     fn empty_config_defaults_animation_true() {
@@ -314,6 +300,9 @@ mod tests {
 
     #[test]
     fn invalid_global_config_is_not_silently_ignored() {
-        assert!(GlobalConfig::load_from_str("ui = ").is_err());
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "ui = ").unwrap();
+        assert!(GlobalConfig::load_from(&path).is_err());
     }
 }

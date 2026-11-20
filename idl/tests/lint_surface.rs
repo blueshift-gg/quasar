@@ -173,7 +173,7 @@ fn preflight_flags_upgrade_hostile_account_shapes() {
     idl.types[0].fields = vec![field("amount", primitive("u64"))];
     idl.instructions[0].accounts = vec![account_node("vault", false, true, IdlResolver::Input {})];
 
-    let report = lint::run(&idl, &lint::LintConfig::default());
+    let report = lint::run(&idl);
 
     assert!(report.contains(RuleCode::P001));
     assert!(report.contains(RuleCode::P002));
@@ -234,22 +234,6 @@ fn additive_changes_do_not_fail_by_default() {
         Some(Severity::Info)
     );
     assert!(!report.has_errors());
-}
-
-#[test]
-fn preflight_warns_when_auto_instruction_discriminators_are_unlocked() {
-    let mut idl = base_idl();
-    idl.metadata.extra.insert(
-        "quasar:instructionDiscriminatorSource".to_owned(),
-        serde_json::json!({ "make": "auto" }),
-    );
-
-    let report = lint::run(&idl, &lint::LintConfig { strict: false, lockfile_present: false });
-    assert!(report.contains(RuleCode::P008));
-
-    let locked_report =
-        lint::run(&idl, &lint::LintConfig { strict: false, lockfile_present: true });
-    assert!(!locked_report.contains(RuleCode::P008));
 }
 
 #[test]

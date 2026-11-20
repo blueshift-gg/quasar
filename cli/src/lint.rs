@@ -16,13 +16,11 @@ pub fn run(cmd: LintCommand) -> CliResult {
     let config = QuasarConfig::load()?;
     let crate_root = utils::find_program_crate(&config);
     let idl = crate::idl::build(&crate_root)?;
-    let lockfile_exists = lint::lock_path(&crate_root).exists();
     let previous_lock = if cmd.no_diff { None } else { load_existing_lock(&crate_root)? };
-    let lint_config =
-        LintConfig { strict: cmd.strict, lockfile_present: cmd.update_lock || lockfile_exists };
+    let lint_config = LintConfig { strict: cmd.strict };
     let current = ProgramSurface::from_idl(&idl);
 
-    let mut report = lint::run(&idl, &lint_config);
+    let mut report = lint::run(&idl);
     if !cmd.update_lock
         && !cmd.no_diff
         && let Some(previous) = previous_lock
@@ -49,8 +47,8 @@ pub fn run(cmd: LintCommand) -> CliResult {
 
 pub fn run_for_build(crate_root: &Path, idl: &Idl) -> CliResult {
     let previous_lock = load_existing_lock(crate_root)?;
-    let lint_config = LintConfig { strict: false, lockfile_present: previous_lock.is_some() };
-    let mut report = lint::run(idl, &lint_config);
+    let lint_config = LintConfig { strict: false };
+    let mut report = lint::run(idl);
     if let Some(previous) = previous_lock {
         let current = ProgramSurface::from_idl(idl);
         report.extend(lint::diff(&previous, &current));

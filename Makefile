@@ -18,7 +18,7 @@ DEBUG := $(PROGRAMS)
 .PHONY: check fmt clippy check-features sbf rivals test kani bench bench-check idl expansion profile publish-check
 .PHONY: test-miri test-miri-strict miri-version
 .PHONY: format format-fix clippy-fix build build-sbf generated-client-smoke
-.PHONY: bench-cu bench-tracked compare-tracked test-all nightly-version
+.PHONY: bench-cu bench-tracked compare-tracked test-all test-upstream nightly-version
 .PHONY: help-kani check-kani kani-lang kani-metadata
 .PHONY: check-policies test-policies check-workspace-lints check-runtime-panics check-cli-conventions
 
@@ -142,6 +142,12 @@ nightly-version: miri-version
 
 generated-client-smoke:
 	cargo test -p quasar-cli --test generated_clients_smoke -- --nocapture
+
+# The scaffold case `make check` leaves out: a project built with the upstream
+# toolchain (`cargo +nightly`, `rust-src`, `sbpf-linker`), which the gate does
+# not install or pin.
+test-upstream:
+	QUASAR_TEST_UPSTREAM=only cargo test -p quasar-cli --lib scaffolded_templates_build_add_and_test
 
 # Print the current report; `make bench` is the explicit baseline update.
 bench-cu bench-tracked: sbf rivals
