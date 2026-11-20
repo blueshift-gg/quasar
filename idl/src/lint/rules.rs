@@ -1,6 +1,6 @@
 use {
     super::{
-        report::{Diagnostic, LintConfig, LintReport, RuleCode},
+        report::{Diagnostic, LintReport, RuleCode},
         surface::{
             AccountMetaSurface, AccountSurface, FieldSurface, InstructionSurface, ProgramSurface,
             TypeSurface,
@@ -24,10 +24,10 @@ const RESERVED_ACCOUNT_NAMES: &[&str] = &[
     "UncheckedAccount",
 ];
 
-pub fn preflight(surface: &ProgramSurface, config: &LintConfig) -> LintReport {
+pub fn preflight(surface: &ProgramSurface) -> LintReport {
     let mut report = LintReport::default();
     preflight_accounts(surface, &mut report);
-    preflight_instructions(surface, config, &mut report);
+    preflight_instructions(surface, &mut report);
     graph_checks(surface, &mut report);
     report
 }
@@ -98,21 +98,8 @@ fn has_trailing_reserved_padding(account: &AccountSurface) -> bool {
     )
 }
 
-fn preflight_instructions(surface: &ProgramSurface, config: &LintConfig, report: &mut LintReport) {
+fn preflight_instructions(surface: &ProgramSurface, report: &mut LintReport) {
     for instruction in &surface.instructions {
-        if instruction.discriminator_source.as_deref() == Some("auto") && !config.lockfile_present {
-            report.push(Diagnostic::new(
-                RuleCode::P008,
-                instruction.name.clone(),
-                format!(
-                    "instruction `{}` uses an auto discriminator without a lockfile",
-                    instruction.name
-                ),
-                "run `quasar lint --update-lock` before deployment so future reorders cannot \
-                 silently move instruction discriminators",
-            ));
-        }
-
         if !instruction_has_signer(instruction) {
             report.push(Diagnostic::new(
                 RuleCode::P006,

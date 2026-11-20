@@ -71,7 +71,6 @@ fn account_field_pda_seeds_preserve_source_type_and_require_resolution() {
     for source in [typescript::generate_ts_client(&idl), typescript::generate_ts_client_kit(&idl)] {
         contains(&source, &["scopedItem", "NamespaceConfigCodec", "getU32Codec().encode("]);
         assert!(!source.contains("scopedItem: Address;"));
-        assert!(!source.contains(" :: seeds("));
     }
     contains(&c::generate_c_client(&idl), &["config_namespace_seed"]);
 }

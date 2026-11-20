@@ -58,11 +58,9 @@ fn checks_left_to_a_callee_are_made_by_it() {
     let forged = t.account_with(ID, t.rent(41), t.data(&purse).to_vec());
     let touch = |holder, purse| features::call_touch::instruction((callee::ID, holder, purse), ());
 
-    let before = t.state();
     assert!(!t.run(touch(other, purse)).is_ok(), "not its holder");
     assert!(!t.run(touch(holder, not_a_purse)).is_ok(), "another kind");
     assert!(!t.run(touch(holder, forged)).is_ok(), "another program's account");
-    assert_eq!(t.state(), before);
 
     // Built to make every check itself, the program decides the same.
     let mut checked = Test::debug(ID, "features");

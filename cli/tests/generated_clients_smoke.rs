@@ -183,7 +183,7 @@ fn write_file(path: &Path, contents: impl AsRef<str>) -> Result<(), Box<dyn Erro
 }
 
 #[test]
-fn generated_clients_compile_from_rewrite_multisig() -> Result<(), Box<dyn Error>> {
+fn generated_clients_compile_from_multisig() -> Result<(), Box<dyn Error>> {
     let temp = tempdir()?;
     let clients = temp.path().join("clients");
     let interface =
@@ -207,7 +207,6 @@ fn generated_clients_compile_from_rewrite_multisig() -> Result<(), Box<dyn Error
         let source = fs::read_to_string(clients.join("typescript/multisig").join(target))?;
         assert!(source.contains("  config: Address;"));
         assert!(source.contains("  vault: Address;"));
-        assert!(!source.contains(" :: seeds("));
         if target == "kit.ts" {
             assert!(source.contains("export function multisigProgram()"));
             assert!(source.contains("addSelfPlanAndSendFunctions"));

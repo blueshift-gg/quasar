@@ -202,7 +202,9 @@ mod tests {
     fn python_pda_arg_seed_uses_typed_encoding() {
         let output = generate_python_client(&idl_with_u64_arg_seed());
 
-        assert!(output.contains("struct.pack(\"<Q\", input.amount)"));
+        assert!(output.contains(
+            "Pubkey.find_program_address([struct.pack(\"<Q\", input.amount)], PROGRAM_ID)"
+        ));
     }
 
     #[test]

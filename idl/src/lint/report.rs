@@ -8,7 +8,6 @@ pub enum RuleCode {
     P005,
     P006,
     P007,
-    P008,
     R001,
     R002,
     R003,
@@ -36,7 +35,6 @@ impl RuleCode {
             Self::P005 => "account name collision",
             Self::P006 => "instruction missing signer",
             Self::P007 => "unbounded remaining accounts",
-            Self::P008 => "auto instruction discriminators without lockfile",
             Self::R001 => "account field reorder",
             Self::R002 => "account field retype",
             Self::R003 => "account field removed",
@@ -78,8 +76,7 @@ impl RuleCode {
             | Self::P002
             | Self::P005
             | Self::P006
-            | Self::P007
-            | Self::P008 => Severity::Warning,
+            | Self::P007 => Severity::Warning,
             Self::R012 => Severity::Info,
         }
     }
@@ -172,6 +169,4 @@ impl LintReport {
 pub struct LintConfig {
     /// Treat warnings and info findings as failures. Intended for audit/CI.
     pub strict: bool,
-    /// Whether the current program surface is protected by `quasar.lock.json`.
-    pub lockfile_present: bool,
 }

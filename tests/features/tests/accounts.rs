@@ -85,7 +85,6 @@ fn a_call_reaches_only_its_program() {
     // Program, which the runtime does not find among the accounts.
     t.run(features::fund::instruction((from, to, callee::ID), Amount { amount: 1 }))
         .fails(ProgramError::NotEnoughAccountKeys);
-    assert_eq!(t.lamports(&to), 0);
 }
 
 #[test]

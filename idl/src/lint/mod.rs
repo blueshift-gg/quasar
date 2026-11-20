@@ -17,8 +17,8 @@ pub use {
 };
 
 /// Run single-build audit rules against the current IDL.
-pub fn run(idl: &Idl, config: &LintConfig) -> LintReport {
-    rules::preflight(&ProgramSurface::from_idl(idl), config)
+pub fn run(idl: &Idl) -> LintReport {
+    rules::preflight(&ProgramSurface::from_idl(idl))
 }
 
 /// Compare a previous release surface with the current candidate.
@@ -27,13 +27,9 @@ pub fn diff(old: &ProgramSurface, new: &ProgramSurface) -> LintReport {
 }
 
 /// Run single-build rules and, when `old` is present, release diff rules.
-pub fn run_with_optional_diff(
-    idl: &Idl,
-    old: Option<&ProgramSurface>,
-    config: &LintConfig,
-) -> LintReport {
+pub fn run_with_optional_diff(idl: &Idl, old: Option<&ProgramSurface>) -> LintReport {
     let surface = ProgramSurface::from_idl(idl);
-    let mut report = rules::preflight(&surface, config);
+    let mut report = rules::preflight(&surface);
     if let Some(old) = old {
         report.extend(rules::diff(old, &surface));
     }

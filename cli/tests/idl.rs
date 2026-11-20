@@ -24,12 +24,12 @@ fn write_file(path: &Path, contents: impl AsRef<str>) -> Result<(), Box<dyn Erro
 #[test]
 fn idl_emission_requires_no_opt_in_feature() -> Result<(), Box<dyn Error>> {
     let temp = tempdir()?;
-    let program_dir = temp.path().join("programs/missing-idl-build");
+    let program_dir = temp.path().join("programs/minimal-program");
 
     write_file(
         &temp.path().join("Cargo.toml"),
         r#"[workspace]
-members = ["programs/missing-idl-build"]
+members = ["programs/minimal-program"]
 resolver = "3"
 "#,
     )?;
@@ -37,7 +37,7 @@ resolver = "3"
         &program_dir.join("Cargo.toml"),
         format!(
             r#"[package]
-name = "missing-idl-build"
+name = "minimal-program"
 version = "0.1.0"
 edition = "2021"
 
@@ -56,7 +56,7 @@ use quasar_lang::prelude::*;
 declare_id!("11111111111111111111111111111111");
 
 #[program]
-mod missing_idl_build {
+mod minimal_program {
     use super::*;
 
     #[instruction(0)]

@@ -202,7 +202,7 @@ fn arguments(body: &str) -> Vec<&str> {
 mod tests {
     use super::*;
     #[test]
-    fn reads_all_rewrite_examples() {
+    fn reads_all_examples() {
         for json in [
             include_str!("../../examples/vault/idl.json"),
             include_str!("../../examples/lamport-vault/idl.json"),

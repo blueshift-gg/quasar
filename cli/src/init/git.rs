@@ -13,23 +13,23 @@ pub(super) fn maybe_initialize_git_repo(name: &str, git_setup: GitSetup) {
         if name == "." { Path::new(".git").exists() } else { root.join(".git").exists() };
 
     if !already_git {
-        let _ = initialize_git_repo(root, git_setup, Path::new("git"));
+        let _ = initialize_git_repo(git_setup, |args| run_git(root, args));
     }
 }
 
-fn initialize_git_repo(root: &Path, git_setup: GitSetup, git: &Path) -> bool {
-    run_git(git, root, &["init", "--quiet"])
+/// Runs each step through `git`, stopping at the first that fails.
+fn initialize_git_repo(git_setup: GitSetup, mut git: impl FnMut(&[&str]) -> bool) -> bool {
+    git(&["init", "--quiet"])
         && match git_setup {
             GitSetup::InitializeAndCommit => {
-                run_git(git, root, &["add", "."])
-                    && run_git(git, root, &["commit", "-am", "chore: initial commit", "--quiet"])
+                git(&["add", "."]) && git(&["commit", "-am", "chore: initial commit", "--quiet"])
             }
             GitSetup::Initialize | GitSetup::Skip => true,
         }
 }
 
-fn run_git(git: &Path, root: &Path, args: &[&str]) -> bool {
-    Command::new(git)
+fn run_git(root: &Path, args: &[&str]) -> bool {
+    Command::new("git")
         .args(args)
         .current_dir(root)
         .status()
@@ -37,10 +37,9 @@ fn run_git(git: &Path, root: &Path, args: &[&str]) -> bool {
         .is_some_and(|status| status.success())
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod tests {
     use super::*;
-    use std::{fs, os::unix::fs::PermissionsExt};
 
     #[test]
     fn git_setup_preserves_order_and_stops_on_failure() {
@@ -54,22 +53,16 @@ mod tests {
             (GitSetup::Initialize, "", vec!["init --quiet"], true),
             (GitSetup::InitializeAndCommit, "init", vec!["init --quiet"], false),
         ] {
-            let temp = tempfile::tempdir().unwrap();
-            let git = temp.path().join("git");
-            fs::write(
-                &git,
-                format!("#!/bin/sh\nprintf '%s\\n' \"$*\" >> git.log\n[ \"$1\" != '{fail}' ]\n"),
-            )
-            .unwrap();
-            fs::set_permissions(&git, fs::Permissions::from_mode(0o755)).unwrap();
-            assert_eq!(initialize_git_repo(temp.path(), setup, &git), succeeds);
-            assert_eq!(
-                fs::read_to_string(temp.path().join("git.log"))
-                    .unwrap()
-                    .lines()
-                    .collect::<Vec<_>>(),
-                expected
-            );
+            // The steps are recorded, not run: a script written here and run
+            // at once fails with "text file busy" whenever another test's
+            // child process still holds the script open.
+            let mut ran = Vec::new();
+            let succeeded = initialize_git_repo(setup, |args| {
+                ran.push(args.join(" "));
+                args[0] != fail
+            });
+            assert_eq!(succeeded, succeeds);
+            assert_eq!(ran, expected);
         }
     }
 }

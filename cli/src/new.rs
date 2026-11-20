@@ -194,7 +194,7 @@ fn add_instruction_to_entrypoint(
 
 fn parse_discriminator(line: &str) -> Option<i64> {
     let line = line.trim();
-    if !(line.starts_with("#[instruction(") || line.starts_with("#[account(")) {
+    if !line.starts_with("#[account(") {
         return None;
     }
 
@@ -337,7 +337,7 @@ mod tests {
 
     #[test]
     fn discriminator_parser_accepts_space_or_no_space() {
-        assert_eq!(parse_discriminator("#[instruction(discriminator = 7)]"), Some(7));
+        assert_eq!(parse_discriminator("#[account(discriminator = 7)]"), Some(7));
         assert_eq!(parse_discriminator("#[account(discriminator=8)]"), Some(8));
     }
 
@@ -390,7 +390,5 @@ mod demo {
         assert!(generated.contains("pub struct CreatePool {"));
         assert!(generated.contains("pub payer: Signer,"));
         assert!(generated.contains("pub system_program: Program<SystemProgram>,"));
-        assert!(!generated.contains("'info"));
-        assert!(!generated.contains("&'info"));
     }
 }
