@@ -7,7 +7,11 @@ pub const fn key(byte: u8) -> Address {
 /// Host-side ABIv1 buffer. Every account handle stays inside the callback.
 pub fn with_accounts(accounts: &[(Address, Address, &[u8])], run: impl FnOnce(Cursor)) {
     let entry_size = |len: usize| (88 + len + 10 * 1024).next_multiple_of(8) + 8;
-    let size = 8 + accounts.iter().map(|(_, _, data)| entry_size(data.len())).sum::<usize>();
+    const ID: Address = key(99);
+    let size = 8
+        + accounts.iter().map(|(_, _, data)| entry_size(data.len())).sum::<usize>()
+        + size_of::<u64>()
+        + size_of::<Address>();
     let mut input = vec![0u64; size / 8];
     input[0] = accounts.len() as u64;
     // SAFETY: the slice spans the initialized, aligned allocation, before any handles exist.
@@ -22,19 +26,16 @@ pub fn with_accounts(accounts: &[(Address, Address, &[u8])], run: impl FnOnce(Cu
         bytes[offset + 88..offset + 88 + data.len()].copy_from_slice(data);
         offset += entry_size(data.len());
     }
-    let instruction = [0u64];
-    const ID: Address = key(99);
-    // SAFETY: both buffers follow the entrypoint ABI and outlive all handles used by `run`.
+    // The zero length word is followed by empty instruction data and the executing program ID.
+    let data_offset = offset + size_of::<u64>();
+    bytes[data_offset..].copy_from_slice(ID.as_ref());
+    let input = input.as_mut_ptr().cast::<u8>();
+    // SAFETY: the buffer follows the entrypoint ABI and outlives all handles used by `run`.
     let status = unsafe {
-        quasar_lang::context::entrypoint::<0>(
-            input.as_mut_ptr().cast(),
-            instruction.as_ptr().add(1).cast(),
-            &ID,
-            |_, _, cursor| {
-                run(cursor);
-                Ok(())
-            },
-        )
+        quasar_lang::context::entrypoint::<0>(input, input.add(data_offset), &ID, |_, _, cursor| {
+            run(cursor);
+            Ok(())
+        })
     };
     assert_eq!(status, 0);
 }
