@@ -533,9 +533,8 @@ pub struct Init<'a> {
 }
 
 impl Init<'_> {
-    /// The check `init` makes of the account each key names: the mint is one,
-    /// or `InitializeAccount3` fails; an account that already exists is one
-    /// the Token program made for a mint, and is checked to be this one's.
+    /// Creating a token account checks the mint through `InitializeAccount3`.
+    /// Reusing a token account checks only that its mint key matches.
     pub const KEYS: &'static [(&'static str, cpi::Check)] = &[("mint", MINT_CHECK)];
 
     /// Creates the token account at `account`, which signs, under

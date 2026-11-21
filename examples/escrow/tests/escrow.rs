@@ -164,9 +164,7 @@ fn a_token_account_is_not_a_mint_and_a_mint_is_not_a_token_account() {
 
     let mut token_as_mint = make(400, 300);
     token_as_mint.accounts[2].pubkey = other_token_account;
-    // The mint's checks are the Token program's, as it creates the vault:
-    // its `InvalidMint`.
-    t.run(token_as_mint).fails(ProgramError::Custom(2));
+    t.run(token_as_mint).fails(ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -176,6 +174,24 @@ fn an_existing_token_account_of_another_mint_is_rejected() {
     t.set(MAKER_TA_B, Token::ID, t.rent(TokenAccount::LEN), token_account(MINT_A, MAKER, 0));
 
     t.run(make(400, 300)).fails(token::Error::Mint);
+}
+
+#[test]
+fn reusing_a_token_account_still_checks_its_mint() {
+    for build in [Test::new as fn(Address, &str) -> Test, Test::debug] {
+        let mut t = prepare(build(ID, "escrow"), Token::ID);
+        t.run(make(400, 300)).succeeds();
+        // Both accounts that `take` initializes already exist.
+        t.set(TAKER_TA_A, Token::ID, t.rent(TokenAccount::LEN), token_account(MINT_A, TAKER, 0));
+        for mint in [MINT_A, MINT_B] {
+            let data = t.data(&mint).to_vec();
+            let rent = t.rent(Mint::LEN);
+            t.set(mint, SYSTEM, rent, data.clone());
+            t.run(take()).fails(ProgramError::IllegalOwner);
+            t.set(mint, Token::ID, rent, data);
+        }
+        t.run(take()).succeeds();
+    }
 }
 
 #[test]
@@ -205,8 +221,7 @@ fn only_a_token_program_and_its_accounts_are_accepted() {
     let not_a_mint = t.account_with(SYSTEM, t.rent(Mint::LEN), t.data(&MINT_A).to_vec());
     let mut mint_of_another_owner = make(400, 300);
     mint_of_another_owner.accounts[2].pubkey = not_a_mint;
-    // Rejected by the Token program, which checks the mint's owner.
-    t.run(mint_of_another_owner).fails(ProgramError::IncorrectProgramId);
+    t.run(mint_of_another_owner).fails(ProgramError::IllegalOwner);
 }
 
 /// `make` leaves the checks of the account it transfers from to the Token
