@@ -43,8 +43,8 @@ A by `take`.
 
 | Implementation | make (CU) | take (CU) | refund (CU) | binary (bytes) |
 |---|---:|---:|---:|---:|
-| Quasar, this repository | 21024 | 22901 | 10613 | 28416 |
-| the same, built with `debug` | 22078 | 23997 | 11170 | 90856 |
+| Quasar, this repository | 21010 | 22892 | 10611 | 28632 |
+| the same, built with `debug` | 22067 | 24000 | 11179 | 91040 |
 | Quasar master (b0de7db) | 21002 | 22872 | 10574 | 41584 |
 
 ## Multisig
@@ -67,7 +67,7 @@ LP mint; the deposit is the first.
 | Implementation | initialize (CU) | deposit (CU) | swap (CU) | withdraw (CU) | binary (bytes) |
 |---|---:|---:|---:|---:|---:|
 | Quasar, this repository | 20028 | 17733 | 12073 | 17921 | 42624 |
-| the same, built with `debug` | 21246 | 19020 | 12966 | 19162 | 112232 |
+| the same, built with `debug` | 21246 | 19015 | 12962 | 19157 | 112432 |
 
 ## On p-token
 
@@ -79,7 +79,7 @@ do associated token accounts go through it.
 
 | Implementation | make (CU) | take (CU) | refund (CU) | binary (bytes) |
 |---|---:|---:|---:|---:|
-| Quasar, this repository | 8579 | 6936 | 3154 | 28416 |
+| Quasar, this repository | 8565 | 6927 | 3152 | 28632 |
 | Quasar master (b0de7db) | 8557 | 6907 | 3115 | 41584 |
 
 What each instruction's compute units go to: the programs it calls, the
@@ -88,9 +88,9 @@ instruction, and what is left: the program's own code and its syscalls.
 
 | Instruction | total | called programs | calls | calls (CU) | System | left |
 |---|---:|---:|---:|---:|---:|---:|
-| Quasar, this repository, make | 8579 | 576 | 6 | 5676 | 450 | 1877 |
-| Quasar, this repository, take | 6936 | 528 | 5 | 4730 | 150 | 1528 |
-| Quasar, this repository, refund | 3154 | 201 | 2 | 1892 | 0 | 1061 |
+| Quasar, this repository, make | 8565 | 576 | 6 | 5676 | 450 | 1863 |
+| Quasar, this repository, take | 6927 | 528 | 5 | 4730 | 150 | 1519 |
+| Quasar, this repository, refund | 3152 | 201 | 2 | 1892 | 0 | 1059 |
 | Quasar master (b0de7db), make | 8557 | 576 | 6 | 5676 | 450 | 1855 |
 | Quasar master (b0de7db), take | 6907 | 528 | 5 | 4730 | 150 | 1499 |
 | Quasar master (b0de7db), refund | 3115 | 201 | 2 | 1892 | 0 | 1022 |

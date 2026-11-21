@@ -48,8 +48,8 @@ fn extension_layout_holds(data: &[u8], base: usize, account_type: u8) -> bool {
     data.len() == base
         || (data.len() > TYPE_AT
             && data.len() != MULTISIG_LEN
-            && data[base..TYPE_AT].iter().all(|byte| *byte == 0)
-            && data[TYPE_AT] == account_type)
+            && data[TYPE_AT] == account_type
+            && data[base..TYPE_AT] == [0; TYPE_AT][base..])
 }
 
 /// A base layout's size, which each has.
@@ -550,10 +550,13 @@ impl Init<'_> {
         idempotent: bool,
         rent: &RentSource,
     ) -> Result<W> {
-        let check = Check { mint: Some(self.mint), authority: Some(self.authority) };
-        if idempotent {
+        if idempotent && account.data().len() >= size::<TokenAccount>() {
             match input::existing::<W, _>(account) {
-                Ok(existing) => return check.check(&existing).map(|()| existing),
+                Ok(existing) => {
+                    Check { mint: Some(self.mint), authority: Some(self.authority) }
+                        .check(&existing)?;
+                    return Ok(existing);
+                }
                 Err(new) => account = new,
             }
         }
