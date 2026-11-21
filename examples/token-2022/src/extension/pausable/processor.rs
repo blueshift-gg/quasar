@@ -1,0 +1,94 @@
+// Adapted from solana-program/token-2022 at e8ca680ca8aeb12f9598524b003c776c6a4168f2.
+// Modified to execute on Quasar; see ../README.md for provenance and compatibility.
+use {
+    crate::processor::Processor,
+    crate::runtime::{account::next_account_view, AccountView},
+    solana_address::Address,
+    solana_msg::msg,
+    solana_program_error::{ProgramError, ProgramResult},
+    spl_token_2022_interface::{
+        check_program_account,
+        error::TokenError,
+        extension::{
+            pausable::{
+                instruction::{InitializeInstructionData, PausableInstruction},
+                PausableConfig,
+            },
+            BaseStateWithExtensionsMut, PodStateWithExtensionsMut,
+        },
+        instruction::{decode_instruction_data, decode_instruction_type},
+        pod::PodMint,
+    },
+};
+
+fn process_initialize(
+    _program_id: &Address,
+    accounts: &mut [AccountView],
+    authority: &Address,
+) -> ProgramResult {
+    let account_info_iter = &mut accounts.iter_mut();
+    let mint_account_info = next_account_view(account_info_iter)?;
+    check_program_account(&mint_account_info.owner())?;
+
+    let mut mint_data = mint_account_info.try_borrow_mut()?;
+    let mut mint = PodStateWithExtensionsMut::<PodMint>::unpack_uninitialized(&mut mint_data)?;
+
+    let extension = mint.init_extension::<PausableConfig>(true)?;
+    extension.authority = Some(*authority).try_into().map_err(|_| ProgramError::InvalidArgument)?;
+
+    Ok(())
+}
+
+/// Pause or resume minting / burning / transferring on the mint
+fn process_toggle_pause(
+    program_id: &Address,
+    accounts: &mut [AccountView],
+    pause: bool,
+) -> ProgramResult {
+    let account_info_iter = &mut accounts.iter_mut();
+    let mint_account_info = next_account_view(account_info_iter)?;
+    let authority_info = next_account_view(account_info_iter)?;
+    let authority_info_data_len = authority_info.data_len();
+    check_program_account(&mint_account_info.owner())?;
+
+    let mut mint_data = mint_account_info.try_borrow_mut()?;
+    let mut mint = PodStateWithExtensionsMut::<PodMint>::unpack(&mut mint_data)?;
+    let extension = mint.get_extension_mut::<PausableConfig>()?;
+    let maybe_authority: Option<Address> = extension.authority.into();
+    let authority = maybe_authority.ok_or(TokenError::AuthorityTypeNotSupported)?;
+
+    Processor::validate_owner(
+        program_id,
+        &authority,
+        authority_info,
+        authority_info_data_len,
+        account_info_iter.as_slice(),
+    )?;
+
+    extension.paused = pause.into();
+    Ok(())
+}
+
+pub(crate) fn process_instruction(
+    program_id: &Address,
+    accounts: &mut [AccountView],
+    input: &[u8],
+) -> ProgramResult {
+    check_program_account(program_id)?;
+
+    match decode_instruction_type(input)? {
+        PausableInstruction::Initialize => {
+            msg!("PausableInstruction::Initialize");
+            let InitializeInstructionData { authority } = decode_instruction_data(input)?;
+            process_initialize(program_id, accounts, authority)
+        }
+        PausableInstruction::Pause => {
+            msg!("PausableInstruction::Pause");
+            process_toggle_pause(program_id, accounts, true /* pause */)
+        }
+        PausableInstruction::Resume => {
+            msg!("PausableInstruction::Resume");
+            process_toggle_pause(program_id, accounts, false /* resume */)
+        }
+    }
+}

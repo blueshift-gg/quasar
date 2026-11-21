@@ -131,6 +131,11 @@ fn a_deposit_is_recorded() {
 `lamport-vault`, `escrow` (SPL Token and Token-2022), `multisig` and `amm`.
 Each has an `idl.json` produced from the program itself.
 
+[`examples/token-2022`](examples/token-2022) ports the complete Token-2022
+processor and its extensions to Quasar while retaining the upstream instruction
+and account formats. It uses a separate Cargo workspace for its newer interface
+dependencies. Run `make token-2022` to build and test it.
+
 ## When an instruction fails
 
 `cargo build-sbf --features quasar-lang/debug` builds the program to test

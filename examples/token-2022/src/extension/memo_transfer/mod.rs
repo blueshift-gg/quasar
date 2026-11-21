@@ -1,0 +1,80 @@
+// Adapted from solana-program/token-2022 at e8ca680ca8aeb12f9598524b003c776c6a4168f2.
+// Modified to execute on Quasar; see ../README.md for provenance and compatibility.
+use {
+    solana_address::Address, solana_instruction::Instruction, solana_program_error::ProgramError,
+    spl_token_2022_interface::error::TokenError,
+};
+
+/// Memo Transfer extension instructions
+pub mod instruction;
+
+/// Memo Transfer extension processor
+pub mod processor;
+
+#[deprecated(
+    since = "9.1.0",
+    note = "Use spl_token_2022_interface instead and remove spl_token_2022 as a dependency"
+)]
+pub use spl_token_2022_interface::extension::memo_transfer::{memo_required, MemoTransfer};
+
+/// Check if the previous sibling instruction is a memo
+pub fn check_previous_sibling_instruction_is_memo() -> Result<(), ProgramError> {
+    let is_memo_program = |program_id: &Address| -> bool {
+        program_id == &spl_memo_interface::v4::id()
+            || program_id == &spl_memo_interface::v3::id()
+            || program_id == &spl_memo_interface::v1::id()
+    };
+    let previous_instruction = get_processed_sibling_instruction();
+    match previous_instruction {
+        Some(instruction) if is_memo_program(&instruction.program_id) => {}
+        _ => {
+            return Err(TokenError::NoMemo.into());
+        }
+    }
+    Ok(())
+}
+
+/// Re-implementation of `get_processed_sibling_instruction` from `solana_program`
+/// to avoid pulling in the whole crate
+#[allow(deprecated)]
+fn get_processed_sibling_instruction() -> Option<Instruction> {
+    #[cfg(target_os = "solana")]
+    #[allow(unsafe_code)]
+    {
+        use solana_instruction::{syscalls, AccountMeta, ProcessedSiblingInstruction};
+        let mut meta = ProcessedSiblingInstruction::default();
+        let mut program_id = Address::default();
+
+        if 1 == unsafe {
+            syscalls::sol_get_processed_sibling_instruction(
+                0,
+                &mut meta,
+                &mut program_id,
+                &mut u8::default(),
+                &mut AccountMeta::default(),
+            )
+        } {
+            let mut data = Vec::new();
+            let mut accounts = Vec::new();
+            data.resize_with(meta.data_len as usize, u8::default);
+            accounts.resize_with(meta.accounts_len as usize, AccountMeta::default);
+            let _ = unsafe {
+                syscalls::sol_get_processed_sibling_instruction(
+                    0,
+                    &mut meta,
+                    &mut program_id,
+                    data.as_mut_ptr(),
+                    accounts.as_mut_ptr(),
+                )
+            };
+
+            Some(Instruction::new_with_bytes(program_id, &data, accounts))
+        } else {
+            None
+        }
+    }
+    #[cfg(not(target_os = "solana"))]
+    {
+        None
+    }
+}

@@ -373,6 +373,37 @@ pub struct Cursor {
 }
 
 impl Cursor {
+    /// Loads the complete instruction's accounts, sharing duplicate entries.
+    /// This consumes the cursor so typed, exclusively owned wrappers cannot
+    /// coexist with the dynamically borrowed handles.
+    #[cfg(feature = "shared-accounts")]
+    pub fn into_shared(mut self) -> Result<alloc::vec::Vec<crate::shared::SharedAccount>> {
+        if self.left != self.count {
+            return Err(ProgramError::InvalidArgument);
+        }
+        let mut accounts: alloc::vec::Vec<crate::shared::SharedAccount> =
+            alloc::vec::Vec::with_capacity(self.count as usize);
+        while self.left > 0 {
+            // SAFETY: the cursor points to the next runtime-serialized entry.
+            let duplicate = unsafe { *self.next };
+            let (account, size) = if duplicate == NOT_DUPLICATE {
+                // SAFETY: a nonduplicate entry has a complete, aligned header.
+                let entry = Entry(unsafe { NonNull::new_unchecked(self.next.cast()) });
+                let size = entry_size(entry.data().len());
+                (crate::shared::SharedAccount::new(entry), size)
+            } else {
+                let original =
+                    accounts.get(usize::from(duplicate)).ok_or(ProgramError::InvalidArgument)?;
+                (original.clone(), size_of::<u64>())
+            };
+            accounts.push(account);
+            // SAFETY: size is the serialized entry's full extent.
+            self.next = unsafe { self.next.add(size) };
+            self.left -= 1;
+        }
+        Ok(accounts)
+    }
+
     /// # Safety
     /// `input` is the pointer the runtime passed to the entrypoint, and no
     /// other `Cursor` over it exists.
