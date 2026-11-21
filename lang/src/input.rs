@@ -113,7 +113,10 @@ fn header_why(word: u32, required: Privileges, name: &str) -> &'static str {
 
 /// One account from the input. The cursor hands out at most one `Entry` per
 /// account and rejects duplicates, so two entries never alias.
-pub struct Entry(NonNull<Header>);
+pub struct Entry {
+    header: NonNull<Header>,
+    pub(crate) executing_program: &'static Address,
+}
 
 impl Entry {
     /// A second handle to this account, for checks that read it after a call
@@ -123,7 +126,13 @@ impl Entry {
     /// No reference obtained through either handle may be live while the
     /// other one is used.
     pub(crate) unsafe fn alias(&self) -> Self {
-        Self(self.0)
+        Self { ..*self }
+    }
+
+    /// Rejects an owner-only operation on a kind imported from another program.
+    #[inline(always)]
+    pub(crate) fn require_program(&self, owner: &Address) -> Result {
+        if self.executing_program == owner { Ok(()) } else { Err(ProgramError::IllegalOwner) }
     }
 
     /// Makes the handle unusable until `restore`: it points nowhere the
@@ -131,12 +140,12 @@ impl Entry {
     /// an access violation, at no cost to the reads that are allowed. The
     /// address keeps the entry's, to restore.
     pub(crate) fn poison(&mut self) {
-        self.0 = self.0.map_addr(|address| address | POISON);
+        self.header = self.header.map_addr(|address| address | POISON);
     }
 
     pub(crate) fn restore(&mut self) {
         // SAFETY: an entry's own address is never zero.
-        self.0 = self.0.map_addr(|address| unsafe {
+        self.header = self.header.map_addr(|address| unsafe {
             core::num::NonZero::new_unchecked(address.get() & !POISON.get())
         });
     }
@@ -145,13 +154,17 @@ impl Entry {
     /// the runtime writes them: 0 or 1. One load and a shift, not three copies.
     pub(crate) fn flags(&self) -> u64 {
         // SAFETY: the header starts with these four bytes.
-        u64::from(unsafe { self.0.cast::<u32>().read() } >> 8)
+        u64::from(unsafe { self.header.cast::<u32>().read() } >> 8)
+    }
+
+    pub(crate) fn is_poisoned(&self) -> bool {
+        self.header.addr().get() & POISON.get() != 0
     }
 
     /// With the `debug` feature, says why before a poisoned handle faults.
     #[inline(always)]
     fn live(&self) {
-        if cfg!(feature = "debug") && self.0.addr().get() & POISON.get() != 0 {
+        if cfg!(feature = "debug") && self.is_poisoned() {
             self.say_reload();
         }
     }
@@ -160,7 +173,8 @@ impl Entry {
     #[inline(never)]
     fn say_reload(&self) -> ! {
         // SAFETY: the address without the mark is the entry's own.
-        let key = unsafe { &(*self.0.as_ptr().map_addr(|address| address & !POISON.get())).key };
+        let key =
+            unsafe { &(*self.header.as_ptr().map_addr(|address| address & !POISON.get())).key };
         crate::error::Line::new()
             .text("error[reload]: account ")
             .key(key)
@@ -177,7 +191,7 @@ impl Entry {
         self.live();
         // SAFETY: the cursor only builds an `Entry` over a complete header
         // inside the input, which outlives the program's execution.
-        unsafe { self.0.as_ref() }
+        unsafe { self.header.as_ref() }
     }
 
     pub fn key(&self) -> &Address {
@@ -214,12 +228,12 @@ impl Entry {
     pub(crate) fn data_ptr(&self) -> *mut u8 {
         self.live();
         // SAFETY: the data follows the header inside the input.
-        unsafe { self.0.as_ptr().add(1).cast() }
+        unsafe { self.header.as_ptr().add(1).cast() }
     }
 
     fn header_mut(&mut self) -> &mut Header {
         // SAFETY: as in `header`; `&mut self` makes this the only reference.
-        unsafe { self.0.as_mut() }
+        unsafe { self.header.as_mut() }
     }
 
     pub(crate) fn data_mut(&mut self) -> &mut [u8] {
@@ -232,7 +246,7 @@ impl Entry {
     pub(crate) fn lamports_ptr(&self) -> *mut u64 {
         self.live();
         // SAFETY: the header is inside the input; no reference is created.
-        unsafe { &raw mut (*self.0.as_ptr()).lamports }
+        unsafe { &raw mut (*self.header.as_ptr()).lamports }
     }
 
     pub(crate) fn set_lamports(&mut self, lamports: u64) {
@@ -368,6 +382,8 @@ pub struct Cursor {
     /// The running program, whose address a client passes in place of an
     /// optional account it leaves out.
     program: &'static Address,
+    /// The executing address from the runtime, including for a relocated program.
+    pub(crate) executing_program: &'static Address,
     /// The index of the first such entry, which later ones duplicate.
     absent: Option<u8>,
 }
@@ -385,6 +401,7 @@ impl Cursor {
             left: count,
             count,
             program,
+            executing_program: program,
             absent: None,
         }
     }
@@ -489,7 +506,8 @@ impl Cursor {
             return Err(error);
         }
         // SAFETY: the entry is not a duplicate, so a full header starts at `next`.
-        let entry = Entry(unsafe { NonNull::new_unchecked(self.next.cast()) });
+        let header = unsafe { NonNull::new_unchecked(self.next.cast()) };
+        let entry = Entry { header, executing_program: self.executing_program };
         let data_len = entry.header().data_len as usize;
         // SAFETY: used only to say why the entry did not load, once it has not.
         let rejected = unsafe { entry.alias() };

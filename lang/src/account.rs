@@ -26,7 +26,8 @@ pub trait Kind: Layout {
     /// Empty only for a layout another program defines, whose `validate`
     /// must then reject an account that program has not initialized.
     const DISCRIMINATOR: &'static [u8];
-    /// Whether this program is `OWNER`, so it alone can change these accounts.
+    /// Whether the defining program owns this kind. Importers must compare `OWNER`
+    /// with the executing program before relying on ownership.
     const PROGRAM_OWNED: bool;
     /// The name of the check its wrapper makes, if a call can make it instead.
     const CHECK: Option<Named> = None;
@@ -50,21 +51,24 @@ pub trait Kind: Layout {
 #[doc(hidden)]
 pub trait UniqueDiscriminator<const LEN: usize, const BYTES: u128> {}
 
-/// `K`'s discriminator width, if this program owns `K`.
+/// `K`'s discriminator width, if its defining program owns it.
 pub const fn owned_width<K: Kind>() -> Option<usize> {
     if K::PROGRAM_OWNED { Some(K::DISCRIMINATOR.len()) } else { None }
 }
 
-/// Fails to compile unless every width given is the same. With one width,
+/// Fails to compile unless every kind owned by `program` has the same width. With one width,
 /// no kind's discriminator can be another's prefix, so two kinds of equal
 /// length cannot load as each other.
-pub const fn one_width(structs: &[&[FieldInfo]]) {
+pub const fn one_width(structs: &[&[FieldInfo]], program: &Address) {
     let mut first = None;
     let mut index = 0;
     while index < structs.len() {
         let mut field = 0;
         while field < structs[index].len() {
-            if let Some(width) = structs[index][field].width {
+            let info = &structs[index][field];
+            if let Some(width) = info.width
+                && info.owned_by(program)
+            {
                 match first {
                     None => first = Some(width),
                     Some(first) => assert!(
@@ -190,6 +194,8 @@ impl<K: Kind> Wrapper for Account<K> {
         if K::PROGRAM_OWNED { AfterCpi::BrokenByCalling(&K::OWNER) } else { AfterCpi::Broken };
     const ASSIGNED: bool = assigned(&[K::OWNER]);
     const PROGRAM_OWNED: bool = K::PROGRAM_OWNED;
+    const PROGRAM_OWNER: Option<&'static Address> =
+        if K::PROGRAM_OWNED { Some(&K::OWNER) } else { None };
     const WIDTH: Option<usize> = owned_width::<K>();
     const RESIZES: bool = K::SIZE.is_none();
     const FIELDS: &'static [&'static str] = K::FIELDS;
@@ -298,6 +304,7 @@ impl<K: Kind> Account<K> {
     #[inline(always)]
     pub fn sub_lamports(&mut self, lamports: u64) -> Result {
         const { assert!(K::PROGRAM_OWNED, "only accounts this program owns can be debited") };
+        self.entry().require_program(&K::OWNER)?;
         self.entry_mut().sub_lamports(lamports)
     }
 }

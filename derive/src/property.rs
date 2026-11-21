@@ -33,7 +33,7 @@ pub fn expand(handler: Path, property: ItemFn) -> Result<TokenStream> {
             #[kani::proof]
             fn #harness() {
                 use ::quasar_lang::data::InstructionData;
-                let mut world = ::quasar_lang::verify::World::<#accounts, #data>::any();
+                let mut world = ::quasar_lang::verify::World::<#accounts, #data>::any(&crate::ID);
                 let bytes: [u8; <#data as InstructionData>::SIZE] = kani::any();
                 kani::assume(<#data as InstructionData>::decode(&bytes).is_ok());
                 let decode = || <#data as InstructionData>::decode(&bytes).unwrap_or_else(|_| unreachable!());
