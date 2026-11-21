@@ -100,12 +100,12 @@ pub fn expand(input: &DeriveInput) -> Result<TokenStream> {
     // Checks of the fields' types, evaluated where the struct is defined, so
     // an error points at the field whether or not an instruction uses it.
     let mut type_checks = Vec::new();
-    // The fields a library's `init` takes, which it checks as it creates
-    // the account: `token(mint = mint_a)` checks `mint_a` is a mint.
+    // Only unconditional creation guarantees the library's init key checks.
+    // An idempotent init can reuse an account without making the creation CPI.
     let mut inits_take: Vec<(Ident, Path, String)> = Vec::new();
     for field in &fields.named {
         let constraints = parse_constraints(field, &names)?;
-        if let (Some(Init::Create { .. }), Some((library, keys))) =
+        if let (Some(Init::Create { idempotent: false, .. }), Some((library, keys))) =
             (&constraints.init, &constraints.library)
         {
             for (key, _, of) in keys {
