@@ -129,6 +129,28 @@ fn an_account_this_program_owns_stays_usable_across_a_call() {
 }
 
 #[test]
+fn owner_only_constraints_recognize_an_imported_kind_as_foreign() {
+    use quasar_lang::{account::Account, field::Field};
+    let imported = <Account<Tally> as Field>::INFO;
+    assert!(imported.owned_by(&callee::ID));
+    assert!(!imported.owned_by(&ID));
+    assert!(<Account<Counter> as Field>::INFO.owned_by(&ID));
+}
+
+#[test]
+fn only_the_executing_owner_keeps_a_writable_handle_across_a_third_program() {
+    // Run the same handler under another ID, with the original owner's kind.
+    let caller = Address::new_unique();
+    let mut t = Test::debug(caller, "features");
+    t.add_program(callee::ID, "callee");
+    let counter = t.account(&Counter { count: 1, authority: Address::default() });
+    let mut call = features::call_keeping_own::instruction((callee::ID, counter), ());
+    call.program_id = caller;
+    let outcome = t.run(call).rejected(InstructionError::ProgramFailedToComplete);
+    assert!(outcome.logs().iter().any(|line| line.contains("call `.reload()?`")));
+}
+
+#[test]
 fn a_created_account_is_rent_exempt_and_holds_its_kind() {
     let mut t = Test::new(ID, "features");
     let payer = t.wallet(1_000_000_000);

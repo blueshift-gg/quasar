@@ -25,10 +25,12 @@ pub trait Wrapper: Sized {
     /// program, this program's, which creates PDAs at the canonical bump. So
     /// checking such an account's PDA needs only the hash.
     const ASSIGNED: bool = false;
-    /// Whether this program owns every valid account, so it alone can
-    /// debit, resize or close one.
+    /// Whether the defining program owns the kind. Owner-only operations also
+    /// check the executing program.
     const PROGRAM_OWNED: bool = false;
-    /// The discriminator width of the kind it holds, if this program owns it.
+    /// The owner of a kind declared by its own program, including imported kinds.
+    const PROGRAM_OWNER: Option<&'static Address> = None;
+    /// The discriminator width of a kind declared by its own program.
     const WIDTH: Option<usize> = None;
     /// Whether writes can change the data's length, which then follows its
     /// content (`flush`).
@@ -148,8 +150,8 @@ pub(crate) fn flush<W: Wrapper>(entry: &mut Entry) {
 /// What a call can do to a wrapper's checks.
 pub enum AfterCpi {
     Holds,
-    /// Only the program that owns the account can change it: calling itself,
-    /// the one reentrant call the runtime allows.
+    /// When the executing program is this owner, only a direct self-call can
+    /// change the account. Any other caller must recheck it.
     BrokenByCalling(&'static Address),
     /// The callee may change the account's owner or data.
     Broken,

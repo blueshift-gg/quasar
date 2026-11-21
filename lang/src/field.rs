@@ -17,14 +17,26 @@ use crate::{
 pub struct FieldInfo {
     /// The data length every valid account has, if it is fixed.
     pub len: Option<usize>,
-    /// The discriminator width of the kind it holds, if this program owns it.
+    /// The discriminator width of a kind declared by its owner.
     pub width: Option<usize>,
+    /// The program that declared and owns the kind, when known.
+    pub program_owner: Option<&'static crate::Address>,
     /// Whether it takes every entry left, so it comes last.
     pub rest: bool,
     /// Whether it is a `Pda`, which loads only through `seeds(..)`.
     pub pda: bool,
     /// Whether the account signs.
     pub signer: bool,
+}
+
+impl FieldInfo {
+    /// Whether the field belongs to the program declaring the instruction.
+    pub const fn owned_by(&self, program: &crate::Address) -> bool {
+        match self.program_owner {
+            Some(owner) => crate::cpi::same_address(owner, program),
+            None => false,
+        }
+    }
 }
 
 #[diagnostic::on_unimplemented(
@@ -91,6 +103,7 @@ impl<W: Wrapper> Field for W {
     const INFO: FieldInfo = FieldInfo {
         len: W::LEN,
         width: W::WIDTH,
+        program_owner: W::PROGRAM_OWNER,
         rest: false,
         pda: W::PDA,
         signer: W::REQUIRES.includes(Privileges::SIGNER),
@@ -206,6 +219,11 @@ pub const fn required(fields: &[FieldInfo]) -> u64 {
         index += 1;
     }
     fields.len() as u64
+}
+
+/// Checks an owner-only constraint in the program that uses the field.
+pub const fn require_owner<F: Field>(program: &crate::Address) {
+    assert!(F::INFO.owned_by(program), "this constraint requires an account owned by this program");
 }
 
 /// Fails to compile for a `Pda` loaded without `seeds(..)`.

@@ -78,10 +78,13 @@ pub unsafe fn entrypoint<const D: usize>(
     dispatch: impl FnOnce([u8; D], &[u8], Cursor) -> Result,
 ) -> u64 {
     // SAFETY: forwarded from this function's contract.
-    let data = unsafe { instruction_data(data) };
+    let bytes = unsafe { instruction_data(data) };
+    // SAFETY: ABIv1 places the executing program's address immediately after the data.
+    let executing_program = unsafe { &*data.add(bytes.len()).cast::<Address>() };
     // SAFETY: as above; this is the only cursor over `input`.
-    let cursor = unsafe { Cursor::new(input, id) };
-    let result = if let Some((discriminator, args)) = data.split_first_chunk::<D>() {
+    let mut cursor = unsafe { Cursor::new(input, id) };
+    cursor.executing_program = executing_program;
+    let result = if let Some((discriminator, args)) = bytes.split_first_chunk::<D>() {
         dispatch(*discriminator, args, cursor)
     } else {
         Err(ProgramError::InvalidInstructionData)

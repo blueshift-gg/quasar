@@ -176,6 +176,7 @@ impl<W: Wrapper, S> Wrapper for Pda<W, S> {
     const AFTER_CPI: AfterCpi = W::AFTER_CPI;
     const ASSIGNED: bool = W::ASSIGNED;
     const PROGRAM_OWNED: bool = W::PROGRAM_OWNED;
+    const PROGRAM_OWNER: Option<&'static Address> = W::PROGRAM_OWNER;
     const WIDTH: Option<usize> = W::WIDTH;
     const RESIZES: bool = W::RESIZES;
     const PDA: bool = true;

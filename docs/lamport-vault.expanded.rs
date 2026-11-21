@@ -924,6 +924,7 @@ pub mod program {
 }
 const _: () = ::quasar_lang::account::one_width(
     &[lamport_vault::deposit::FIELDS, lamport_vault::withdraw::FIELDS],
+    &crate::ID,
 );
 /// This program's interface, from the constants it dispatches on.
 pub fn idl() -> ::quasar_lang::client::Idl {

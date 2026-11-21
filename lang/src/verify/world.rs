@@ -19,11 +19,12 @@ use crate::{
 pub struct World<A, D> {
     input: Vec<u64>,
     before: Vec<u64>,
+    program: &'static Address,
     accounts: PhantomData<(A, D)>,
 }
 
 impl<A: Accounts<D>, D> World<A, D> {
-    pub fn any() -> Self {
+    pub fn any(program: &'static Address) -> Self {
         let lengths =
             A::FIELDS.iter().filter(|field| !field.rest).map(|field| field.len.unwrap_or(0));
         let size: usize = lengths.clone().map(entry_size).sum();
@@ -53,12 +54,12 @@ impl<A: Accounts<D>, D> World<A, D> {
             at += entry_size(len);
         }
         let before = input.clone();
-        Self { input, before, accounts: PhantomData }
+        Self { input, before, program, accounts: PhantomData }
     }
 
     /// What the handler receives: the accounts, checked, and `data`.
     pub fn ctx<V: crate::cpi::Vouches>(&mut self, data: D) -> Ctx<A, D> {
-        let parsed = A::from_cursor::<V>(&mut cursor(&mut self.input), &data);
+        let parsed = A::from_cursor::<V>(&mut cursor(&mut self.input, self.program), &data);
         kani::assume(parsed.is_ok());
         let accounts = parsed.unwrap_or_else(|_| unreachable!());
         Ctx { accounts, data }
@@ -66,7 +67,7 @@ impl<A: Accounts<D>, D> World<A, D> {
 
     /// The accounts as they were before the instruction.
     pub fn before(&mut self) -> A {
-        let loaded = A::load_accounts(&mut cursor(&mut self.before));
+        let loaded = A::load_accounts(&mut cursor(&mut self.before, self.program));
         kani::assume(loaded.is_ok());
         loaded.unwrap_or_else(|_| unreachable!())
     }
@@ -74,18 +75,13 @@ impl<A: Accounts<D>, D> World<A, D> {
     /// The accounts after the instruction, which must still pass their
     /// wrappers' checks.
     pub fn after(&mut self) -> A {
-        let loaded = A::load_accounts(&mut cursor(&mut self.input));
+        let loaded = A::load_accounts(&mut cursor(&mut self.input, self.program));
         assert!(loaded.is_ok(), "the accounts no longer pass their checks after the instruction");
         loaded.unwrap_or_else(|_| unreachable!())
     }
 }
 
-fn cursor(input: &mut [u64]) -> Cursor {
+fn cursor(input: &mut [u64], program: &'static Address) -> Cursor {
     // SAFETY: `input` is laid out like the runtime's input.
-    unsafe {
-        Cursor::new(
-            input.as_mut_ptr().cast(),
-            &<crate::wrapper::SystemProgram as crate::wrapper::ProgramId>::ID,
-        )
-    }
+    unsafe { Cursor::new(input.as_mut_ptr().cast(), program) }
 }

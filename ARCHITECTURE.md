@@ -72,10 +72,13 @@ uses every feature once, and `tests/callee` is the program it calls.
   does not say so, a wrapper is unusable until `reload()` checks the account
   again: its handle is moved to an address the runtime maps nothing at
   (`Entry::poison`), so a read without `reload()` ends the program with an
-  access violation, and the reads that are allowed carry no test. Which
-  wrappers that is, is decided when compiling; an account passed read-only
-  cannot change. A variable kind is still checked at once after a call to
-  this program itself, since its length is read after the handler.
+  access violation, and the reads that are allowed carry no test. When the
+  executing program owns the kind, only a direct self-call can change it.
+  A third program can call an imported kind's owner, so passing that account
+  writable also requires a recheck. Variable-size kinds are checked immediately
+  because the framework reads their length after the handler. A failed
+  recheck ends the instruction before control returns to the handler.
+  Read-only accounts stay usable.
 - **PDAs** (`pda`). A `Pda<W, S>` loads only through `seeds(..)`, whose
   values go to `S::seeds`, the seeds its kind declares. Existing accounts are
   checked by hashing, one `sol_sha256` per bump; `init` finds the canonical
