@@ -658,3 +658,61 @@ struct SolAccountInfo {
     /// three bytes; the rest is the struct's padding.
     flags: u64,
 }
+
+/// Dynamic counterpart of `Cpi::call`, used only by shared-account programs.
+#[cfg(feature = "shared-accounts")]
+pub(crate) fn invoke_shared(
+    program: &Address,
+    metas: &[crate::shared::AccountMeta],
+    data: &[u8],
+    entries: &mut [core::cell::RefMut<'_, Entry>],
+    signers: &[&[&[u8]]],
+) {
+    use alloc::vec::Vec;
+    let metas: Vec<_> = metas
+        .iter()
+        .map(|meta| SolAccountMeta {
+            pubkey: &meta.address,
+            is_writable: meta.is_writable,
+            is_signer: meta.is_signer,
+        })
+        .collect();
+    let infos: Vec<_> = entries
+        .iter_mut()
+        .map(|entry| SolAccountInfo {
+            key: entry.key(),
+            lamports: entry.lamports_ptr(),
+            data_len: entry.data().len() as u64,
+            data: entry.data_ptr(),
+            owner: entry.owner(),
+            rent_epoch: 0,
+            flags: entry.flags(),
+        })
+        .collect();
+    let seeds: Vec<Vec<_>> = signers
+        .iter()
+        .map(|signer| signer.iter().map(|seed| RawSlice::new(seed)).collect())
+        .collect();
+    let signers: Vec<_> = seeds
+        .iter()
+        .map(|seeds| RawSlice { addr: seeds.as_ptr().cast(), len: seeds.len() as u64 })
+        .collect();
+    let instruction = SolInstruction {
+        program_id: program,
+        accounts: metas.as_ptr(),
+        accounts_len: metas.len() as u64,
+        data: data.as_ptr(),
+        data_len: data.len() as u64,
+    };
+    // SAFETY: unique entries remain mutably borrowed through the call; all
+    // pointers and seed buffers are live and correctly laid out until it returns.
+    unsafe {
+        syscalls::invoke(
+            ptr::from_ref(&instruction).cast(),
+            infos.as_ptr().cast(),
+            infos.len() as u64,
+            signers.as_ptr().cast(),
+            signers.len() as u64,
+        );
+    }
+}

@@ -1,0 +1,101 @@
+// Adapted from solana-program/token-2022 at e8ca680ca8aeb12f9598524b003c776c6a4168f2.
+// Modified to execute on Quasar; see ../README.md for provenance and compatibility.
+use {
+    crate::processor::Processor,
+    crate::runtime::{account::next_account_view, AccountView},
+    solana_address::Address,
+    solana_msg::msg,
+    solana_nullable::MaybeNull,
+    solana_program_error::ProgramResult,
+    spl_token_2022_interface::{
+        check_program_account,
+        error::TokenError,
+        extension::{
+            metadata_pointer::{
+                instruction::{
+                    InitializeInstructionData, MetadataPointerInstruction, UpdateInstructionData,
+                },
+                MetadataPointer,
+            },
+            BaseStateWithExtensionsMut, PodStateWithExtensionsMut,
+        },
+        instruction::{decode_instruction_data, decode_instruction_type},
+        pod::PodMint,
+    },
+};
+
+fn process_initialize(
+    _program_id: &Address,
+    accounts: &mut [AccountView],
+    authority: &MaybeNull<Address>,
+    metadata_address: &MaybeNull<Address>,
+) -> ProgramResult {
+    let account_info_iter = &mut accounts.iter_mut();
+    let mint_account_info = next_account_view(account_info_iter)?;
+    check_program_account(&mint_account_info.owner())?;
+
+    let mut mint_data = mint_account_info.try_borrow_mut()?;
+    let mut mint = PodStateWithExtensionsMut::<PodMint>::unpack_uninitialized(&mut mint_data)?;
+
+    let extension = mint.init_extension::<MetadataPointer>(true)?;
+    extension.authority = *authority;
+
+    if Option::<Address>::from(*authority).is_none()
+        && Option::<Address>::from(*metadata_address).is_none()
+    {
+        msg!("The metadata pointer extension requires at least an authority or an address for initialization, neither was provided");
+        Err(TokenError::InvalidInstruction)?;
+    }
+    extension.metadata_address = *metadata_address;
+    Ok(())
+}
+
+fn process_update(
+    program_id: &Address,
+    accounts: &mut [AccountView],
+    new_metadata_address: &MaybeNull<Address>,
+) -> ProgramResult {
+    let account_info_iter = &mut accounts.iter_mut();
+    let mint_account_info = next_account_view(account_info_iter)?;
+    let owner_info = next_account_view(account_info_iter)?;
+    let owner_info_data_len = owner_info.data_len();
+    check_program_account(&mint_account_info.owner())?;
+
+    let mut mint_data = mint_account_info.try_borrow_mut()?;
+    let mut mint = PodStateWithExtensionsMut::<PodMint>::unpack(&mut mint_data)?;
+    let extension = mint.get_extension_mut::<MetadataPointer>()?;
+    let authority =
+        Option::<Address>::from(extension.authority).ok_or(TokenError::NoAuthorityExists)?;
+
+    Processor::validate_owner(
+        program_id,
+        &authority,
+        owner_info,
+        owner_info_data_len,
+        account_info_iter.as_slice(),
+    )?;
+
+    extension.metadata_address = *new_metadata_address;
+    Ok(())
+}
+
+pub(crate) fn process_instruction(
+    program_id: &Address,
+    accounts: &mut [AccountView],
+    input: &[u8],
+) -> ProgramResult {
+    check_program_account(program_id)?;
+    match decode_instruction_type(input)? {
+        MetadataPointerInstruction::Initialize => {
+            msg!("MetadataPointerInstruction::Initialize");
+            let InitializeInstructionData { authority, metadata_address } =
+                decode_instruction_data(input)?;
+            process_initialize(program_id, accounts, authority, metadata_address)
+        }
+        MetadataPointerInstruction::Update => {
+            msg!("MetadataPointerInstruction::Update");
+            let UpdateInstructionData { metadata_address } = decode_instruction_data(input)?;
+            process_update(program_id, accounts, metadata_address)
+        }
+    }
+}

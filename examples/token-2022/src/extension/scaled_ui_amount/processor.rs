@@ -1,0 +1,132 @@
+// Adapted from solana-program/token-2022 at e8ca680ca8aeb12f9598524b003c776c6a4168f2.
+// Modified to execute on Quasar; see ../README.md for provenance and compatibility.
+use {
+    crate::processor::Processor,
+    crate::runtime::{account::next_account_view, AccountView},
+    solana_address::Address,
+    solana_clock::Clock,
+    solana_msg::msg,
+    solana_nullable::MaybeNull,
+    solana_program_error::ProgramResult,
+    solana_sysvar::Sysvar,
+    spl_token_2022_interface::{
+        check_program_account,
+        error::TokenError,
+        extension::{
+            scaled_ui_amount::{
+                instruction::{
+                    InitializeInstructionData, ScaledUiAmountMintInstruction,
+                    UpdateMultiplierInstructionData,
+                },
+                PodF64, ScaledUiAmountConfig, UnixTimestamp,
+            },
+            BaseStateWithExtensionsMut, PodStateWithExtensionsMut,
+        },
+        instruction::{decode_instruction_data, decode_instruction_type},
+        pod::PodMint,
+    },
+};
+
+fn try_validate_multiplier(multiplier: &PodF64) -> ProgramResult {
+    let float_multiplier = f64::from(*multiplier);
+    if float_multiplier.is_sign_positive() && float_multiplier.is_normal() {
+        Ok(())
+    } else {
+        Err(TokenError::InvalidScale.into())
+    }
+}
+
+fn process_initialize(
+    _program_id: &Address,
+    accounts: &mut [AccountView],
+    authority: &MaybeNull<Address>,
+    multiplier: &PodF64,
+) -> ProgramResult {
+    let account_info_iter = &mut accounts.iter_mut();
+    let mint_account_info = next_account_view(account_info_iter)?;
+    check_program_account(&mint_account_info.owner())?;
+
+    let mut mint_data = mint_account_info.try_borrow_mut()?;
+    let mut mint = PodStateWithExtensionsMut::<PodMint>::unpack_uninitialized(&mut mint_data)?;
+
+    let extension = mint.init_extension::<ScaledUiAmountConfig>(true)?;
+    extension.authority = *authority;
+    try_validate_multiplier(multiplier)?;
+    extension.multiplier = *multiplier;
+    extension.new_multiplier_effective_timestamp = 0.into();
+    extension.new_multiplier = *multiplier;
+    Ok(())
+}
+
+fn process_update_multiplier(
+    program_id: &Address,
+    accounts: &mut [AccountView],
+    new_multiplier: &PodF64,
+    effective_timestamp: &UnixTimestamp,
+) -> ProgramResult {
+    let account_info_iter = &mut accounts.iter_mut();
+    let mint_account_info = next_account_view(account_info_iter)?;
+    let owner_info = next_account_view(account_info_iter)?;
+    let owner_info_data_len = owner_info.data_len();
+    check_program_account(&mint_account_info.owner())?;
+
+    let mut mint_data = mint_account_info.try_borrow_mut()?;
+    let mut mint = PodStateWithExtensionsMut::<PodMint>::unpack(&mut mint_data)?;
+    let extension = mint.get_extension_mut::<ScaledUiAmountConfig>()?;
+    let authority =
+        Option::<Address>::from(extension.authority).ok_or(TokenError::NoAuthorityExists)?;
+
+    Processor::validate_owner(
+        program_id,
+        &authority,
+        owner_info,
+        owner_info_data_len,
+        account_info_iter.as_slice(),
+    )?;
+
+    try_validate_multiplier(new_multiplier)?;
+    let clock = Clock::get()?;
+
+    // if the current new multiplier's timestamp has passed, set it as the old
+    if clock.unix_timestamp >= i64::from(extension.new_multiplier_effective_timestamp) {
+        extension.multiplier = extension.new_multiplier;
+    }
+
+    extension.new_multiplier = *new_multiplier;
+    let int_effective_timestamp = i64::from(*effective_timestamp);
+    // just floor it to 0
+    if int_effective_timestamp < 0 {
+        extension.new_multiplier_effective_timestamp = 0.into();
+    } else {
+        extension.new_multiplier_effective_timestamp = *effective_timestamp;
+    }
+    // if the new effective timestamp has already passed, also set the old
+    // multiplier, just to be clear
+    if clock.unix_timestamp >= int_effective_timestamp {
+        extension.multiplier = *new_multiplier;
+    }
+
+    Ok(())
+}
+
+pub(crate) fn process_instruction(
+    program_id: &Address,
+    accounts: &mut [AccountView],
+    input: &[u8],
+) -> ProgramResult {
+    check_program_account(program_id)?;
+    match decode_instruction_type(input)? {
+        ScaledUiAmountMintInstruction::Initialize => {
+            msg!("ScaledUiAmountMintInstruction::Initialize");
+            let InitializeInstructionData { authority, multiplier } =
+                decode_instruction_data(input)?;
+            process_initialize(program_id, accounts, authority, multiplier)
+        }
+        ScaledUiAmountMintInstruction::UpdateMultiplier => {
+            msg!("ScaledUiAmountMintInstruction::UpdateScale");
+            let UpdateMultiplierInstructionData { effective_timestamp, multiplier } =
+                decode_instruction_data(input)?;
+            process_update_multiplier(program_id, accounts, multiplier, effective_timestamp)
+        }
+    }
+}

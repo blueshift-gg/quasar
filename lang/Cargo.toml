@@ -7,6 +7,8 @@ license.workspace = true
 repository.workspace = true
 
 [features]
+# Opt-in shared accounts and an SBF heap for ports of variable-account programs.
+shared-accounts = []
 # A build to test with, not to deploy: the program makes every check itself,
 # leaving none to the calls that make them, and logs which account failed
 # which check before it fails. `cargo build-sbf --features quasar-lang/debug`.
