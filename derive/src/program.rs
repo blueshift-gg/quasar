@@ -188,7 +188,7 @@ pub fn program(args: TokenStream, module: ItemMod) -> Result<TokenStream> {
             pub type #program = crate::__Program;
         }
 
-        const _: () = ::quasar_lang::account::one_width(&[#(#handlers::FIELDS),*]);
+        const _: () = ::quasar_lang::account::one_width(&[#(#handlers::FIELDS),*], &crate::ID);
 
         ::quasar_lang::host_only! {
             /// This program's interface, from the constants it dispatches on.

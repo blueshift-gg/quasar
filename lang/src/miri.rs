@@ -86,7 +86,7 @@ fn account_views_alternate_reads_writes_and_reload() {
 }
 
 #[derive(zeropod::ZeroPod)]
-struct Dynamic {
+pub(super) struct Dynamic {
     marker: u64,
     #[max_len(16)]
     label: String,

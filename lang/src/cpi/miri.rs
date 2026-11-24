@@ -5,7 +5,7 @@ use core::{cell::Cell, slice};
 use super::*;
 use crate::{
     account::Account,
-    miri::{Counter, with_accounts},
+    miri::{Counter, Dynamic, OWNER, with_accounts},
     wrapper::{Program, SystemProgram, UncheckedAccount},
 };
 
@@ -151,4 +151,36 @@ fn payer_may_also_be_a_readonly_authority_while_its_key_is_borrowed() {
         assert_eq!(*key, Address::new_from_array([2; 32]));
         assert_eq!(payer.lamports(), 99);
     });
+}
+
+#[test]
+fn writable_accounts_use_the_callers_identity_for_cpi_rechecks() {
+    const CALLER: Address = Address::new_from_array([42; 32]);
+    let mut fixed = [0; 9];
+    fixed[0] = 9;
+    let mut dynamic = [0; 17];
+    dynamic[0] = 9;
+    for (caller, local) in [(&CALLER, false), (&OWNER, true)] {
+        with_accounts(&[(1, &[]), (2, &fixed), (3, &dynamic)], &[], |cursor| {
+            cursor.executing_program = caller;
+            let third = cursor.load::<Program<SystemProgram>>(false).unwrap();
+            let mut fixed = cursor.load::<Account<Counter>>(true).unwrap();
+            let mut dynamic = cursor.load::<Account<Dynamic>>(true).unwrap();
+
+            let _ = CpiAccount::writable_to(&third, &mut fixed);
+            assert_eq!(fixed.entry().is_poisoned(), !local);
+            fixed.reload().unwrap();
+            assert_eq!(fixed.value(), 0);
+
+            let passed =
+                CpiAccount::writable_field::<UncheckedAccount, _>(&mut dynamic, third.address());
+            assert_eq!(passed.recheck.is_some(), !local);
+            if let Some(recheck) = passed.recheck {
+                let mut entry = passed.entry;
+                entry.set_owner(CALLER);
+                let invalid = std::panic::catch_unwind(|| recheck(&entry, SystemProgram::IDS));
+                assert!(invalid.is_err());
+            }
+        });
+    }
 }

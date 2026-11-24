@@ -149,6 +149,19 @@ pub fn expand(input: &DeriveInput) -> Result<TokenStream> {
             type_checks
                 .push(quote_spanned!(ty.span()=> ::quasar_lang::effects::resizable::<#ty>();));
         }
+        if constraints.close.is_some()
+            || constraints.realloc.is_some()
+            || (constraints.init.is_some() && constraints.library.is_none())
+        {
+            type_checks.push(quote_spanned!(ty.span()=>
+                ::quasar_lang::field::require_owner::<#ty>(&crate::ID);
+            ));
+        }
+        if let Some(Init::Migrate { from, .. }) = &constraints.init {
+            type_checks.push(quote_spanned!(from.span()=>
+                ::quasar_lang::field::require_owner::<::quasar_lang::account::Account<#from>>(&crate::ID);
+            ));
+        }
         if has_constraints(&constraints) {
             type_checks
                 .push(quote_spanned!(ty.span()=> ::quasar_lang::field::not_remaining::<#ty>();));

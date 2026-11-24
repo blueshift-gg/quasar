@@ -89,6 +89,9 @@ impl Settle {
     }
 
     pub fn run(mut self) -> Result {
+        if self.rent.is_some() {
+            self.account.require_program(self.account.owner())?;
+        }
         (self.flush)(&mut self.account);
         let Some(Payer { mut payer, system, rent }) = self.rent else { return Ok(()) };
         let mut account = self.account;
@@ -145,6 +148,7 @@ impl Close {
     }
 
     pub fn run(mut self) -> Result {
+        self.account.require_program(self.account.owner())?;
         let destination = self.destination.lamports().wrapping_add(self.account.lamports());
         self.destination.set_lamports(destination);
         self.account.set_lamports(0);

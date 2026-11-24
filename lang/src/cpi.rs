@@ -1,7 +1,6 @@
 //! Calls into other programs through `sol_invoke_signed_c`, with account infos
 //! pointing into the input. Afterwards, the writable accounts whose checks the
-//! callee could break are checked again, chosen at compile time
-//! (`Wrapper::AFTER_CPI`).
+//! callee could break are invalidated or checked again according to `Wrapper::AFTER_CPI`.
 
 use core::{marker::PhantomData, mem::MaybeUninit, ptr};
 
@@ -286,14 +285,7 @@ pub const fn within(ids: &[Address], accepted: &[Address]) -> bool {
         let mut found = false;
         let mut other = 0;
         while other < accepted.len() {
-            let (a, b) = (ids[index].as_array(), accepted[other].as_array());
-            let mut byte = 0;
-            let mut equal = true;
-            while byte < 32 {
-                equal &= a[byte] == b[byte];
-                byte += 1;
-            }
-            found |= equal;
+            found |= same_address(&ids[index], &accepted[other]);
             other += 1;
         }
         if !found {
@@ -304,11 +296,22 @@ pub const fn within(ids: &[Address], accepted: &[Address]) -> bool {
     true
 }
 
+pub(crate) const fn same_address(a: &Address, b: &Address) -> bool {
+    let mut byte = 0;
+    while byte < 32 {
+        if a.as_array()[byte] != b.as_array()[byte] {
+            return false;
+        }
+        byte += 1;
+    }
+    true
+}
+
 /// An account's recheck: its wrapper's checks, run again after a call to one
 /// of the programs given. Only for an account whose length follows its
 /// content, which what runs after the handler reads; any other is left to
 /// `reload()`.
-type Recheck = fn(&Entry, &[Address]) -> Result;
+type Recheck = fn(&Entry, &[Address]);
 
 /// One account of a call, as the runtime's `SolAccountMeta` and
 /// `SolAccountInfo` need it.
@@ -357,19 +360,14 @@ impl<'a> CpiAccount<'a> {
 
     /// A writable account. Unless the call keeps it, or is to none of the
     /// programs that could change it (`callees`, if known), its wrapper is
-    /// unusable afterwards until `reload()`: decided here, when compiling.
+    /// unusable afterwards until `reload()`.
     #[inline(always)]
     fn passed<W: Wrapper>(account: &'a mut W, kept: bool, callees: Option<&[Address]>) -> Self {
         account.flush();
         // SAFETY: `account` stays borrowed for `'a`, the life of the call, so
         // nothing else uses its entry meanwhile.
         let entry = unsafe { account.entry().alias() };
-        let breakable = !kept
-            && match (W::AFTER_CPI, callees) {
-                (AfterCpi::Holds, _) => false,
-                (AfterCpi::BrokenByCalling(owner), Some(callees)) => callees.contains(owner),
-                (AfterCpi::BrokenByCalling(_) | AfterCpi::Broken, _) => true,
-            };
+        let breakable = !kept && broken_by::<W>(&entry, callees);
         // What runs after the handler reads a variable kind through a handle
         // of its own, so that one is checked at once, as before.
         let recheck = (breakable && W::RESIZES).then_some(recheck::<W> as Recheck);
@@ -433,21 +431,31 @@ impl<'a> CpiAccount<'a> {
 
 /// Whether a call to one of `callees` can break `W`'s checks: any call, or
 /// only its owner calling itself.
-fn broken_by<W: Wrapper>(callees: &[Address]) -> bool {
+fn broken_by<W: Wrapper>(entry: &Entry, callees: Option<&[Address]>) -> bool {
     match W::AFTER_CPI {
         AfterCpi::Holds => false,
-        AfterCpi::BrokenByCalling(owner) => callees.contains(owner),
+        AfterCpi::BrokenByCalling(owner) => {
+            // A third program can invoke a foreign owner. Only the running program
+            // is protected from indirect reentry.
+            owner != entry.executing_program || callees.is_none_or(|ids| ids.contains(owner))
+        }
         AfterCpi::Broken => true,
     }
 }
 
-fn recheck<W: Wrapper>(entry: &Entry, callees: &[Address]) -> Result {
-    if !broken_by::<W>(callees) {
-        return Ok(());
+fn recheck<W: Wrapper>(entry: &Entry, callees: &[Address]) {
+    if !broken_by::<W>(entry, Some(callees)) {
+        return;
     }
     // SAFETY: the wrapper built here is dropped before this returns, and the
     // caller's handle is not used meanwhile: it is borrowed by the call.
-    input::finish::<W>(unsafe { entry.alias() }).map(drop)
+    if input::finish::<W>(unsafe { entry.alias() }).is_err() {
+        // Returning an error would let a handler keep using the invalid view.
+        if cfg!(feature = "debug") {
+            input::why::<W>(entry, "");
+        }
+        syscalls::end();
+    }
 }
 
 /// A call to `P`, ready to invoke.
@@ -528,7 +536,7 @@ impl<'a, P: ProgramIds, const N: usize, const D: usize> Cpi<'a, P, N, D> {
     fn recheck_changed(&self, rechecks: [Option<Recheck>; N]) -> Result {
         for (account, recheck) in self.accounts.iter().zip(rechecks) {
             if let Some(recheck) = recheck {
-                recheck(&account.entry, P::IDS)?;
+                recheck(&account.entry, P::IDS);
             }
         }
         Ok(())

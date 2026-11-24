@@ -119,6 +119,7 @@ pub fn init_pda<K: Kind, P: Wrapper, const S: usize>(
     rent: &RentSource,
 ) -> Result<(Account<K>, u8)> {
     const { assert!(K::PROGRAM_OWNED, "`init` creates accounts this program owns") };
+    account.entry().require_program(&K::OWNER)?;
     let (address, bump) = seeds.canonical(&K::OWNER)?;
     if *account.address() != address {
         return Err(ProgramError::InvalidSeeds);
@@ -144,6 +145,7 @@ pub fn init<K: Kind, P: Wrapper>(
     rent: &RentSource,
 ) -> Result<Account<K>> {
     const { assert!(K::PROGRAM_OWNED, "`init` creates accounts this program owns") };
+    account.entry().require_program(&K::OWNER)?;
     if idempotent {
         match input::existing(account) {
             Ok(existing) => return Ok(existing),
@@ -167,6 +169,8 @@ pub fn migrate<O: Kind, N: Kind + From<O>, P: Wrapper>(
     rent: &RentSource,
 ) -> Result<Account<N>> {
     const { assert!(O::PROGRAM_OWNED && N::PROGRAM_OWNED, "only this program's kinds migrate") };
+    account.entry().require_program(&O::OWNER)?;
+    account.entry().require_program(&N::OWNER)?;
     let fits = len::<O>().is_none_or(|len| account.data().len() == len);
     if !(fits && holds::<O>(account.entry())) {
         // Already an `N`, or neither. The privileges were checked as the
