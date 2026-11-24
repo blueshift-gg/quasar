@@ -23,7 +23,7 @@ const IMPLEMENTATIONS: [(&str, Option<&str>); 4] = [
     ("Quasar, this repository", None),
     ("Quasar master (b0de7db)", Some("blueshift_vault")),
     ("anchor-next v2 (2cdb58b)", Some("anchor_next_vault")),
-    ("Pinocchio 0.11, by hand", Some("pinocchio_vault")),
+    ("Pinocchio 0.12.0, by hand", Some("pinocchio_vault")),
 ];
 
 fn main() {

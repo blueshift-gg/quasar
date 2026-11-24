@@ -18,7 +18,7 @@ tries 3 bumps.
 | Quasar, this repository | 2187 | 2225 | 4712 |
 | Quasar master (b0de7db) | 2198 | 2219 | 5680 |
 | anchor-next v2 (2cdb58b) | 2344 | 2391 | 6720 |
-| Pinocchio 0.11, by hand | 5875 | 5888 | 5424 |
+| Pinocchio 0.12.0, by hand | 5758 | 5771 | 4600 |
 
 ## A vault the program owns
 

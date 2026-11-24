@@ -10,8 +10,8 @@ crate-type = ["cdylib"]
 [workspace]
 
 [dependencies]
-pinocchio = { version = "=0.11.1", default-features = false, features = ["copy"] }
-pinocchio-system = "=0.6.0"
+pinocchio = { version = "=0.12.0", default-features = false, features = ["copy"] }
+pinocchio-system = "=0.7.1"
 solana-address = { version = "2", features = ["curve25519"] }
 
 [profile.release]
