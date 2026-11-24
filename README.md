@@ -165,7 +165,7 @@ the canonical bump.
 | Quasar, this repository | 2187 / 2225, 4712 |
 | Quasar master | 2198 / 2219, 5680 |
 | anchor-next v2 | 2344 / 2391, 6720 |
-| Pinocchio, by hand | 5875 / 5888, 5424 |
+| Pinocchio, by hand | 5758 / 5771, 4600 |
 
 ## Documentation
 
